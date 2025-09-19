@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   backgroundColor: Colors.red,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                child: const Text('Đăng nhập', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                child: const Text('Đăng nhập', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)), // Chữ màu trắng
               ),
             ),
             const SizedBox(height: 16),
