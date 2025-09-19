@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -47,6 +48,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() {});
       }
     });
+  }
+
+  void _navigateToFollowerFollowing(int initialIndex) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FollowerFollowingScreen(initialIndex: initialIndex),
+      ),
+    );
   }
 
   @override
@@ -174,10 +183,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Expanded(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: const [
-                              _ProfileStat(count: '0', label: 'bài viết'),
-                              _ProfileStat(count: '24', label: 'người theo dõi'),
-                              _ProfileStat(count: '34', label: 'đang theo dõi'),
+                            children: [
+                              _ProfileStat(count: '0', label: 'bài viết', onTap: () => _navigateToFollowerFollowing(2)),
+                              _ProfileStat(count: '24', label: 'người theo dõi', onTap: () => _navigateToFollowerFollowing(0)),
+                              _ProfileStat(count: '34', label: 'đang theo dõi', onTap: () => _navigateToFollowerFollowing(1)),
                             ],
                           ),
                         ),
@@ -229,14 +238,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _ProfileStat extends StatelessWidget {
   final String count;
   final String label;
-  const _ProfileStat({required this.count, required this.label});
+  final VoidCallback? onTap;
+  const _ProfileStat({required this.count, required this.label, this.onTap});
 
   @override
-  Widget build(BuildContext context) => Column(
-        children: [
-          Text(count, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          Text(label, style: const TextStyle(color: Colors.grey)),
-        ],
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Column(
+          children: [
+            Text(count, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            Text(label, style: const TextStyle(color: Colors.grey)),
+          ],
+        ),
       );
 }
 
