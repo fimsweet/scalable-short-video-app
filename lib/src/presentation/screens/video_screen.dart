@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/comment_section_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/options_menu_widget.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/share_sheet_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_controls_widget.dart';
 
 class VideoScreen extends StatelessWidget {
@@ -13,7 +14,8 @@ class VideoScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text(
           'Video vui',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
+          style: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white),
         ),
         centerTitle: false,
         backgroundColor: Colors.transparent,
@@ -68,6 +70,14 @@ class VideoScreen extends StatelessWidget {
                     showModalBottomSheet(
                       context: context,
                       builder: (context) => const OptionsMenuWidget(),
+                      backgroundColor: Colors.transparent,
+                    );
+                  },
+                  onShareTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      builder: (context) => const ShareSheetWidget(),
+                      isScrollControlled: true,
                       backgroundColor: Colors.transparent,
                     );
                   },
