@@ -73,8 +73,10 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 32),
             const Text('Hoặc đăng nhập bằng', style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 12.0, // Khoảng cách ngang giữa các nút
+              runSpacing: 12.0, // Khoảng cách dọc giữa các hàng
               children: [
                 _SocialButton(icon: Icons.facebook, label: 'Facebook', onTap: _login),
                 _SocialButton(icon: Icons.g_mobiledata, label: 'Google', onTap: _login),
