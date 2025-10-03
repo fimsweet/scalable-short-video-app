@@ -63,7 +63,7 @@ class _MainScreenState extends State<MainScreen> {
               label: 'Hồ sơ',
             ),
           ],
-          currentIndex: _selectedIndex,
+          currentIndex: _selectedIndex == 0 ? 0 : 2,
           selectedItemColor: Colors.white,
           unselectedItemColor: Colors.grey,
           onTap: (index) {
@@ -71,15 +71,16 @@ class _MainScreenState extends State<MainScreen> {
               // Handle add video tap
               print('Add video tapped');
             } else if (index == 2) {
-              _onItemTapped(1); // Index for ProfileScreen
+              _onItemTapped(1); // Index for ProfileScreen in _widgetOptions
             } else {
-              _onItemTapped(0); // Index for VideoScreen
+              _onItemTapped(0); // Index for VideoScreen in _widgetOptions
             }
           },
           backgroundColor: Colors.black,
           type: BottomNavigationBarType.fixed,
           showSelectedLabels: false,
           showUnselectedLabels: false,
+          enableFeedback: false, // Tắt haptic feedback
         ),
       ),
     );

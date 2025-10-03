@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
+import 'package:scalable_short_video_app/src/services/auth_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await AuthService().tryAutoLogin();
   runApp(const MyApp());
 }
 

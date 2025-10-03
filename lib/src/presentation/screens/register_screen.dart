@@ -142,7 +142,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Tạo tài khoản', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      : const Text('Tạo tài khoản', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
                 ),
               ),
               const SizedBox(height: 32),
