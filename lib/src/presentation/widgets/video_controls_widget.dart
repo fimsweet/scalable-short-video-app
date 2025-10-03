@@ -22,7 +22,7 @@ class VideoControlsWidget extends StatelessWidget {
           _buildIconButton(icon: Icons.favorite, label: '4.820'),
           const SizedBox(height: 16),
           _buildIconButton(
-              icon: Icons.comment_bank, label: '306', onTap: onCommentTap),
+              icon: Icons.mode_comment_outlined, label: '306', onTap: onCommentTap),
           const SizedBox(height: 16),
           _buildIconButton(icon: Icons.send, label: '9.438', onTap: onShareTap),
           const SizedBox(height: 16),
