@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen.dart';
+import 'package:scalable_short_video_app/src/services/auth_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -11,6 +13,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  final AuthService _authService = AuthService();
 
   static const List<Widget> _widgetOptions = <Widget>[
     VideoScreen(),
@@ -21,6 +24,31 @@ class _MainScreenState extends State<MainScreen> {
     setState(() {
       _selectedIndex = index;
     });
+  }
+
+  void _navigateToUpload() async {
+    // Check if user is logged in
+    if (!_authService.isLoggedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng đăng nhập để upload video'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      // Navigate to profile screen to login
+      _onItemTapped(1);
+      return;
+    }
+
+    // Navigate to upload screen
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
+    );
+
+    // If upload successful, refresh video feed
+    if (result == true) {
+      setState(() {});
+    }
   }
 
   @override
@@ -69,7 +97,7 @@ class _MainScreenState extends State<MainScreen> {
           onTap: (index) {
             if (index == 1) {
               // Handle add video tap
-              print('Add video tapped');
+              _navigateToUpload();
             } else if (index == 2) {
               _onItemTapped(1); // Index for ProfileScreen in _widgetOptions
             } else {
