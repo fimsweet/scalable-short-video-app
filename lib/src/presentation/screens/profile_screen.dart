@@ -374,7 +374,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildAvatar() {
     final avatarUrl = _authService.avatarUrl;
-    print('🔍 Avatar URL from auth: $avatarUrl');
 
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = _apiService.getAvatarUrl(avatarUrl);

@@ -34,6 +34,9 @@ dependencies:
   http: ^1.2.1
   flutter_secure_storage: ^9.0.0
   image_picker: ^1.0.7
+  video_player: ^2.9.2
+  mime: ^1.0.5
+  flutter_inappwebview: ^6.0.0  # For web HLS support
 
 dev_dependencies:
   flutter_test:
