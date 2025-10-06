@@ -23,6 +23,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
+  bool _isMuted = false; // Track mute state
 
   @override
   void initState() {
@@ -89,6 +90,13 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
     });
   }
 
+  void _toggleMute() {
+    setState(() {
+      _isMuted = !_isMuted;
+      _controller.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     // Use web-specific player for web platform
@@ -133,34 +141,83 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
       );
     }
 
-    return GestureDetector(
-      onTap: _togglePlayPause,
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: _controller.value.size.width,
-            height: _controller.value.size.height,
-            child: Stack(
-              children: [
-                VideoPlayer(_controller),
-                // Play/Pause overlay with better styling
-                if (!_controller.value.isPlaying)
-                  Container(
-                    color: Colors.black.withOpacity(0.3),
-                    child: const Center(
-                      child: Icon(
-                        Icons.play_circle_outline,
-                        size: 80,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-              ],
+    return Stack(
+      children: [
+        // Video player with play/pause gesture
+        GestureDetector(
+          onTap: _togglePlayPause,
+          behavior: HitTestBehavior.opaque,
+          child: SizedBox.expand(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: _controller.value.size.width,
+                height: _controller.value.size.height,
+                child: VideoPlayer(_controller),
+              ),
             ),
           ),
         ),
-      ),
+        
+        // Play icon overlay (triangle only, no circle)
+        if (!_controller.value.isPlaying)
+          IgnorePointer(
+            child: Container(
+              color: Colors.black.withOpacity(0.3),
+              child: const Center(
+                child: Icon(
+                  Icons.play_arrow, // Triangle only
+                  size: 80,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        
+        // Video progress bar (bottom)
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: VideoProgressIndicator(
+            _controller,
+            allowScrubbing: true,
+            colors: const VideoProgressColors(
+              playedColor: Colors.white,
+              bufferedColor: Colors.white30,
+              backgroundColor: Colors.white10,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 0),
+          ),
+        ),
+        
+        // Mute/Unmute button (top-right corner, blocks tap gesture)
+        Positioned(
+          top: 12,
+          right: 12,
+          child: SafeArea(
+            child: GestureDetector(
+              onTap: () {
+                _toggleMute();
+                // Prevent tap from propagating to video player
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isMuted ? Icons.volume_off : Icons.volume_up,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
