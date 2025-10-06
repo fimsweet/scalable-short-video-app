@@ -122,6 +122,23 @@ class VideoService {
     }
   }
 
+  /// Get all videos for feed (guest mode)
+  Future<List<dynamic>> getAllVideos() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_videoApiUrl/feed/all'),
+      );
+      
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error fetching all videos: $e');
+      return [];
+    }
+  }
+
   /// Get HLS video URL
   String getVideoUrl(String hlsUrl) {
     // HLS URL từ backend: /uploads/processed_videos/xxx/playlist.m3u8

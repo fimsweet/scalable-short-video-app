@@ -18,6 +18,7 @@ class WebVideoPlayer extends StatefulWidget {
 class _WebVideoPlayerState extends State<WebVideoPlayer> {
   final String _viewId = 'video-player-${DateTime.now().millisecondsSinceEpoch}';
   bool _isPlaying = true;
+  bool _isMuted = false;
 
   @override
   void initState() {
@@ -40,6 +41,22 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
           } else {
             video.pause();
           }
+        }
+      })();
+    ''']);
+  }
+
+  void _toggleMute() {
+    setState(() {
+      _isMuted = !_isMuted;
+    });
+    
+    // Control video mute via JavaScript
+    js.context.callMethod('eval', ['''
+      (function() {
+        var video = document.getElementById('video-$_viewId');
+        if (video) {
+          video.muted = $_isMuted;
         }
       })();
     ''']);
@@ -113,20 +130,46 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
     return Stack(
       children: [
         HtmlElementView(viewType: _viewId),
-        // Show play icon overlay when paused
+        // Show play icon overlay when paused (triangle only)
         if (!_isPlaying)
           IgnorePointer(
             child: Container(
               color: Colors.black.withOpacity(0.3),
               child: Center(
                 child: Icon(
-                  Icons.play_circle_outline,
+                  Icons.play_arrow, // Triangle only, no circle
                   size: 80,
                   color: Colors.white.withOpacity(0.9),
                 ),
               ),
             ),
           ),
+        // Mute/Unmute button (top-right corner)
+        Positioned(
+          top: 12,
+          right: 12,
+          child: SafeArea(
+            child: GestureDetector(
+              onTap: () {
+                _toggleMute();
+                // Prevent tap propagation
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isMuted ? Icons.volume_off : Icons.volume_up,
+                  color: Colors.white,
+                  size: 26,
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

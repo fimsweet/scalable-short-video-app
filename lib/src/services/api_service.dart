@@ -167,4 +167,20 @@ class ApiService {
     }
     return '$_baseUrl$avatarPath';
   }
+
+  Future<Map<String, dynamic>?> getUserById(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/id/$userId'),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('❌ Error fetching user: $e');
+      return null;
+    }
+  }
 }

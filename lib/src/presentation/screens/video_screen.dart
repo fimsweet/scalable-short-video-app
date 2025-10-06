@@ -23,6 +23,12 @@ class _VideoScreenState extends State<VideoScreen> {
   List<dynamic> _videos = [];
   bool _isLoading = true;
   String? _error;
+  
+  // Track expanded state for each video caption
+  Map<int, bool> _expandedCaptions = {};
+  
+  // Cache user info for each video owner
+  Map<String, Map<String, dynamic>> _userCache = {};
 
   @override
   void initState() {
@@ -44,21 +50,8 @@ class _VideoScreenState extends State<VideoScreen> {
         _error = null;
       });
 
-      // Get current user from AuthService
-      final user = _authService.user;
-      if (user == null) {
-        setState(() {
-          _videos = [];
-          _isLoading = false;
-          _error = 'Vui lòng đăng nhập';
-        });
-        return;
-      }
-
-      // Fetch user's videos from backend
-      // Convert userId to String to avoid type error
-      final userId = user['id'].toString();
-      final videos = await _videoService.getUserVideos(userId);
+      // Load all videos for feed (guest mode - no login required)
+      final videos = await _videoService.getAllVideos();
       
       // Filter only ready videos (processed successfully)
       final readyVideos = videos.where((v) => v['status'] == 'ready').toList();
@@ -97,26 +90,70 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
+  Future<Map<String, dynamic>> _getUserInfo(String userId) async {
+    // Check cache first
+    if (_userCache.containsKey(userId)) {
+      return _userCache[userId]!;
+    }
+    
+    // Fetch from API
+    final userInfo = await _apiService.getUserById(userId);
+    if (userInfo != null) {
+      _userCache[userId] = userInfo;
+      return userInfo;
+    }
+    
+    // Return default user info if fetch fails
+    return {'username': 'user', 'avatar': null};
+  }
+
+  Widget _buildCaption(String caption, bool isExpanded) {
+    if (caption.isEmpty) return const SizedBox.shrink();
+
+    // Max lines when collapsed
+    const int maxLinesCollapsed = 2;
+    
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+          height: 1.3,
+          shadows: [
+            Shadow(
+              blurRadius: 8.0,
+              color: Colors.black87,
+              offset: Offset(1, 1),
+            ),
+          ],
+        ),
+        children: [
+          TextSpan(
+            text: isExpanded 
+                ? caption 
+                : (caption.length > 100 
+                    ? '${caption.substring(0, 100)}...' 
+                    : caption),
+          ),
+          if (!isExpanded && caption.length > 100)
+            const TextSpan(
+              text: ' xem thêm',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+        ],
+      ),
+      maxLines: isExpanded ? null : maxLinesCollapsed,
+      overflow: isExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text(
-          'Video vui',
-          style: TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadVideos,
-          ),
-        ],
-      ),
+      backgroundColor: Colors.black,
       body: _isLoading
           ? const Center(
               child: CircularProgressIndicator(color: Colors.white),
@@ -222,117 +259,105 @@ class _VideoScreenState extends State<VideoScreen> {
                                   ),
                                 ),
                               
-                              // User Info (Top-left - TikTok style)
+                              // Instagram Reels-style layout
+                              // Bottom-left: Avatar + Username + Follow + Caption
                               Positioned(
-                                top: 60,
-                                left: 16,
-                                child: Row(
-                                  children: [
-                                    // Avatar
-                                    CircleAvatar(
-                                      radius: 20,
-                                      backgroundColor: Colors.grey[800],
-                                      backgroundImage: _authService.avatarUrl != null && 
-                                                       _authService.avatarUrl!.isNotEmpty
-                                          ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl))
-                                          : null,
-                                      child: _authService.avatarUrl == null || 
-                                             _authService.avatarUrl!.isEmpty
-                                          ? Icon(
-                                              Icons.person,
-                                              color: Colors.white,
-                                              size: 24,
-                                            )
-                                          : null,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    // Username
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.3),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        '@${_authService.username ?? 'user'}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                          shadows: [
-                                            Shadow(
-                                              blurRadius: 8.0,
-                                              color: Colors.black,
+                                bottom: 10,
+                                left: 12,
+                                right: 90,
+                                child: SafeArea(
+                                  child: FutureBuilder<Map<String, dynamic>>(
+                                    future: _getUserInfo(video['userId'].toString()),
+                                    builder: (context, snapshot) {
+                                      final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
+                                      
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // Row: Avatar + Username + Follow button
+                                          Row(
+                                            children: [
+                                              // Avatar (from video owner)
+                                              CircleAvatar(
+                                                radius: 18,
+                                                backgroundColor: Colors.grey[800],
+                                                backgroundImage: userInfo['avatar'] != null && 
+                                                                 userInfo['avatar'].toString().isNotEmpty
+                                                    ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                                    : null,
+                                                child: userInfo['avatar'] == null || 
+                                                       userInfo['avatar'].toString().isEmpty
+                                                    ? const Icon(
+                                                        Icons.person,
+                                                        color: Colors.white,
+                                                        size: 20,
+                                                      )
+                                                    : null,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              // Username (from video owner)
+                                              Text(
+                                                userInfo['username'] ?? 'user',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w600,
+                                                  shadows: [
+                                                    Shadow(
+                                                      blurRadius: 8.0,
+                                                      color: Colors.black87,
+                                                      offset: Offset(1, 1),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              // Follow button (Instagram style)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 4,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  border: Border.all(color: Colors.white, width: 1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'Theo dõi',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    shadows: [
+                                                      Shadow(
+                                                        blurRadius: 6.0,
+                                                        color: Colors.black87,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 8),
+                                          
+                                          // Expandable Caption
+                                          GestureDetector(
+                                            onTap: () {
+                                              setState(() {
+                                                _expandedCaptions[index] = !(_expandedCaptions[index] ?? false);
+                                              });
+                                            },
+                                            child: _buildCaption(
+                                              video['description'] ?? video['title'] ?? '',
+                                              _expandedCaptions[index] ?? false,
                                             ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              
-                              // Video Info Overlay (Bottom-left)
-                              Positioned(
-                                bottom: 100,
-                                left: 16,
-                                right: 80,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      video['title'] ?? 'Untitled',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        shadows: [
-                                          Shadow(
-                                            blurRadius: 10.0,
-                                            color: Colors.black,
-                                            offset: Offset(0, 0),
                                           ),
                                         ],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    if (video['description'] != null && 
-                                        video['description'].toString().isNotEmpty)
-                                      Text(
-                                        video['description'],
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          shadows: [
-                                            Shadow(
-                                              blurRadius: 10.0,
-                                              color: Colors.black,
-                                              offset: Offset(0, 0),
-                                            ),
-                                          ],
-                                        ),
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.access_time, 
-                                          size: 14, color: Colors.white70),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _formatDate(video['createdAt']),
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
                               

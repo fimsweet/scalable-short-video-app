@@ -12,8 +12,7 @@ class UploadVideoScreen extends StatefulWidget {
 
 class _UploadVideoScreenState extends State<UploadVideoScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
+  final _captionController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
@@ -111,11 +110,12 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         throw Exception('Vui lòng đăng nhập lại');
       }
 
+      final caption = _captionController.text.trim();
       final result = await _videoService.uploadVideo(
         videoFile: _selectedVideo!,
         userId: user['id'].toString(),
-        title: _titleController.text.trim(),
-        description: _descriptionController.text.trim(),
+        title: caption, // Use caption as title for backend compatibility
+        description: caption, // Use same caption for description
         token: token,
       );
 
@@ -156,8 +156,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
 
   @override
   void dispose() {
-    _titleController.dispose();
-    _descriptionController.dispose();
+    _captionController.dispose();
     super.dispose();
   }
 
@@ -291,16 +290,17 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
               ),
               const SizedBox(height: 24),
 
-              // Title
-              const Text('Tiêu đề', style: TextStyle(color: Colors.white, fontSize: 16)),
+              // Caption (Instagram style - single field)
+              const Text('Viết caption...', style: TextStyle(color: Colors.white, fontSize: 16)),
               const SizedBox(height: 8),
               TextFormField(
-                controller: _titleController,
+                controller: _captionController,
                 enabled: !_isUploading,
                 style: const TextStyle(color: Colors.white),
-                maxLength: 100,
+                maxLength: 2200, // Instagram max length
+                maxLines: 5,
                 decoration: InputDecoration(
-                  hintText: 'Thêm tiêu đề thu hút...',
+                  hintText: 'Viết caption cho video của bạn...',
                   hintStyle: TextStyle(color: Colors.grey[600]),
                   filled: true,
                   fillColor: Colors.grey[900],
@@ -308,35 +308,15 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,
                   ),
+                  helperText: 'Caption có thể bao gồm hashtags (#), mentions (@), v.v.',
+                  helperStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập tiêu đề';
+                    return 'Vui lòng nhập caption cho video';
                   }
                   return null;
                 },
-              ),
-              const SizedBox(height: 16),
-
-              // Description
-              const Text('Mô tả (không bắt buộc)', style: TextStyle(color: Colors.white, fontSize: 16)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _descriptionController,
-                enabled: !_isUploading,
-                style: const TextStyle(color: Colors.white),
-                maxLength: 500,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: 'Chia sẻ thêm về video của bạn...',
-                  hintStyle: TextStyle(color: Colors.grey[600]),
-                  filled: true,
-                  fillColor: Colors.grey[900],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
               ),
               const SizedBox(height: 24),
 
