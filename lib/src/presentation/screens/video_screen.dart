@@ -7,6 +7,8 @@ import 'package:scalable_short_video_app/src/presentation/widgets/hls_video_play
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/like_service.dart';
+import 'package:scalable_short_video_app/src/services/comment_service.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -19,6 +21,8 @@ class _VideoScreenState extends State<VideoScreen> {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
+  final LikeService _likeService = LikeService();
+  final CommentService _commentService = CommentService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -29,11 +33,19 @@ class _VideoScreenState extends State<VideoScreen> {
   
   // Cache user info for each video owner
   Map<String, Map<String, dynamic>> _userCache = {};
+  
+  // Track like status for each video
+  Map<String, bool> _likeStatus = {};
+  Map<String, int> _likeCounts = {};
+  Map<String, int> _commentCounts = {};
 
   @override
   void initState() {
     super.initState();
-    _loadVideos();
+    // Đảm bảo AuthService đã sẵn sàng trước khi load video
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadVideos();
+    });
   }
 
   @override
@@ -45,28 +57,101 @@ class _VideoScreenState extends State<VideoScreen> {
 
   Future<void> _loadVideos() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+          _error = null;
+        });
+      }
 
       // Load all videos for feed (guest mode - no login required)
       final videos = await _videoService.getAllVideos();
       
       // Filter only ready videos (processed successfully)
-      final readyVideos = videos.where((v) => v['status'] == 'ready').toList();
+      final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
 
-      setState(() {
-        _videos = readyVideos;
-        _isLoading = false;
-      });
+      // Initialize counts and like status from backend response with null safety
+      for (var video in readyVideos) {
+        if (video == null || video['id'] == null) continue;
+        
+        final videoId = video['id'].toString();
+        _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
+        _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
+        
+        // IMPORTANT: Always check like status for logged-in users
+        if (_authService.isLoggedIn && _authService.user != null) {
+          try {
+            final userId = _authService.user!['id']?.toString();
+            if (userId != null && userId.isNotEmpty) {
+              print('🔍 Checking like status for video $videoId, user $userId');
+              final isLiked = await _likeService.isLikedByUser(videoId, userId);
+              _likeStatus[videoId] = isLiked;
+              print('${isLiked ? '❤️' : '🤍'} Video $videoId like status: $isLiked');
+            } else {
+              _likeStatus[videoId] = false;
+            }
+          } catch (e) {
+            print('❌ Error checking like status: $e');
+            _likeStatus[videoId] = false;
+          }
+        } else {
+          // Guest user - no likes
+          _likeStatus[videoId] = false;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _videos = readyVideos;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print('❌ Error loading videos: $e');
-      setState(() {
-        _error = 'Không thể tải video. Vui lòng thử lại.';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = 'Không thể tải video. Vui lòng thử lại.';
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  Future<void> _handleLike(String videoId) async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để thích video')),
+      );
+      return;
+    }
+
+    final userId = _authService.user!['id']?.toString();
+    if (userId == null || userId.isEmpty) {
+      print('❌ Invalid user ID');
+      return;
+    }
+
+    print('👆 Toggle like for video $videoId by user $userId');
+    
+    final result = await _likeService.toggleLike(videoId, userId);
+
+    if (mounted) {
+      setState(() {
+        _likeStatus[videoId] = result['liked'] ?? false;
+        _likeCounts[videoId] = result['likeCount'] ?? 0;
+      });
+      
+      print('${result['liked'] ? '❤️' : '🤍'} Like toggled - Status: ${result['liked']}, Count: ${result['likeCount']}');
+    }
+  }
+
+  String _formatCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
   }
 
   String _formatDate(String? dateStr) {
@@ -90,17 +175,26 @@ class _VideoScreenState extends State<VideoScreen> {
     }
   }
 
-  Future<Map<String, dynamic>> _getUserInfo(String userId) async {
+  Future<Map<String, dynamic>> _getUserInfo(String? userId) async {
+    // Add null check for userId
+    if (userId == null || userId.isEmpty) {
+      return {'username': 'user', 'avatar': null};
+    }
+    
     // Check cache first
     if (_userCache.containsKey(userId)) {
       return _userCache[userId]!;
     }
     
-    // Fetch from API
-    final userInfo = await _apiService.getUserById(userId);
-    if (userInfo != null) {
-      _userCache[userId] = userInfo;
-      return userInfo;
+    try {
+      // Fetch from API
+      final userInfo = await _apiService.getUserById(userId);
+      if (userInfo != null) {
+        _userCache[userId] = userInfo;
+        return userInfo;
+      }
+    } catch (e) {
+      print('❌ Error fetching user info: $e');
     }
     
     // Return default user info if fetch fails
@@ -163,16 +257,12 @@ class _VideoScreenState extends State<VideoScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red,
-                      ),
+                      const Icon(Icons.error_outline, size: 64, color: Colors.red),
                       const SizedBox(height: 16),
                       Text(
-                        'Lỗi: $_error',
-                        textAlign: TextAlign.center,
+                        _error!,
                         style: const TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
                       ElevatedButton(
@@ -183,35 +273,10 @@ class _VideoScreenState extends State<VideoScreen> {
                   ),
                 )
               : _videos.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.video_library_outlined,
-                            size: 64,
-                            color: Colors.grey,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Chưa có video nào',
-                            style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Hãy tải video đầu tiên của bạn!',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: _loadVideos,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Làm mới'),
-                          ),
-                        ],
+                  ? const Center(
+                      child: Text(
+                        'Chưa có video',
+                        style: TextStyle(color: Colors.white),
                       ),
                     )
                   : RefreshIndicator(
@@ -221,13 +286,19 @@ class _VideoScreenState extends State<VideoScreen> {
                         itemCount: _videos.length,
                         itemBuilder: (context, index) {
                           final video = _videos[index];
-                          final hlsUrl = _videoService.getVideoUrl(video['hlsUrl'] ?? '');
                           
-                          // Debug logging
-                          print('🎬 Video ${index + 1}:');
-                          print('   videoId: ${video['id']}');
-                          print('   hlsUrl from DB: ${video['hlsUrl']}');
-                          print('   Full URL: $hlsUrl');
+                          // Add null safety checks
+                          if (video == null) {
+                            return const Center(
+                              child: Text('Video không hợp lệ', style: TextStyle(color: Colors.white)),
+                            );
+                          }
+                          
+                          final videoId = video['id']?.toString() ?? '';
+                          final hlsUrl = video['hlsUrl'] != null 
+                              ? _videoService.getVideoUrl(video['hlsUrl']) 
+                              : '';
+                          final userId = video['userId']?.toString();
                           
                           return Stack(
                             children: [
@@ -241,25 +312,17 @@ class _VideoScreenState extends State<VideoScreen> {
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Icon(
-                                          Icons.error_outline,
-                                          size: 80,
-                                          color: Colors.white,
-                                        ),
+                                        Icon(Icons.error_outline, size: 80, color: Colors.white),
                                         SizedBox(height: 16),
                                         Text(
                                           'Video không khả dụng',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 18,
-                                          ),
+                                          style: TextStyle(color: Colors.white, fontSize: 18),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ),
                               
-                              // Instagram Reels-style layout
                               // Bottom-left: Avatar + Username + Follow + Caption
                               Positioned(
                                 bottom: 10,
@@ -267,7 +330,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                 right: 90,
                                 child: SafeArea(
                                   child: FutureBuilder<Map<String, dynamic>>(
-                                    future: _getUserInfo(video['userId'].toString()),
+                                    future: _getUserInfo(userId),
                                     builder: (context, snapshot) {
                                       final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
                                       
@@ -278,7 +341,6 @@ class _VideoScreenState extends State<VideoScreen> {
                                           // Row: Avatar + Username + Follow button
                                           Row(
                                             children: [
-                                              // Avatar (from video owner)
                                               CircleAvatar(
                                                 radius: 18,
                                                 backgroundColor: Colors.grey[800],
@@ -288,17 +350,12 @@ class _VideoScreenState extends State<VideoScreen> {
                                                     : null,
                                                 child: userInfo['avatar'] == null || 
                                                        userInfo['avatar'].toString().isEmpty
-                                                    ? const Icon(
-                                                        Icons.person,
-                                                        color: Colors.white,
-                                                        size: 20,
-                                                      )
+                                                    ? const Icon(Icons.person, color: Colors.white, size: 20)
                                                     : null,
                                               ),
                                               const SizedBox(width: 10),
-                                              // Username (from video owner)
                                               Text(
-                                                userInfo['username'] ?? 'user',
+                                                userInfo['username']?.toString() ?? 'user',
                                                 style: const TextStyle(
                                                   color: Colors.white,
                                                   fontSize: 14,
@@ -313,12 +370,8 @@ class _VideoScreenState extends State<VideoScreen> {
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
-                                              // Follow button (Instagram style)
                                               Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 4,
-                                                ),
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                                 decoration: BoxDecoration(
                                                   border: Border.all(color: Colors.white, width: 1),
                                                   borderRadius: BorderRadius.circular(4),
@@ -329,12 +382,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                                     color: Colors.white,
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.w600,
-                                                    shadows: [
-                                                      Shadow(
-                                                        blurRadius: 6.0,
-                                                        color: Colors.black87,
-                                                      ),
-                                                    ],
+                                                    shadows: [Shadow(blurRadius: 6.0, color: Colors.black87)],
                                                   ),
                                                 ),
                                               ),
@@ -350,7 +398,8 @@ class _VideoScreenState extends State<VideoScreen> {
                                               });
                                             },
                                             child: _buildCaption(
-                                              video['description'] ?? video['title'] ?? '',
+                                              video['description']?.toString() ?? 
+                                              video['title']?.toString() ?? '',
                                               _expandedCaptions[index] ?? false,
                                             ),
                                           ),
@@ -361,47 +410,60 @@ class _VideoScreenState extends State<VideoScreen> {
                                 ),
                               ),
                               
-                              // UI Controls
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: VideoControlsWidget(
-                                  onCommentTap: () {
-                                    showModalBottomSheet(
-                                      context: context,
-                                      builder: (context) {
-                                        return DraggableScrollableSheet(
-                                          initialChildSize: 0.6,
-                                          minChildSize: 0.2,
-                                          maxChildSize: 0.9,
-                                          builder: (BuildContext context,
-                                              ScrollController scrollController) {
-                                            return CommentSectionWidget(
-                                                controller: scrollController);
-                                          },
-                                        );
-                                      },
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                    );
-                                  },
-                                  onMoreTap: () {
-                                    showModalBottomSheet(
-                                      context: context,
-                                      builder: (context) => const OptionsMenuWidget(),
-                                      backgroundColor: Colors.transparent,
-                                    );
-                                  },
-                                  onShareTap: () {
-                                    showModalBottomSheet(
-                                      context: context,
-                                      builder: (context) => const ShareSheetWidget(),
-                                      isScrollControlled: true,
-                                      backgroundColor: Colors.transparent,
-                                    );
-                                  },
+                              // UI Controls with Like/Comment counts
+                              if (videoId.isNotEmpty)
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: VideoControlsWidget(
+                                    isLiked: _likeStatus[videoId] ?? false,
+                                    likeCount: _formatCount(_likeCounts[videoId] ?? 0),
+                                    commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                                    onLikeTap: () => _handleLike(videoId),
+                                    onCommentTap: () {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        builder: (context) {
+                                          return DraggableScrollableSheet(
+                                            initialChildSize: 0.6,
+                                            minChildSize: 0.2,
+                                            maxChildSize: 0.9,
+                                            builder: (BuildContext context, ScrollController scrollController) {
+                                              return CommentSectionWidget(
+                                                controller: scrollController,
+                                                videoId: videoId,
+                                                onCommentAdded: () {
+                                                  if (mounted) {
+                                                    setState(() {
+                                                      _commentCounts[videoId] = (_commentCounts[videoId] ?? 0) + 1;
+                                                    });
+                                                  }
+                                                },
+                                              );
+                                            },
+                                          );
+                                        },
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                      );
+                                    },
+                                    onMoreTap: () {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        builder: (context) => const OptionsMenuWidget(),
+                                        backgroundColor: Colors.transparent,
+                                      );
+                                    },
+                                    onShareTap: () {
+                                      showModalBottomSheet(
+                                        context: context,
+                                        builder: (context) => const ShareSheetWidget(),
+                                        isScrollControlled: true,
+                                        backgroundColor: Colors.transparent,
+                                      );
+                                    },
+                                  ),
                                 ),
-                              ),
                             ],
                           );
                         },

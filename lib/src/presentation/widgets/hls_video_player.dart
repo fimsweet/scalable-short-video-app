@@ -166,7 +166,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
               color: Colors.black.withOpacity(0.3),
               child: const Center(
                 child: Icon(
-                  Icons.play_arrow, // Triangle only
+                  Icons.play_arrow,
                   size: 80,
                   color: Colors.white,
                 ),
@@ -191,17 +191,13 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
           ),
         ),
         
-        // Mute/Unmute button (top-right corner, blocks tap gesture)
+        // Mute/Unmute button (top-right corner) - FIXED
         Positioned(
           top: 12,
           right: 12,
           child: SafeArea(
             child: GestureDetector(
-              onTap: () {
-                _toggleMute();
-                // Prevent tap from propagating to video player
-              },
-              behavior: HitTestBehavior.opaque,
+              onTap: _toggleMute, // Chỉ gọi hàm toggleMute
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -221,3 +217,4 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
     );
   }
 }
+           

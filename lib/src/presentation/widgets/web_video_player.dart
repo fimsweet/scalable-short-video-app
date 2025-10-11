@@ -137,24 +137,20 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
               color: Colors.black.withOpacity(0.3),
               child: Center(
                 child: Icon(
-                  Icons.play_arrow, // Triangle only, no circle
+                  Icons.play_arrow,
                   size: 80,
                   color: Colors.white.withOpacity(0.9),
                 ),
               ),
             ),
           ),
-        // Mute/Unmute button (top-right corner)
+        // Mute/Unmute button (top-right corner) - FIXED
         Positioned(
           top: 12,
           right: 12,
           child: SafeArea(
             child: GestureDetector(
-              onTap: () {
-                _toggleMute();
-                // Prevent tap propagation
-              },
-              behavior: HitTestBehavior.opaque,
+              onTap: _toggleMute, // Chỉ gọi hàm toggleMute
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -174,4 +170,4 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
     );
   }
 }
-
+           
