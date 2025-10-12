@@ -18,7 +18,7 @@ class CommentService {
     }
   }
 
-  Future<Map<String, dynamic>?> createComment(String videoId, String userId, String content) async {
+  Future<Map<String, dynamic>?> createComment(String videoId, String userId, String content, {String? parentId}) async {
     try {
       final response = await http.post(
         Uri.parse('$_baseUrl/comments'),
@@ -27,6 +27,7 @@ class CommentService {
           'videoId': videoId,
           'userId': userId,
           'content': content,
+          if (parentId != null) 'parentId': parentId,
         }),
       );
 
@@ -52,6 +53,22 @@ class CommentService {
       return [];
     } catch (e) {
       print('❌ Error getting comments: $e');
+      return [];
+    }
+  }
+
+  Future<List<dynamic>> getReplies(String commentId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/comments/replies/$commentId'),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting replies: $e');
       return [];
     }
   }
@@ -86,6 +103,41 @@ class CommentService {
       return false;
     } catch (e) {
       print('❌ Error deleting comment: $e');
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>> toggleCommentLike(String commentId, String userId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/comments/like/toggle'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'commentId': commentId, 'userId': userId}),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'liked': false, 'likeCount': 0};
+    } catch (e) {
+      print('❌ Error toggling comment like: $e');
+      return {'liked': false, 'likeCount': 0};
+    }
+  }
+
+  Future<bool> isCommentLikedByUser(String commentId, String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/comments/like/check/$commentId/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['liked'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error checking comment like: $e');
       return false;
     }
   }
