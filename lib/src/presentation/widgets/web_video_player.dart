@@ -170,4 +170,3 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
     );
   }
 }
-           

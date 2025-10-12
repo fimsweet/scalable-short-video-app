@@ -432,10 +432,21 @@ class _VideoScreenState extends State<VideoScreen> {
                                               return CommentSectionWidget(
                                                 controller: scrollController,
                                                 videoId: videoId,
-                                                onCommentAdded: () {
+                                                onCommentAdded: () async {
+                                                  // Fetch accurate count from backend
+                                                  final count = await _commentService.getCommentCount(videoId);
                                                   if (mounted) {
                                                     setState(() {
-                                                      _commentCounts[videoId] = (_commentCounts[videoId] ?? 0) + 1;
+                                                      _commentCounts[videoId] = count;
+                                                    });
+                                                  }
+                                                },
+                                                onCommentDeleted: () async {
+                                                  // Fetch accurate count from backend
+                                                  final count = await _commentService.getCommentCount(videoId);
+                                                  if (mounted) {
+                                                    setState(() {
+                                                      _commentCounts[videoId] = count;
                                                     });
                                                   }
                                                 },
