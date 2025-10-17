@@ -38,11 +38,28 @@ class _VideoScreenState extends State<VideoScreen> {
   Map<String, bool> _likeStatus = {};
   Map<String, int> _likeCounts = {};
   Map<String, int> _commentCounts = {};
+  
+  // PageView controller for better lifecycle management
+  PageController? _pageController;
+  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
-    // Đảm bảo AuthService đã sẵn sàng trước khi load video
+    _pageController = PageController();
+    
+    // Listen to page changes to cleanup old videos
+    _pageController!.addListener(() {
+      if (_pageController!.page != null) {
+        final newPage = _pageController!.page!.round();
+        if (newPage != _currentPage) {
+          setState(() {
+            _currentPage = newPage;
+          });
+        }
+      }
+    });
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideos();
     });
@@ -50,9 +67,17 @@ class _VideoScreenState extends State<VideoScreen> {
 
   @override
   void deactivate() {
-    // This is called when navigating away from this screen
-    // Stop all videos to prevent audio playing in background
     super.deactivate();
+  }
+
+  @override
+  void dispose() {
+    _pageController?.dispose();
+    _userCache.clear();
+    _likeStatus.clear();
+    _likeCounts.clear();
+    _commentCounts.clear();
+    super.dispose();
   }
 
   Future<void> _loadVideos() async {
@@ -244,13 +269,52 @@ class _VideoScreenState extends State<VideoScreen> {
     );
   }
 
+  bool _shouldShowFullscreenButton(dynamic video) {
+    // Check if video needs fullscreen button based on aspect ratio
+    // This is a simplified check - ideally we'd get aspect ratio from backend
+    
+    // For now, always show for horizontal videos (16:9, etc.)
+    // We can improve this by storing aspect ratio in backend
+    
+    // Placeholder logic: show if aspectRatio field exists and is not "9:16"
+    final aspectRatio = video['aspectRatio']?.toString() ?? '';
+    
+    // If aspectRatio is stored in backend and it's not 9:16, show fullscreen
+    if (aspectRatio.isNotEmpty && aspectRatio != '9:16') {
+      return true;
+    }
+    
+    // Default: don't show (will be updated when backend sends aspect ratio)
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Add null check for pageController
+    if (_pageController == null) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: _isLoading
           ? const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: Colors.white),
+                  SizedBox(height: 16),
+                  Text(
+                    'Đang tải video...',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
             )
           : _error != null
               ? Center(
@@ -273,21 +337,48 @@ class _VideoScreenState extends State<VideoScreen> {
                   ),
                 )
               : _videos.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Chưa có video',
-                        style: TextStyle(color: Colors.white),
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.video_library_outlined, size: 80, color: Colors.grey),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Chưa có video nào',
+                            style: TextStyle(color: Colors.white, fontSize: 18),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Hãy là người đầu tiên upload video!',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _loadVideos,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tải lại'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                            ),
+                          ),
+                        ],
                       ),
                     )
                   : RefreshIndicator(
                       onRefresh: _loadVideos,
                       child: PageView.builder(
+                        controller: _pageController!,
                         scrollDirection: Axis.vertical,
                         itemCount: _videos.length,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentPage = index;
+                          });
+                        },
                         itemBuilder: (context, index) {
                           final video = _videos[index];
                           
-                          // Add null safety checks
                           if (video == null) {
                             return const Center(
                               child: Text('Video không hợp lệ', style: TextStyle(color: Colors.white)),
@@ -300,11 +391,25 @@ class _VideoScreenState extends State<VideoScreen> {
                               : '';
                           final userId = video['userId']?.toString();
                           
+                          // Only show video player for current page and adjacent pages
+                          final shouldLoadVideo = (index - _currentPage).abs() <= 1;
+                          
                           return Stack(
                             children: [
-                              // HLS Video Player
-                              if (hlsUrl.isNotEmpty)
-                                HLSVideoPlayer(videoUrl: hlsUrl)
+                              // HLS Video Player - only load if nearby
+                              if (hlsUrl.isNotEmpty && shouldLoadVideo)
+                                HLSVideoPlayer(
+                                  key: ValueKey('video_$videoId'), // Unique key per video
+                                  videoUrl: hlsUrl,
+                                  autoPlay: index == _currentPage, // Only autoplay current
+                                )
+                              else if (!shouldLoadVideo)
+                                Container(
+                                  color: Colors.black,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(color: Colors.white),
+                                  ),
+                                )
                               else
                                 Container(
                                   color: Colors.black,
@@ -338,18 +443,16 @@ class _VideoScreenState extends State<VideoScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          // Row: Avatar + Username + Follow button
+                                          // Avatar + Username + Follow button
                                           Row(
                                             children: [
                                               CircleAvatar(
                                                 radius: 18,
                                                 backgroundColor: Colors.grey[800],
-                                                backgroundImage: userInfo['avatar'] != null && 
-                                                                 userInfo['avatar'].toString().isNotEmpty
+                                                backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
                                                     ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
                                                     : null,
-                                                child: userInfo['avatar'] == null || 
-                                                       userInfo['avatar'].toString().isEmpty
+                                                child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
                                                     ? const Icon(Icons.person, color: Colors.white, size: 20)
                                                     : null,
                                               ),
@@ -360,13 +463,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                                   color: Colors.white,
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.w600,
-                                                  shadows: [
-                                                    Shadow(
-                                                      blurRadius: 8.0,
-                                                      color: Colors.black87,
-                                                      offset: Offset(1, 1),
-                                                    ),
-                                                  ],
+                                                  shadows: [Shadow(blurRadius: 8.0, color: Colors.black87, offset: Offset(1, 1))],
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
@@ -398,8 +495,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                               });
                                             },
                                             child: _buildCaption(
-                                              video['description']?.toString() ?? 
-                                              video['title']?.toString() ?? '',
+                                              video['description']?.toString() ?? video['title']?.toString() ?? '',
                                               _expandedCaptions[index] ?? false,
                                             ),
                                           ),
@@ -410,7 +506,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                 ),
                               ),
                               
-                              // UI Controls with Like/Comment counts
+                              // UI Controls
                               if (videoId.isNotEmpty)
                                 Positioned(
                                   bottom: 0,
@@ -433,7 +529,6 @@ class _VideoScreenState extends State<VideoScreen> {
                                                 controller: scrollController,
                                                 videoId: videoId,
                                                 onCommentAdded: () async {
-                                                  // Fetch accurate count from backend
                                                   final count = await _commentService.getCommentCount(videoId);
                                                   if (mounted) {
                                                     setState(() {
@@ -442,7 +537,6 @@ class _VideoScreenState extends State<VideoScreen> {
                                                   }
                                                 },
                                                 onCommentDeleted: () async {
-                                                  // Fetch accurate count from backend
                                                   final count = await _commentService.getCommentCount(videoId);
                                                   if (mounted) {
                                                     setState(() {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'web_video_player_stub.dart'
     if (dart.library.html) 'web_video_player.dart';
@@ -18,12 +19,29 @@ class HLSVideoPlayer extends StatefulWidget {
   State<HLSVideoPlayer> createState() => _HLSVideoPlayerState();
 }
 
-class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObserver {
-  late VideoPlayerController _controller;
+class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+  VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
-  bool _isMuted = false; // Track mute state
+  bool _isMuted = false;
+  bool _isFullscreen = false;
+  bool _isDisposed = false;
+
+  @override
+  bool get wantKeepAlive => false; // Don't keep state alive
+
+  // Check if video needs fullscreen button (has black bars)
+  bool get _needsFullscreenButton {
+    if (!_isInitialized) return false;
+    
+    final videoAspect = _controller!.value.aspectRatio;
+    const targetAspect = 9 / 16; // Portrait mode (0.5625)
+    
+    // Show fullscreen button if video aspect ratio differs significantly from 9:16
+    // Allow small tolerance (±0.05) for rounding errors
+    return (videoAspect - targetAspect).abs() > 0.05;
+  }
 
   @override
   void initState() {
@@ -33,73 +51,156 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
   }
 
   Future<void> _initializePlayer() async {
+    if (_isDisposed) return;
+    
     try {
       print('🎬 Initializing HLS player for: ${widget.videoUrl}');
       
+      // Dispose previous controller if exists
+      await _controller?.dispose();
+      
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl),
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: false,
+          allowBackgroundPlayback: false,
+        ),
       );
 
-      await _controller.initialize();
-      
-      setState(() {
-        _isInitialized = true;
-      });
+      // Add error listener
+      _controller?.addListener(_videoListener);
 
-      if (widget.autoPlay) {
-        _controller.play();
-        _controller.setLooping(true);
+      await _controller?.initialize();
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _isInitialized = true;
+        });
+
+        if (widget.autoPlay) {
+          await _controller?.play();
+          await _controller?.setLooping(true);
+        }
       }
 
       print('✅ HLS player initialized successfully');
     } catch (e) {
       print('❌ Error initializing video player: $e');
-      setState(() {
-        _hasError = true;
-        _errorMessage = e.toString();
-      });
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  void _videoListener() {
+    if (_controller?.value.hasError ?? false) {
+      print('❌ Video player error: ${_controller?.value.errorDescription}');
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _hasError = true;
+          _errorMessage = _controller?.value.errorDescription ?? 'Unknown error';
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose();
+    
+    // Reset orientation when leaving
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    
+    // Properly cleanup video controller
+    _controller?.removeListener(_videoListener);
+    _controller?.pause();
+    _controller?.dispose();
+    _controller = null;
+    
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Pause video when app goes to background or user navigates away
+    if (_isDisposed) return;
+    
     if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.detached) {
-      if (_isInitialized && _controller.value.isPlaying) {
-        _controller.pause();
+        state == AppLifecycleState.inactive) {
+      // Pause video when app goes to background
+      _controller?.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      // Resume only if was playing before
+      if (_isInitialized && widget.autoPlay) {
+        _controller?.play();
       }
+    } else if (state == AppLifecycleState.detached) {
+      // Cleanup when app is closing
+      _controller?.pause();
+      _controller?.dispose();
     }
   }
 
+  @override
+  void deactivate() {
+    // Pause video when widget is deactivated
+    _controller?.pause();
+    super.deactivate();
+  }
+
   void _togglePlayPause() {
+    if (_isDisposed || _controller == null) return;
+    
     setState(() {
-      if (_controller.value.isPlaying) {
-        _controller.pause();
+      if (_controller!.value.isPlaying) {
+        _controller!.pause();
       } else {
-        _controller.play();
+        _controller!.play();
       }
     });
   }
 
   void _toggleMute() {
+    if (_isDisposed || _controller == null) return;
+    
     setState(() {
       _isMuted = !_isMuted;
-      _controller.setVolume(_isMuted ? 0.0 : 1.0);
+      _controller!.setVolume(_isMuted ? 0.0 : 1.0);
     });
+  }
+
+  void _toggleFullscreen() {
+    setState(() {
+      _isFullscreen = !_isFullscreen;
+    });
+    
+    if (_isFullscreen) {
+      // Enter fullscreen - landscape mode
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      // Exit fullscreen - portrait mode
+      SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Use web-specific player for web platform
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    
     if (kIsWeb) {
       return WebVideoPlayer(videoUrl: widget.videoUrl);
     }
@@ -141,26 +242,32 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
       );
     }
 
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    // Calculate video display height based on aspect ratio
+    final videoAspect = _controller!.value.aspectRatio;
+    final videoDisplayHeight = screenWidth / videoAspect;
+
     return Stack(
       children: [
-        // Video player with play/pause gesture
+        // Video player - Show FULL video with black bars (TikTok style)
         GestureDetector(
           onTap: _togglePlayPause,
           behavior: HitTestBehavior.opaque,
-          child: SizedBox.expand(
-            child: FittedBox(
-              fit: BoxFit.cover,
-              child: SizedBox(
-                width: _controller.value.size.width,
-                height: _controller.value.size.height,
-                child: VideoPlayer(_controller),
+          child: Container(
+            color: Colors.black, // Black background for letterboxing
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio,
+                child: VideoPlayer(_controller!),
               ),
             ),
           ),
         ),
         
-        // Play icon overlay (triangle only, no circle)
-        if (!_controller.value.isPlaying)
+        // Play icon overlay
+        if (!_controller!.value.isPlaying)
           IgnorePointer(
             child: Container(
               color: Colors.black.withOpacity(0.3),
@@ -174,30 +281,37 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
             ),
           ),
         
-        // Video progress bar (bottom)
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: VideoProgressIndicator(
-            _controller,
-            allowScrubbing: true,
-            colors: const VideoProgressColors(
-              playedColor: Colors.white,
-              bufferedColor: Colors.white30,
-              backgroundColor: Colors.white10,
+        // Back button (top-left) - ONLY show in fullscreen mode
+        if (_isFullscreen)
+          Positioned(
+            top: 12,
+            left: 12,
+            child: SafeArea(
+              child: GestureDetector(
+                onTap: _toggleFullscreen, // Exit fullscreen
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.arrow_back,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+              ),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 0),
           ),
-        ),
         
-        // Mute/Unmute button (top-right corner) - FIXED
+        // Mute button (top-right)
         Positioned(
           top: 12,
           right: 12,
           child: SafeArea(
             child: GestureDetector(
-              onTap: _toggleMute, // Chỉ gọi hàm toggleMute
+              onTap: _toggleMute,
               child: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
@@ -213,8 +327,69 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
             ),
           ),
         ),
+        
+        // Fullscreen button (just below video, in black bar) - TikTok style
+        if (_needsFullscreenButton)
+          Positioned(
+            top: (screenHeight - videoDisplayHeight) / 2 + videoDisplayHeight + 8,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: GestureDetector(
+                onTap: _toggleFullscreen,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _isFullscreen ? 'Thoát' : 'Toàn màn hình',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        
+        // Video progress bar (at the very bottom)
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: VideoProgressIndicator(
+            _controller!,
+            allowScrubbing: true,
+            colors: const VideoProgressColors(
+              playedColor: Colors.white,
+              bufferedColor: Colors.white30,
+              backgroundColor: Colors.white10,
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 0),
+          ),
+        ),
       ],
     );
   }
 }
-           
+
+

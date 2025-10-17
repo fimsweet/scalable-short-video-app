@@ -30,9 +30,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  http: ^1.1.0
+  shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.0.0  # Add this line
   cupertino_icons: ^1.0.8
-  http: ^1.2.1
-  flutter_secure_storage: ^9.0.0
   image_picker: ^1.0.7
   video_player: ^2.9.2
   mime: ^1.0.5
@@ -92,4 +93,5 @@ flutter:
   # see https://flutter.dev/to/font-from-package
   #
   # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
   # see https://flutter.dev/to/font-from-package

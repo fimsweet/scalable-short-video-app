@@ -125,16 +125,32 @@ class VideoService {
   /// Get all videos for feed (guest mode)
   Future<List<dynamic>> getAllVideos() async {
     try {
+      print('📹 Fetching all videos from: $_videoApiUrl/feed/all');
+      
       final response = await http.get(
         Uri.parse('$_videoApiUrl/feed/all'),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout - server không phản hồi');
+        },
       );
       
+      print('📥 Response status: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+      
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final List<dynamic> videos = json.decode(response.body);
+        print('✅ Loaded ${videos.length} videos');
+        return videos;
+      } else {
+        print('❌ Failed to load videos: ${response.statusCode}');
+        print('   Body: ${response.body}');
+        return [];
       }
-      return [];
     } catch (e) {
       print('❌ Error fetching all videos: $e');
+      print('   Stack trace: ${StackTrace.current}');
       return [];
     }
   }
