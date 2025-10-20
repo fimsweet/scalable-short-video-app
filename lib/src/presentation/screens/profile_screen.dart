@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:image_picker/image_picker.dart';
@@ -64,6 +65,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         builder: (_) => FollowerFollowingScreen(initialIndex: initialIndex),
       ),
     );
+  }
+
+  void _navigateToEditProfile() async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const EditProfileScreen(),
+      ),
+    );
+    
+    if (result == true) {
+      setState(() {});
+    }
   }
 
   Future<void> _pickAndUploadAvatar() async {
@@ -327,10 +340,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       Text(_authService.username ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
                       Row(
-                        children: const [
-                          Expanded(child: _ActionButton(text: 'Chỉnh sửa')),
-                          SizedBox(width: 8),
-                          Expanded(child: _ActionButton(text: 'Chia sẻ trang cá nhân')),
+                        children: [
+                          Expanded(child: _ActionButton(text: 'Chỉnh sửa', onTap: _navigateToEditProfile)),
+                          const SizedBox(width: 8),
+                          const Expanded(child: _ActionButton(text: 'Chia sẻ trang cá nhân')),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -431,12 +444,16 @@ class _ProfileStat extends StatelessWidget {
 
 class _ActionButton extends StatelessWidget {
   final String text;
-  const _ActionButton({required this.text});
+  final VoidCallback? onTap;
+  const _ActionButton({required this.text, this.onTap});
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
-        child: Center(child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold))),
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
+          child: Center(child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold))),
+        ),
       );
 }
