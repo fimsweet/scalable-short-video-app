@@ -1,5 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart'; // Add this import for VoidCallback
 
 class AuthService {
   static final AuthService _instance = AuthService._internal(ApiService());
@@ -16,6 +19,7 @@ class AuthService {
   int? _userId;
   String? _email;
   String? _avatarUrl;
+  String? _token;
 
   bool get isLoggedIn => _isLoggedIn;
   String? get username => _username;
@@ -37,7 +41,25 @@ class AuthService {
     await _storage.write(key: 'avatarUrl', value: _avatarUrl ?? '');
   }
 
+  // Add callback list
+  final List<VoidCallback> _logoutListeners = [];
+
+  void addLogoutListener(VoidCallback listener) {
+    _logoutListeners.add(listener);
+  }
+
+  void removeLogoutListener(VoidCallback listener) {
+    _logoutListeners.remove(listener);
+  }
+
   Future<void> logout() async {
+    // Clear SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    await prefs.remove('user_data');
+    
+    // Clear all in-memory state
+    _token = null;
     _user = null;
     _username = null;
     _userId = null;
@@ -45,7 +67,16 @@ class AuthService {
     _avatarUrl = null;
     _isLoggedIn = false;
 
+    // Clear secure storage
     await _storage.deleteAll();
+    
+    print('🚪 Logging out - clearing all cached data');
+    print('✅ Logout complete - isLoggedIn: $_isLoggedIn');
+    
+    // Notify all listeners
+    for (var listener in _logoutListeners) {
+      listener();
+    }
   }
 
   Future<bool> tryAutoLogin() async {
