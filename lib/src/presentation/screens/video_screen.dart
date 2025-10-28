@@ -9,6 +9,7 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
+import 'package:scalable_short_video_app/src/services/follow_service.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -23,6 +24,7 @@ class _VideoScreenState extends State<VideoScreen> {
   final ApiService _apiService = ApiService();
   final LikeService _likeService = LikeService();
   final CommentService _commentService = CommentService();
+  final FollowService _followService = FollowService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -39,6 +41,9 @@ class _VideoScreenState extends State<VideoScreen> {
   Map<String, int> _likeCounts = {};
   Map<String, int> _commentCounts = {};
   
+  // Track follow status for each user
+  Map<String, bool> _followStatus = {};
+  
   // PageView controller for better lifecycle management
   PageController? _pageController;
   int _currentPage = 0;
@@ -48,7 +53,6 @@ class _VideoScreenState extends State<VideoScreen> {
     super.initState();
     _pageController = PageController();
     
-    // Listen to page changes to cleanup old videos
     _pageController!.addListener(() {
       if (_pageController!.page != null) {
         final newPage = _pageController!.page!.round();
@@ -65,6 +69,41 @@ class _VideoScreenState extends State<VideoScreen> {
     });
   }
 
+  // Add this to reload when screen becomes visible again
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check if user logged out or changed - reload videos
+    _checkAndReloadIfNeeded();
+  }
+
+  bool _lastLoginState = false;
+  int? _lastUserId;
+
+  void _checkAndReloadIfNeeded() {
+    final currentLoginState = _authService.isLoggedIn;
+    final currentUserId = _authService.user?['id'] as int?;
+    
+    // If login state changed or user changed, reload
+    if (_lastLoginState != currentLoginState || _lastUserId != currentUserId) {
+      print('🔄 User state changed:');
+      print('   Last login: $_lastLoginState -> Current: $currentLoginState');
+      print('   Last userId: $_lastUserId -> Current: $currentUserId');
+      
+      _lastLoginState = currentLoginState;
+      _lastUserId = currentUserId;
+      
+      print('🔄 Reloading videos due to auth state change');
+      
+      // Small delay to ensure state is updated
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          _loadVideos();
+        }
+      });
+    }
+  }
+
   @override
   void deactivate() {
     super.deactivate();
@@ -77,6 +116,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _likeStatus.clear();
     _likeCounts.clear();
     _commentCounts.clear();
+    _followStatus.clear();
     super.dispose();
   }
 
@@ -94,6 +134,10 @@ class _VideoScreenState extends State<VideoScreen> {
       
       // Filter only ready videos (processed successfully)
       final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
+
+      // IMPORTANT: Clear all status maps before reloading
+      _likeStatus.clear();
+      _followStatus.clear();
 
       // Initialize counts and like status from backend response with null safety
       for (var video in readyVideos) {
@@ -120,9 +164,33 @@ class _VideoScreenState extends State<VideoScreen> {
             _likeStatus[videoId] = false;
           }
         } else {
-          // Guest user - no likes
+          // CRITICAL: Guest user - explicitly set to false (not liked)
           _likeStatus[videoId] = false;
+          print('👤 Guest mode - Video $videoId set to NOT LIKED');
         }
+      }
+
+      // Check follow status for each video owner
+      if (_authService.isLoggedIn && _authService.user != null) {
+        final currentUserId = _authService.user!['id'] as int;
+        
+        for (var video in readyVideos) {
+          if (video == null || video['userId'] == null) continue;
+          
+          final videoOwnerId = int.tryParse(video['userId'].toString());
+          if (videoOwnerId != null && videoOwnerId != currentUserId) {
+            try {
+              final isFollowing = await _followService.isFollowing(currentUserId, videoOwnerId);
+              _followStatus[videoOwnerId.toString()] = isFollowing;
+            } catch (e) {
+              print('❌ Error checking follow status: $e');
+              _followStatus[videoOwnerId.toString()] = false;
+            }
+          }
+        }
+      } else {
+        // Guest user - not following anyone
+        print('👤 Guest mode - No follow status');
       }
 
       if (mounted) {
@@ -167,6 +235,36 @@ class _VideoScreenState extends State<VideoScreen> {
       });
       
       print('${result['liked'] ? '❤️' : '🤍'} Like toggled - Status: ${result['liked']}, Count: ${result['likeCount']}');
+    }
+  }
+
+  Future<void> _handleFollow(int videoOwnerId) async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để theo dõi')),
+      );
+      return;
+    }
+
+    final currentUserId = _authService.user!['id'] as int;
+    
+    if (currentUserId == videoOwnerId) {
+      return; // Cannot follow yourself
+    }
+
+    print('👆 Toggle follow for user $videoOwnerId by user $currentUserId');
+    
+    final result = await _followService.toggleFollow(currentUserId, videoOwnerId);
+
+    if (mounted) {
+      setState(() {
+        _followStatus[videoOwnerId.toString()] = result['following'] ?? false;
+      });
+      
+      print('${result['following'] ? '✅' : '❌'} Follow toggled - Status: ${result['following']}');
+      
+      // Reload follow stats in profile if needed
+      // This will be handled by didChangeDependencies when switching tabs
     }
   }
 
@@ -438,6 +536,10 @@ class _VideoScreenState extends State<VideoScreen> {
                                     future: _getUserInfo(userId),
                                     builder: (context, snapshot) {
                                       final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
+                                      final videoOwnerId = int.tryParse(userId ?? '');
+                                      final currentUserId = _authService.user?['id'] as int?;
+                                      final isOwnVideo = videoOwnerId != null && currentUserId != null && videoOwnerId == currentUserId;
+                                      final isFollowing = videoOwnerId != null ? (_followStatus[videoOwnerId.toString()] ?? false) : false;
                                       
                                       return Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,22 +569,27 @@ class _VideoScreenState extends State<VideoScreen> {
                                                 ),
                                               ),
                                               const SizedBox(width: 8),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                                decoration: BoxDecoration(
-                                                  border: Border.all(color: Colors.white, width: 1),
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: const Text(
-                                                  'Theo dõi',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    shadows: [Shadow(blurRadius: 6.0, color: Colors.black87)],
+                                              if (!isOwnVideo && videoOwnerId != null)
+                                                GestureDetector(
+                                                  onTap: () => _handleFollow(videoOwnerId),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                                    decoration: BoxDecoration(
+                                                      color: isFollowing ? Colors.grey[800] : Colors.transparent,
+                                                      border: Border.all(color: Colors.white, width: 1),
+                                                      borderRadius: BorderRadius.circular(4),
+                                                    ),
+                                                    child: Text(
+                                                      isFollowing ? 'Đang theo dõi' : 'Theo dõi',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w600,
+                                                        shadows: [Shadow(blurRadius: 6.0, color: Colors.black87)],
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
                                             ],
                                           ),
                                           const SizedBox(height: 8),

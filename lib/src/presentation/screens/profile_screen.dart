@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/follower_follo
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -15,11 +16,42 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ImagePicker _picker = ImagePicker();
+  final FollowService _followService = FollowService();
   bool _isUploading = false;
+  int _followerCount = 0;
+  int _followingCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadFollowStats();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload stats when app resumes
+      _loadFollowStats();
+    }
+  }
+
+  // Add this method to refresh when screen becomes visible
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadFollowStats();
+  }
 
   void _showLogoutDialog() {
     showDialog(
@@ -29,12 +61,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Đăng xuất', style: TextStyle(color: Colors.white)),
         content: const Text('Bạn chắc chắn muốn đăng xuất?', style: TextStyle(color: Colors.grey)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy', style: TextStyle(color: Colors.grey))),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+          ),
           TextButton(
             onPressed: () async {
               await _authService.logout();
-              if (mounted) Navigator.pop(context);
-              setState(() {}); // Ở lại trang profile và cập nhật UI
+              
+              if (mounted) {
+                Navigator.pop(context); // Close dialog
+                
+                // Force rebuild entire screen
+                setState(() {
+                  _followerCount = 0;
+                  _followingCount = 0;
+                });
+                
+                print('🔄 Logout successful - rebuilding UI');
+              }
             },
             child: const Text('Đăng xuất', style: TextStyle(color: Colors.red)),
           ),
@@ -59,12 +104,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
-  void _navigateToFollowerFollowing(int initialIndex) {
-    Navigator.of(context).push(
+  void _navigateToFollowerFollowing(int initialIndex) async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FollowerFollowingScreen(initialIndex: initialIndex),
       ),
     );
+    
+    // Reload stats when returning from follower/following screen
+    _loadFollowStats();
   }
 
   void _navigateToEditProfile() async {
@@ -143,6 +191,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() {
           _isUploading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadFollowStats() async {
+    if (_authService.isLoggedIn && _authService.user != null) {
+      final userId = _authService.user!['id'] as int;
+      final stats = await _followService.getStats(userId);
+      
+      if (mounted) {
+        setState(() {
+          _followerCount = stats['followerCount'] ?? 0;
+          _followingCount = stats['followingCount'] ?? 0;
+        });
+        
+        print('📊 Follow stats loaded: $_followerCount followers, $_followingCount following');
+      }
+    } else {
+      // Reset counts when logged out
+      if (mounted) {
+        setState(() {
+          _followerCount = 0;
+          _followingCount = 0;
         });
       }
     }
@@ -329,8 +401,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 _ProfileStat(count: '0', label: 'bài viết', onTap: () => _navigateToFollowerFollowing(2)),
-                                _ProfileStat(count: '24', label: 'người theo dõi', onTap: () => _navigateToFollowerFollowing(0)),
-                                _ProfileStat(count: '34', label: 'đang theo dõi', onTap: () => _navigateToFollowerFollowing(1)),
+                                _ProfileStat(count: _followerCount.toString(), label: 'người theo dõi', onTap: () => _navigateToFollowerFollowing(0)),
+                                _ProfileStat(count: _followingCount.toString(), label: 'đang theo dõi', onTap: () => _navigateToFollowerFollowing(1)),
                               ],
                             ),
                           ),

@@ -11,19 +11,67 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final AuthService _authService = AuthService();
+  
+  // Add keys to force rebuild when switching tabs
+  GlobalKey<State<StatefulWidget>> _videoScreenKey = GlobalKey();
+  GlobalKey<State<StatefulWidget>> _profileScreenKey = GlobalKey();
 
-  static const List<Widget> _widgetOptions = <Widget>[
-    VideoScreen(),
-    ProfileScreen(),
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    
+    // Listen to logout events
+    _authService.addLogoutListener(_onLogout);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authService.removeLogoutListener(_onLogout);
+    super.dispose();
+  }
+
+  void _onLogout() {
+    print('🔔 Logout event received - refreshing all screens');
+    _refreshScreens();
+    
+    // Switch to profile tab to show logged out state
+    if (_selectedIndex != 1) {
+      _onItemTapped(1);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Force refresh when app resumes
+      _refreshScreens();
+    }
+  }
+
+  void _refreshScreens() {
+    setState(() {
+      // Regenerate keys to force rebuild
+      _videoScreenKey = GlobalKey();
+      _profileScreenKey = GlobalKey();
+    });
+  }
+
+  List<Widget> get _widgetOptions => <Widget>[
+    VideoScreen(key: _videoScreenKey),
+    ProfileScreen(key: _profileScreenKey),
   ];
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
+    
+    print('📱 Switched to tab $index (isLoggedIn: ${_authService.isLoggedIn})');
   }
 
   void _navigateToUpload() async {

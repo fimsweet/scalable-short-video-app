@@ -58,12 +58,24 @@ class VideoControlsWidget extends StatelessWidget {
       onTap: onTap,
       child: Column(
         children: [
-          Icon(icon, color: color, size: 32),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Icon(
+              icon,
+              key: ValueKey('$icon-$color'), // Add key for animation
+              color: color,
+              size: 32,
+            ),
+          ),
           if (label.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               label,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ]
         ],
