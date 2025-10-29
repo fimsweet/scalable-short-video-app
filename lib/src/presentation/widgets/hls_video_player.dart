@@ -43,6 +43,13 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
     return (videoAspect - targetAspect).abs() > 0.05;
   }
 
+  bool get _isPortraitVideo {
+    if (!_isInitialized) return true;
+    final videoAspect = _controller!.value.aspectRatio;
+    // Video is portrait if aspect ratio is close to or less than 9:16
+    return videoAspect <= (9 / 16 + 0.1);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -199,7 +206,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
     
     if (kIsWeb) {
       return WebVideoPlayer(videoUrl: widget.videoUrl);
@@ -251,16 +258,73 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
 
     return Stack(
       children: [
-        // Video player - Show FULL video with black bars (TikTok style)
+        // Video player - Smart display based on aspect ratio
         GestureDetector(
           onTap: _togglePlayPause,
           behavior: HitTestBehavior.opaque,
-          child: Container(
-            color: Colors.black, // Black background for letterboxing
-            child: Center(
-              child: AspectRatio(
-                aspectRatio: _controller!.value.aspectRatio,
-                child: VideoPlayer(_controller!),
+          child: _isPortraitVideo
+              ? SizedBox.expand(
+                  child: FittedBox(
+                    fit: BoxFit.cover, // Portrait: Cover entire screen like TikTok
+                    child: SizedBox(
+                      width: _controller!.value.size.width,
+                      height: _controller!.value.size.height,
+                      child: VideoPlayer(_controller!),
+                    ),
+                  ),
+                )
+              : Container(
+                  color: Colors.black, // Landscape: Black background for letterboxing
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: _controller!.value.aspectRatio,
+                      child: VideoPlayer(_controller!),
+                    ),
+                  ),
+                ),
+        ),
+        
+        // Top gradient overlay (dark to transparent)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Container(
+              height: 200,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.6),
+                    Colors.black.withOpacity(0.4),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        // Bottom gradient overlay (transparent to dark)
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Container(
+              height: 250,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.5),
+                    Colors.transparent,
+                  ],
+                ),
               ),
             ),
           ),
@@ -281,14 +345,14 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
             ),
           ),
         
-        // Back button (top-left) - ONLY show in fullscreen mode
+        // Back button (top-left) - ONLY in fullscreen
         if (_isFullscreen)
           Positioned(
             top: 12,
             left: 12,
             child: SafeArea(
               child: GestureDetector(
-                onTap: _toggleFullscreen, // Exit fullscreen
+                onTap: _toggleFullscreen,
                 child: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -310,18 +374,21 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
           top: 12,
           right: 12,
           child: SafeArea(
-            child: GestureDetector(
-              onTap: _toggleMute,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isMuted ? Icons.volume_off : Icons.volume_up,
-                  color: Colors.white,
-                  size: 26,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 40), // Giảm từ 90 xuống 40
+              child: GestureDetector(
+                onTap: _toggleMute,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isMuted ? Icons.volume_off : Icons.volume_up,
+                    color: Colors.white,
+                    size: 26,
+                  ),
                 ),
               ),
             ),
