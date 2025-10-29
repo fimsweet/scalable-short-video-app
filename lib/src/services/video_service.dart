@@ -161,4 +161,29 @@ class VideoService {
     // Convert thành full URL with platform-specific base
     return '$_baseUrl$hlsUrl';
   }
+
+  Future<List<dynamic>> getFollowingVideos(String userId) async {
+    try {
+      print('📹 Fetching following videos for user $userId...');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/feed/following/$userId'),
+      );
+
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> videos = json.decode(response.body);
+        print('✅ Loaded ${videos.length} following videos');
+        return videos;
+      } else {
+        print('❌ Failed to load following videos: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error fetching following videos: $e');
+      return [];
+    }
+  }
 }

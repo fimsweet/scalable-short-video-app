@@ -86,7 +86,7 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
         ..muted = false
         ..style.width = '100%'
         ..style.height = '100%'
-        ..style.objectFit = 'cover'
+        ..style.objectFit = 'cover' // TikTok-style: cover entire screen
         ..style.cursor = 'pointer';
       
       // Add click handler to video
@@ -130,7 +130,54 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
     return Stack(
       children: [
         HtmlElementView(viewType: _viewId),
-        // Show play icon overlay when paused (triangle only)
+        
+        // Top gradient overlay
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Container(
+              height: 200,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.6),
+                    Colors.black.withOpacity(0.4),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        // Bottom gradient overlay
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: IgnorePointer(
+            child: Container(
+              height: 250,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.5),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        
+        // Play icon overlay
         if (!_isPlaying)
           IgnorePointer(
             child: Container(
@@ -144,23 +191,27 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
               ),
             ),
           ),
-        // Mute/Unmute button (top-right corner) - FIXED
+        
+        // Mute button
         Positioned(
           top: 12,
           right: 12,
           child: SafeArea(
-            child: GestureDetector(
-              onTap: _toggleMute, // Chỉ gọi hàm toggleMute
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isMuted ? Icons.volume_off : Icons.volume_up,
-                  color: Colors.white,
-                  size: 26,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 40), // Giảm từ 90 xuống 40
+              child: GestureDetector(
+                onTap: _toggleMute,
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _isMuted ? Icons.volume_off : Icons.volume_up,
+                    color: Colors.white,
+                    size: 26,
+                  ),
                 ),
               ),
             ),
