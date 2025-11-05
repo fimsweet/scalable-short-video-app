@@ -131,7 +131,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context, true); // Return to previous screen
+          Navigator.pop(context, true); // Return true to indicate successful upload
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

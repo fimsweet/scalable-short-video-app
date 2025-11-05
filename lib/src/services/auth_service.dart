@@ -2,7 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/foundation.dart'; // Add this import for VoidCallback
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal(ApiService());
@@ -25,6 +25,7 @@ class AuthService {
   String? get username => _username;
   Map<String, dynamic>? get user => _user;
   String? get avatarUrl => _avatarUrl;
+  String? get bio => _user?['bio'] as String?;
 
   Future<void> login(Map<String, dynamic> userData, String token) async {
     _user = userData;
@@ -39,6 +40,10 @@ class AuthService {
     await _storage.write(key: 'userId', value: _userId.toString());
     await _storage.write(key: 'email', value: _email);
     await _storage.write(key: 'avatarUrl', value: _avatarUrl ?? '');
+    
+    // Save user data to SharedPreferences for bio
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user', json.encode(userData));
   }
 
   // Add callback list
@@ -57,6 +62,7 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
     await prefs.remove('user_data');
+    await prefs.remove('user');
     
     // Clear all in-memory state
     _token = null;
@@ -85,6 +91,10 @@ class AuthService {
     final userId = await _storage.read(key: 'userId');
     final email = await _storage.read(key: 'email');
     final avatarUrl = await _storage.read(key: 'avatarUrl');
+    
+    // Try to load user data with bio
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('user');
 
     if (token != null && username != null && userId != null && email != null) {
       _username = username;
@@ -93,12 +103,16 @@ class AuthService {
       _avatarUrl = avatarUrl;
       _isLoggedIn = true;
 
-      _user = {
-        'username': username,
-        'id': _userId,
-        'email': email,
-        'avatar': avatarUrl,
-      };
+      if (userJson != null) {
+        _user = json.decode(userJson);
+      } else {
+        _user = {
+          'username': username,
+          'id': _userId,
+          'email': email,
+          'avatar': avatarUrl,
+        };
+      }
     }
     return _isLoggedIn;
   }
@@ -106,9 +120,38 @@ class AuthService {
   Future<void> updateAvatar(String? avatarPath) async {
     _avatarUrl = avatarPath;
     await _storage.write(key: 'avatarUrl', value: _avatarUrl ?? '');
+    
+    // Update user object and save to SharedPreferences
+    if (_user != null) {
+      _user!['avatar'] = avatarPath;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(_user));
+    }
   }
 
   Future<String?> getToken() async {
     return await _storage.read(key: 'token');
+  }
+
+  Future<void> updateBio(String bio) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Update in-memory user object
+    if (_user != null) {
+      _user!['bio'] = bio;
+      await prefs.setString('user', json.encode(_user));
+    } else {
+      // Create user object if doesn't exist
+      _user = {
+        'username': _username,
+        'id': _userId,
+        'email': _email,
+        'avatar': _avatarUrl,
+        'bio': bio,
+      };
+      await prefs.setString('user', json.encode(_user));
+    }
+    
+    print('✅ Bio updated in AuthService: $bio');
   }
 }

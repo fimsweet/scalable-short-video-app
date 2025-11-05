@@ -30,7 +30,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _nameController = TextEditingController(text: _authService.username ?? '');
     _usernameController = TextEditingController(text: _authService.username ?? '');
-    _bioController = TextEditingController(text: 'Viết mô tả ngắn gọn để cho mọi người biết bạn là ai hoặc tài khoản của bạn tập trung vào chủ đề gì');
+    _bioController = TextEditingController(text: _authService.bio ?? '');
     _linkController = TextEditingController();
   }
 
@@ -112,15 +112,47 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _isLoading = true;
     });
 
-    // Giả lập lưu dữ liệu
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final token = await _authService.getToken();
+      if (token == null) {
+        _showSnackBar('Vui lòng đăng nhập lại', Colors.red);
+        return;
+      }
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-      _showSnackBar('Cập nhật thông tin thành công!', Colors.green);
-      Navigator.pop(context, true);
+      // Update bio if changed
+      final newBio = _bioController.text.trim();
+      if (newBio != _authService.bio) {
+        final result = await _apiService.updateProfile(
+          token: token,
+          bio: newBio,
+        );
+
+        if (result['success']) {
+          await _authService.updateBio(newBio);
+          if (mounted) {
+            _showSnackBar('Cập nhật thông tin thành công!', Colors.green);
+            Navigator.pop(context, true);
+          }
+        } else {
+          if (mounted) {
+            _showSnackBar(result['message'] ?? 'Cập nhật thất bại', Colors.red);
+          }
+        }
+      } else {
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Lỗi: $e', Colors.red);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 

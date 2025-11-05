@@ -93,9 +93,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
     );
 
-    // If upload successful, refresh video feed
+    // If upload successful, refresh screens
     if (result == true) {
-      setState(() {});
+      _refreshScreens();
+      // Switch to profile tab to show uploaded video
+      _onItemTapped(1);
     }
   }
 
