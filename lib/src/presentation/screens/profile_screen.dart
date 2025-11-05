@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/user_video_grid.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
@@ -410,6 +411,23 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                       ),
                       const SizedBox(height: 8),
                       Text(_authService.username ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      // Bio section with character limit
+                      if (_authService.bio != null && _authService.bio!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4, bottom: 8),
+                          child: Text(
+                            _authService.bio!.length > 150 
+                                ? '${_authService.bio!.substring(0, 150)}...' 
+                                : _authService.bio!,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -443,7 +461,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                 Expanded(
                   child: TabBarView(
                     children: [
-                      SizedBox.shrink(),
+                      UserVideoGrid(),
                       Center(child: Text('Videos')),
                       Center(child: Text('Tagged')),
                     ],

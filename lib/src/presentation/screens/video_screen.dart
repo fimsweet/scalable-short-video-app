@@ -102,6 +102,10 @@ class _VideoScreenState extends State<VideoScreen> {
       
       print('🔄 Reloading videos due to auth state change');
       
+      // Clear cached videos to force reload
+      _forYouVideos.clear();
+      _followingVideos.clear();
+      
       // Small delay to ensure state is updated
       Future.delayed(const Duration(milliseconds: 100), () {
         if (mounted) {

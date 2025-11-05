@@ -183,4 +183,43 @@ class ApiService {
       return null;
     }
   }
+
+  Future<Map<String, dynamic>> updateProfile({
+    required String token,
+    String? bio,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/profile'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          if (bio != null) 'bio': bio,
+        }),
+      );
+
+      print('Profile update response: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': json.decode(response.body),
+        };
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to update profile: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('❌ Error updating profile: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
 }
