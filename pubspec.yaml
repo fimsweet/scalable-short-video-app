@@ -38,6 +38,7 @@ dependencies:
   video_player: ^2.9.2
   mime: ^1.0.5
   flutter_inappwebview: ^6.0.0  # For web HLS support
+  timeago: ^3.6.1
 
 dev_dependencies:
   flutter_test:
