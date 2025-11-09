@@ -432,7 +432,7 @@ class _VideoScreenState extends State<VideoScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: PageStorage(
-        bucket: PageStorageBucket(), // Add PageStorage to preserve state
+        bucket: PageStorageBucket(),
         child: Stack(
           children: [
             // Video feed

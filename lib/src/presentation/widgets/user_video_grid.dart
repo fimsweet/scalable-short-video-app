@@ -120,25 +120,23 @@ class _UserVideoGridState extends State<UserVideoGrid> {
     return RefreshIndicator(
       onRefresh: _loadUserVideos,
       child: GridView.builder(
-        padding: const EdgeInsets.all(1),
+        padding: const EdgeInsets.all(2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          crossAxisSpacing: 1,
-          mainAxisSpacing: 1,
-          childAspectRatio: 0.75, // Changed from 9/16 (0.5625) to 0.75 for better grid view
+          crossAxisSpacing: 2,
+          mainAxisSpacing: 2,
+          childAspectRatio: 1.0, // Square tiles (1:1 ratio)
         ),
         itemCount: _videos.length,
         itemBuilder: (context, index) {
           final video = _videos[index];
           
-          // Debug: Print video data to see what we get
           print('📹 Video ${index}: ${video['id']}');
           print('   thumbnailUrl: ${video['thumbnailUrl']}');
           
           final thumbnailUrl = video['thumbnailUrl'] != null
               ? _videoService.getVideoUrl(video['thumbnailUrl'])
               : null;
-          final viewCount = video['viewCount'] ?? 0;
           
           print('   Full thumbnail URL: $thumbnailUrl');
 
@@ -157,10 +155,10 @@ class _UserVideoGridState extends State<UserVideoGrid> {
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.grey[900],
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(0), // No rounded corners for cleaner grid
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(0),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -174,8 +172,8 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                           return Container(
                             color: Colors.grey[800],
                             child: const Icon(
-                              Icons.play_circle_outline,
-                              size: 48,
+                              Icons.video_library_outlined,
+                              size: 32,
                               color: Colors.white54,
                             ),
                           );
@@ -199,70 +197,14 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                     else
                       Container(
                         color: Colors.grey[800],
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.play_circle_outline,
-                              size: 48,
-                              color: Colors.white54,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'No thumbnail',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 10),
-                            ),
-                          ],
+                        child: const Center(
+                          child: Icon(
+                            Icons.video_library_outlined,
+                            size: 32,
+                            color: Colors.white54,
+                          ),
                         ),
                       ),
-
-                    // Play icon overlay - smaller and more subtle
-                    Center(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black38,
-                          shape: BoxShape.circle,
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: const Icon(
-                          Icons.play_arrow,
-                          size: 28,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-
-                    // View count overlay
-                    Positioned(
-                      bottom: 6,
-                      left: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.play_arrow,
-                              color: Colors.white,
-                              size: 12,
-                            ),
-                            const SizedBox(width: 2),
-                            Text(
-                              _formatCount(viewCount),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

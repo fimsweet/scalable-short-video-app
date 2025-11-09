@@ -18,6 +18,12 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         brightness: Brightness.dark,
+        // Set global cursor color
+        textSelectionTheme: const TextSelectionThemeData(
+          cursorColor: Colors.white, // Cursor color
+          selectionColor: Colors.white24, // Text selection color
+          selectionHandleColor: Colors.white, // Selection handle color
+        ),
       ),
       home: const MainScreen(),
       debugShowCheckedModeBanner: false,

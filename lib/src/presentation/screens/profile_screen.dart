@@ -6,6 +6,8 @@ import 'package:scalable_short_video_app/src/presentation/widgets/user_video_gri
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
+import 'package:scalable_short_video_app/src/services/notification_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -22,20 +24,37 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   final ApiService _apiService = ApiService();
   final ImagePicker _picker = ImagePicker();
   final FollowService _followService = FollowService();
+  final NotificationService _notificationService = NotificationService();
   bool _isUploading = false;
   int _followerCount = 0;
   int _followingCount = 0;
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadFollowStats();
+    
+    // Start polling for notifications
+    if (_authService.isLoggedIn && _authService.user != null) {
+      final userId = _authService.user!['id'].toString();
+      _notificationService.startPolling(userId);
+      
+      _notificationService.unreadCountStream.listen((count) {
+        if (mounted) {
+          setState(() {
+            _unreadCount = count;
+          });
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationService.stopPolling();
     super.dispose();
   }
 
@@ -315,6 +334,64 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
               ],
             ),
             actions: [
+              // Notification icon
+              IconButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  ).then((_) {
+                    // Refresh unread count after returning
+                    if (_authService.isLoggedIn && _authService.user != null) {
+                      final userId = _authService.user!['id'].toString();
+                      _notificationService.getUnreadCount(userId).then((count) {
+                        if (mounted) {
+                          setState(() {
+                            _unreadCount = count;
+                          });
+                        }
+                      });
+                    }
+                  });
+                },
+                icon: Stack(
+                  children: [
+                    const Icon(
+                      Icons.notifications_outlined,
+                      size: 28,
+                    ),
+                    if (_unreadCount > 0)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            _unreadCount > 99 ? '99+' : _unreadCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                splashColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+              ),
               IconButton(
                 onPressed: () {},
                 icon: const Icon(Icons.alternate_email),

@@ -24,44 +24,33 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     try {
       final XFile? video = await _picker.pickVideo(
         source: ImageSource.gallery,
-        maxDuration: const Duration(minutes: 10), // TikTok-style: max 10 minutes
+        maxDuration: const Duration(minutes: 10),
       );
 
       if (video != null) {
-        print('📹 Video picked:');
-        print('  Path: ${video.path}');
-        print('  Name: ${video.name}');
-        print('  MIME type: ${video.mimeType}');
+        print('📹 Video picked: ${video.name}');
         
-        // Validate file format using MIME type (more reliable than extension)
         final mimeType = video.mimeType?.toLowerCase() ?? '';
         final extension = video.path.toLowerCase().split('.').last;
         
-        // Check MIME type first (more reliable), fallback to extension
-        // Accept any video/* MIME type to be lenient
         final isValidFormat = 
-            mimeType.startsWith('video/') || // Any video MIME type
+            mimeType.startsWith('video/') ||
             ['mp4', 'mov', 'avi', 'webm', 'mkv'].contains(extension);
         
         if (!isValidFormat) {
-          print('❌ Invalid format detected');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Chỉ hỗ trợ định dạng video\nFile: ${video.name}\nMIME: $mimeType\nExtension: $extension'),
+              const SnackBar(
+                content: Text('Định dạng video không được hỗ trợ'),
                 backgroundColor: Colors.red,
-                duration: const Duration(seconds: 5),
               ),
             );
           }
           return;
         }
 
-        print('✅ Video format valid: MIME=$mimeType, Extension=$extension');
-
-        // Validate file size (max 500MB)
         final fileSize = await video.length();
-        const maxSize = 500 * 1024 * 1024; // 500MB
+        const maxSize = 500 * 1024 * 1024;
         if (fileSize > maxSize) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -77,7 +66,6 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         setState(() {
           _selectedVideo = video;
         });
-        print('✅ Selected video: ${video.path} (${(fileSize / 1024 / 1024).toStringAsFixed(1)}MB)');
       }
     } catch (e) {
       print('❌ Error picking video: $e');
@@ -114,8 +102,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       final result = await _videoService.uploadVideo(
         videoFile: _selectedVideo!,
         userId: user['id'].toString(),
-        title: caption, // Use caption as title for backend compatibility
-        description: caption, // Use same caption for description
+        title: caption,
+        description: caption,
         token: token,
       );
 
@@ -131,7 +119,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context, true); // Return true to indicate successful upload
+          Navigator.pop(context, true);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -160,187 +148,216 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     super.dispose();
   }
 
-  Widget _buildRequirement(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 24, top: 4),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          color: Colors.grey[700],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('Upload Video'),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Upload Video',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        centerTitle: true,
         actions: [
           if (!_isUploading)
             TextButton(
               onPressed: _uploadVideo,
               child: const Text(
                 'Đăng',
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Video Preview
-              GestureDetector(
-                onTap: _isUploading ? null : _pickVideo,
-                child: Container(
-                  width: double.infinity,
-                  height: 300,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: _selectedVideo == null
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.video_library, size: 64, color: Colors.grey[600]),
-                            const SizedBox(height: 16),
-                            Text('Chọn video từ thư viện', style: TextStyle(color: Colors.grey[600])),
-                          ],
-                        )
-                      : Stack(
-                          children: [
-                            Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.play_circle_outline, size: 64, color: Colors.white),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    _selectedVideo!.name,
-                                    style: const TextStyle(color: Colors.white),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_isUploading)
-                              Positioned.fill(
-                                child: Container(
-                                  color: Colors.black54,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      const CircularProgressIndicator(color: Colors.white),
-                                      const SizedBox(height: 16),
-                                      const Text(
-                                        'Đang upload...',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Video requirements info
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey[700]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 16, color: Colors.blue[300]),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Yêu cầu video:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[300],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildRequirement('⏱️ Thời lượng: 15 giây - 10 phút'),
-                    _buildRequirement('📦 Kích thước: Tối đa 500MB'),
-                    _buildRequirement('📹 Định dạng: MP4, MOV, AVI'),
-                    _buildRequirement('📱 Tỷ lệ tốt nhất: 9:16 (1080x1920)'),
-                    _buildRequirement('ℹ️ Video sẽ tự động crop về 9:16'),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Caption (Instagram style - single field)
-              const Text('Viết caption...', style: TextStyle(color: Colors.white, fontSize: 16)),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _captionController,
-                enabled: !_isUploading,
-                style: const TextStyle(color: Colors.white),
-                maxLength: 2200, // Instagram max length
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText: 'Viết caption cho video của bạn...',
-                  hintStyle: TextStyle(color: Colors.grey[600]),
-                  filled: true,
-                  fillColor: Colors.grey[900],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide.none,
-                  ),
-                  helperText: 'Caption có thể bao gồm hashtags (#), mentions (@), v.v.',
-                  helperStyle: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Vui lòng nhập caption cho video';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-
-              // Upload Button
-              if (!_isUploading)
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _uploadVideo,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Video Preview Area
+                GestureDetector(
+                  onTap: _isUploading ? null : _pickVideo,
+                  child: Container(
+                    width: double.infinity,
+                    height: 400,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[900],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _selectedVideo != null ? Colors.white24 : Colors.grey[800]!,
+                        width: 2,
                       ),
                     ),
-                    child: const Text(
-                      'Đăng video',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
+                    child: _selectedVideo == null
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.video_library_outlined,
+                                  size: 64,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              const Text(
+                                'Chọn video từ thư viện',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tối đa 500MB',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Stack(
+                            children: [
+                              Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.play_circle_outline,
+                                        size: 64,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        _selectedVideo!.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isUploading)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black87,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 3,
+                                        ),
+                                        SizedBox(height: 24),
+                                        Text(
+                                          'Đang upload...',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
                   ),
                 ),
-            ],
+                const SizedBox(height: 32),
+
+                // Caption Input
+                TextFormField(
+                  controller: _captionController,
+                  enabled: !_isUploading,
+                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  maxLength: 2200,
+                  maxLines: 6,
+                  decoration: InputDecoration(
+                    hintText: 'Viết caption cho video của bạn...',
+                    hintStyle: TextStyle(color: Colors.grey[600], fontSize: 15),
+                    filled: true,
+                    fillColor: Colors.grey[900],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.all(16),
+                    counterStyle: TextStyle(color: Colors.grey[600]),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Vui lòng nhập caption cho video';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 32),
+
+                // Upload Button (only show if video selected)
+                if (_selectedVideo != null && !_isUploading)
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: ElevatedButton(
+                      onPressed: _uploadVideo,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Đăng video',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

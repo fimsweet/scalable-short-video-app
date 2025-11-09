@@ -62,8 +62,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   List<Widget> get _widgetOptions => <Widget>[
-    VideoScreen(key: _videoScreenKey),
-    ProfileScreen(key: _profileScreenKey),
+    Visibility(
+      visible: _selectedIndex == 0,
+      maintainState: false, // Don't maintain state when hidden - this stops videos
+      child: VideoScreen(key: _videoScreenKey),
+    ),
+    Visibility(
+      visible: _selectedIndex == 1,
+      maintainState: true,
+      child: ProfileScreen(key: _profileScreenKey),
+    ),
   ];
 
   void _onItemTapped(int index) {
@@ -104,8 +112,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
+      body: Stack(
         children: _widgetOptions,
       ),
       bottomNavigationBar: Theme(
