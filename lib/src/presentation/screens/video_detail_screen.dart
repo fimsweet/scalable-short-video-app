@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hls_video_player.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_controls_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/comment_section_widget.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/options_menu_widget.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
+import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
@@ -28,6 +30,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   final ApiService _apiService = ApiService();
   final LikeService _likeService = LikeService();
   final CommentService _commentService = CommentService();
+  final SavedVideoService _savedVideoService = SavedVideoService();
 
   late PageController _pageController;
   int _currentPage = 0;
@@ -36,6 +39,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Map<String, int> _likeCounts = {};
   Map<String, int> _commentCounts = {};
   Map<String, Map<String, dynamic>> _userCache = {};
+  Map<String, bool> _saveStatus = {};
 
   @override
   void initState() {
@@ -56,6 +60,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       if (video == null || video['id'] == null) continue;
 
       final videoId = video['id'].toString();
+      
+      // Get counts from video object first (immediate display)
       _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
       _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
 
@@ -64,12 +70,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         if (userId != null) {
           final isLiked = await _likeService.isLikedByUser(videoId, userId);
           _likeStatus[videoId] = isLiked;
+
+          final isSaved = await _savedVideoService.isSavedByUser(videoId, userId);
+          _saveStatus[videoId] = isSaved;
         }
       }
     }
 
     if (mounted) {
-      setState(() {});
+      setState(() {}); // Trigger rebuild with initial counts
     }
   }
 
@@ -91,6 +100,28 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         _likeStatus[videoId] = result['liked'] ?? false;
         _likeCounts[videoId] = result['likeCount'] ?? 0;
       });
+    }
+  }
+
+  Future<void> _handleSave(String videoId) async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để lưu video')),
+      );
+      return;
+    }
+
+    final userId = _authService.user!['id']?.toString();
+    if (userId == null || userId.isEmpty) return;
+
+    final result = await _savedVideoService.toggleSave(videoId, userId);
+
+    if (mounted) {
+      setState(() {
+        _saveStatus[videoId] = result['saved'] ?? false;
+      });
+
+      print(result['saved'] ? '🟡 Video saved' : '⚪ Video unsaved');
     }
   }
 
@@ -129,13 +160,38 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Video', style: TextStyle(color: Colors.white)),
+        title: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text(
+            'Video đã lưu',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        titleSpacing: 0, // Remove spacing between leading and title
+        centerTitle: false, // Align title to the left, close to back button
       ),
       body: PageView.builder(
         controller: _pageController,
@@ -249,15 +305,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                 ),
               ),
 
-              // Controls
+              // Controls - NOW WITH LIKE/COMMENT COUNTS
               if (videoId.isNotEmpty)
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: VideoControlsWidget(
                     isLiked: _likeStatus[videoId] ?? false,
-                    likeCount: _formatCount(_likeCounts[videoId] ?? 0),
-                    commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                    likeCount: _formatCount(_likeCounts[videoId] ?? 0), // Show like count
+                    commentCount: _formatCount(_commentCounts[videoId] ?? 0), // Show comment count
                     onLikeTap: () => _handleLike(videoId),
                     onCommentTap: () {
                       showModalBottomSheet(
@@ -295,7 +351,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         backgroundColor: Colors.transparent,
                       );
                     },
-                    onMoreTap: () {},
+                    onMoreTap: () {
+                      showModalBottomSheet(
+                        context: context,
+                        builder: (context) => OptionsMenuWidget(
+                          videoId: videoId,
+                          userId: _authService.user?['id']?.toString(),
+                          isSaved: _saveStatus[videoId] ?? false,
+                          onSaveToggle: () => _handleSave(videoId),
+                        ),
+                        backgroundColor: Colors.transparent,
+                      );
+                    },
                     onShareTap: () {},
                   ),
                 ),

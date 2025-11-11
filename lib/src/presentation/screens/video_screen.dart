@@ -10,6 +10,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
+import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.dart';
 
 class VideoScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _VideoScreenState extends State<VideoScreen> {
   final LikeService _likeService = LikeService();
   final CommentService _commentService = CommentService();
   final FollowService _followService = FollowService();
+  final SavedVideoService _savedVideoService = SavedVideoService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -44,6 +46,9 @@ class _VideoScreenState extends State<VideoScreen> {
   
   // Track follow status for each user
   Map<String, bool> _followStatus = {};
+  
+  // Track save status for each video
+  Map<String, bool> _saveStatus = {};
   
   // PageView controller for better lifecycle management
   PageController? _pageController;
@@ -229,8 +234,9 @@ class _VideoScreenState extends State<VideoScreen> {
     // IMPORTANT: Clear all status maps before reloading
     _likeStatus.clear();
     _followStatus.clear();
+    _saveStatus.clear();
 
-    // Initialize counts and like status
+    // Initialize counts and statuses
     for (var video in readyVideos) {
       if (video == null || video['id'] == null) continue;
       
@@ -244,14 +250,20 @@ class _VideoScreenState extends State<VideoScreen> {
           if (userId != null && userId.isNotEmpty) {
             final isLiked = await _likeService.isLikedByUser(videoId, userId);
             _likeStatus[videoId] = isLiked;
+            
+            final isSaved = await _savedVideoService.isSavedByUser(videoId, userId);
+            _saveStatus[videoId] = isSaved;
           } else {
             _likeStatus[videoId] = false;
+            _saveStatus[videoId] = false;
           }
         } catch (e) {
           _likeStatus[videoId] = false;
+          _saveStatus[videoId] = false;
         }
       } else {
         _likeStatus[videoId] = false;
+        _saveStatus[videoId] = false;
       }
     }
 
@@ -342,6 +354,29 @@ class _VideoScreenState extends State<VideoScreen> {
       });
       
       print('${result['following'] ? '✅' : '❌'} Follow toggled - Status: ${result['following']}');
+    }
+  }
+
+  Future<void> _handleSave(String videoId) async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để lưu video')),
+      );
+      return;
+    }
+
+    final userId = _authService.user!['id']?.toString();
+    if (userId == null || userId.isEmpty) return;
+
+    final result = await _savedVideoService.toggleSave(videoId, userId);
+
+    if (mounted) {
+      setState(() {
+        _saveStatus[videoId] = result['saved'] ?? false;
+      });
+
+      // Removed SnackBar - icon color change is enough visual feedback
+      print(result['saved'] ? '🟡 Video saved' : '⚪ Video unsaved');
     }
   }
 
@@ -605,9 +640,21 @@ class _VideoScreenState extends State<VideoScreen> {
                                                         child: Container(
                                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                                           decoration: BoxDecoration(
-                                                            color: isFollowing ? Colors.grey[800] : Colors.transparent,
-                                                            border: Border.all(color: Colors.white, width: 1),
+                                                            // Solid red background - modern & clean
+                                                            color: isFollowing ? const Color(0xFFFF3B5C) : Colors.transparent,
+                                                            border: Border.all(
+                                                              color: isFollowing ? Colors.transparent : Colors.white, 
+                                                              width: 1.5,
+                                                            ),
                                                             borderRadius: BorderRadius.circular(4),
+                                                            // Subtle glow effect
+                                                            boxShadow: isFollowing ? [
+                                                              BoxShadow(
+                                                                color: const Color(0xFFFF3B5C).withOpacity(0.4),
+                                                                blurRadius: 8,
+                                                                spreadRadius: 0,
+                                                              ),
+                                                            ] : null,
                                                           ),
                                                           child: Text(
                                                             isFollowing ? 'Đang theo dõi' : 'Theo dõi',
@@ -615,6 +662,7 @@ class _VideoScreenState extends State<VideoScreen> {
                                                               color: Colors.white,
                                                               fontSize: 12,
                                                               fontWeight: FontWeight.w600,
+                                                              letterSpacing: 0.3,
                                                               shadows: [Shadow(blurRadius: 6.0, color: Colors.black87)],
                                                             ),
                                                           ),
@@ -690,7 +738,12 @@ class _VideoScreenState extends State<VideoScreen> {
                                           onMoreTap: () {
                                             showModalBottomSheet(
                                               context: context,
-                                              builder: (context) => const OptionsMenuWidget(),
+                                              builder: (context) => OptionsMenuWidget(
+                                                videoId: videoId,
+                                                userId: _authService.user?['id']?.toString(),
+                                                isSaved: _saveStatus[videoId] ?? false,
+                                                onSaveToggle: () => _handleSave(videoId), // Simple callback
+                                              ),
                                               backgroundColor: Colors.transparent,
                                             );
                                           },
@@ -704,11 +757,11 @@ class _VideoScreenState extends State<VideoScreen> {
                                           },
                                         ),
                                       ),
-                                ],
-                              );
-                            },
+                                  ],
+                                );
+                              },
+                            ),
                           ),
-                        ),
           
             // Tab bar
             Positioned(

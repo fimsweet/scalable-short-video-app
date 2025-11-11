@@ -375,7 +375,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
           right: 12,
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.only(top: 40), // Giảm từ 90 xuống 40
+              padding: const EdgeInsets.only(top: 40), // Giảm từ 40 xuống 8 để sát trên cùng
               child: GestureDetector(
                 onTap: _toggleMute,
                 child: Container(

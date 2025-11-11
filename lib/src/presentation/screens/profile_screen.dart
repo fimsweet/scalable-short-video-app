@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/login_screen.d
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/user_video_grid.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/saved_video_grid.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
@@ -531,7 +532,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                   unselectedLabelColor: Colors.grey,
                   tabs: [
                     Tab(icon: Icon(Icons.grid_on)),
-                    Tab(icon: Icon(Icons.movie_creation_outlined)),
+                    Tab(icon: Icon(Icons.bookmark_border)), // Changed from movie to bookmark
                     Tab(icon: Icon(Icons.person_pin_outlined)),
                   ],
                 ),
@@ -539,7 +540,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                   child: TabBarView(
                     children: [
                       UserVideoGrid(),
-                      Center(child: Text('Videos')),
+                      SavedVideoGrid(), // Changed from placeholder
                       Center(child: Text('Tagged')),
                     ],
                   ),
