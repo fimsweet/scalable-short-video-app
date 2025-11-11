@@ -1,7 +1,38 @@
 import 'package:flutter/material.dart';
 
-class OptionsMenuWidget extends StatelessWidget {
-  const OptionsMenuWidget({super.key});
+class OptionsMenuWidget extends StatefulWidget {
+  final String? videoId;
+  final String? userId;
+  final bool? isSaved;
+  final VoidCallback? onSaveToggle;
+
+  const OptionsMenuWidget({
+    super.key,
+    this.videoId,
+    this.userId,
+    this.isSaved,
+    this.onSaveToggle,
+  });
+
+  @override
+  State<OptionsMenuWidget> createState() => _OptionsMenuWidgetState();
+}
+
+class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
+  late bool _isSaved;
+
+  @override
+  void initState() {
+    super.initState();
+    _isSaved = widget.isSaved ?? false;
+  }
+
+  void _handleSaveToggle() {
+    setState(() {
+      _isSaved = !_isSaved; // Toggle local state immediately
+    });
+    widget.onSaveToggle?.call(); // Call parent callback
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -35,10 +66,15 @@ class OptionsMenuWidget extends StatelessWidget {
                 children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: const [
-                      _TopOptionItem(icon: Icons.bookmark_border, label: 'Lưu'),
-                      _TopOptionItem(icon: Icons.repeat, label: 'Remix'),
-                      _TopOptionItem(icon: Icons.link, label: 'GhéP nối'),
+                    children: [
+                      _TopOptionItem(
+                        icon: _isSaved ? Icons.bookmark : Icons.bookmark_border,
+                        label: _isSaved ? 'Đã lưu' : 'Lưu',
+                        isActive: _isSaved,
+                        onTap: _handleSaveToggle, // Use local handler
+                      ),
+                      const _TopOptionItem(icon: Icons.repeat, label: 'Remix'),
+                      const _TopOptionItem(icon: Icons.link, label: 'Ghép nối'),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -76,25 +112,45 @@ class OptionsMenuWidget extends StatelessWidget {
 class _TopOptionItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
+  final bool isActive; // Add this parameter
 
-  const _TopOptionItem({required this.icon, required this.label});
+  const _TopOptionItem({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.isActive = false, // Add default value
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              icon, 
+              size: 28,
+              color: isActive ? Colors.amber : Colors.white, // Change color when active
+            ),
           ),
-          child: Icon(icon, size: 28),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(fontSize: 13)),
-      ],
+          const SizedBox(height: 8),
+          Text(
+            label, 
+            style: TextStyle(
+              fontSize: 13,
+              color: isActive ? Colors.amber : Colors.white, // Change text color too
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
