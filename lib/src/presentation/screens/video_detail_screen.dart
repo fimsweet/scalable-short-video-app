@@ -310,60 +310,45 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                 Positioned(
                   bottom: 0,
                   right: 0,
-                  child: VideoControlsWidget(
-                    isLiked: _likeStatus[videoId] ?? false,
-                    likeCount: _formatCount(_likeCounts[videoId] ?? 0), // Show like count
-                    commentCount: _formatCount(_commentCounts[videoId] ?? 0), // Show comment count
-                    onLikeTap: () => _handleLike(videoId),
-                    onCommentTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        builder: (context) {
-                          return DraggableScrollableSheet(
-                            initialChildSize: 0.6,
-                            minChildSize: 0.2,
-                            maxChildSize: 0.9,
-                            builder: (BuildContext context, ScrollController scrollController) {
-                              return CommentSectionWidget(
-                                controller: scrollController,
-                                videoId: videoId,
-                                onCommentAdded: () async {
-                                  final count = await _commentService.getCommentCount(videoId);
-                                  if (mounted) {
-                                    setState(() {
-                                      _commentCounts[videoId] = count;
-                                    });
-                                  }
-                                },
-                                onCommentDeleted: () async {
-                                  final count = await _commentService.getCommentCount(videoId);
-                                  if (mounted) {
-                                    setState(() {
-                                      _commentCounts[videoId] = count;
-                                    });
-                                  }
-                                },
-                              );
+                  child: GestureDetector(
+                    onTap: () {}, // Absorb taps
+                    behavior: HitTestBehavior.opaque,
+                    child: VideoControlsWidget(
+                      isLiked: _likeStatus[videoId] ?? false,
+                      isSaved: _saveStatus[videoId] ?? false,
+                      likeCount: _formatCount(_likeCounts[videoId] ?? 0),
+                      commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                      onLikeTap: () => _handleLike(videoId),
+                      onCommentTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) => CommentSectionWidget(
+                            videoId: videoId,
+                            onCommentAdded: () async {
+                              final count = await _commentService.getCommentCount(videoId);
+                              if (mounted) {
+                                setState(() {
+                                  _commentCounts[videoId] = count;
+                                });
+                              }
                             },
-                          );
-                        },
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                      );
-                    },
-                    onMoreTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        builder: (context) => OptionsMenuWidget(
-                          videoId: videoId,
-                          userId: _authService.user?['id']?.toString(),
-                          isSaved: _saveStatus[videoId] ?? false,
-                          onSaveToggle: () => _handleSave(videoId),
-                        ),
-                        backgroundColor: Colors.transparent,
-                      );
-                    },
-                    onShareTap: () {},
+                            onCommentDeleted: () async {
+                              final count = await _commentService.getCommentCount(videoId);
+                              if (mounted) {
+                                setState(() {
+                                  _commentCounts[videoId] = count;
+                                });
+                              }
+                            },
+                          ),
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          useSafeArea: false,
+                        );
+                      },
+                      onSaveTap: () => _handleSave(videoId),
+                      onShareTap: () {},
+                    ),
                   ),
                 ),
             ],
