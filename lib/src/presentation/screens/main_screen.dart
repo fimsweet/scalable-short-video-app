@@ -15,10 +15,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final AuthService _authService = AuthService();
   
-  // Add keys to force rebuild when switching tabs
-  GlobalKey<State<StatefulWidget>> _videoScreenKey = GlobalKey();
-  GlobalKey<State<StatefulWidget>> _profileScreenKey = GlobalKey();
-
   @override
   void initState() {
     super.initState();
@@ -37,7 +33,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _onLogout() {
     print('🔔 Logout event received - refreshing all screens');
-    _refreshScreens();
+    // Only rebuild when logout
+    setState(() {});
     
     // Switch to profile tab to show logged out state
     if (_selectedIndex != 1) {
@@ -47,30 +44,19 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // Force refresh when app resumes
-      _refreshScreens();
-    }
-  }
-
-  void _refreshScreens() {
-    setState(() {
-      // Regenerate keys to force rebuild
-      _videoScreenKey = GlobalKey();
-      _profileScreenKey = GlobalKey();
-    });
+    // Remove force refresh - let each screen handle its own state
   }
 
   List<Widget> get _widgetOptions => <Widget>[
     Visibility(
       visible: _selectedIndex == 0,
-      maintainState: false, // Don't maintain state when hidden - this stops videos
-      child: VideoScreen(key: _videoScreenKey),
+      maintainState: true, // CHANGED: Keep state when switching tabs
+      child: const VideoScreen(),
     ),
     Visibility(
       visible: _selectedIndex == 1,
       maintainState: true,
-      child: ProfileScreen(key: _profileScreenKey),
+      child: const ProfileScreen(),
     ),
   ];
 
@@ -101,9 +87,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
     );
 
-    // If upload successful, refresh screens
+    // If upload successful, just rebuild to trigger reload in VideoScreen
     if (result == true) {
-      _refreshScreens();
+      setState(() {});
       // Switch to profile tab to show uploaded video
       _onItemTapped(1);
     }

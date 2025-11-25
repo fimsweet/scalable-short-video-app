@@ -136,29 +136,33 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_isDisposed) return;
+    super.didChangeAppLifecycleState(state);
     
-    if (state == AppLifecycleState.paused || 
-        state == AppLifecycleState.inactive) {
+    if (_controller == null) return;
+    
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       // Pause video when app goes to background
       _controller?.pause();
     } else if (state == AppLifecycleState.resumed) {
-      // Resume only if was playing before
-      if (_isInitialized && widget.autoPlay) {
+      // Resume video when app comes back if it was playing
+      if (widget.autoPlay && mounted) {
         _controller?.play();
       }
-    } else if (state == AppLifecycleState.detached) {
-      // Cleanup when app is closing
-      _controller?.pause();
-      _controller?.dispose();
     }
   }
 
   @override
-  void deactivate() {
-    // Pause video when widget is deactivated
-    _controller?.pause();
-    super.deactivate();
+  void didUpdateWidget(HLSVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Handle autoPlay changes (when swiping between videos or switching tabs)
+    if (widget.autoPlay != oldWidget.autoPlay) {
+      if (widget.autoPlay) {
+        _controller?.play();
+      } else {
+        _controller?.pause();
+      }
+    }
   }
 
   void _togglePlayPause() {

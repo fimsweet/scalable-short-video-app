@@ -9,6 +9,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart'; // Import InboxScreen
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -20,12 +21,17 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
+class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ImagePicker _picker = ImagePicker();
   final FollowService _followService = FollowService();
   final NotificationService _notificationService = NotificationService();
+  
+  // Animation controller for message icon - Changed from late to nullable to fix Hot Reload error
+  AnimationController? _messageIconController;
+  Animation<double>? _messageIconScale;
+
   bool _isUploading = false;
   int _followerCount = 0;
   int _followingCount = 0;
@@ -35,6 +41,9 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    
+    _initAnimations();
+
     _loadFollowStats();
     
     // Start polling for notifications
@@ -52,10 +61,23 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
     }
   }
 
+  void _initAnimations() {
+    if (_messageIconController != null) return;
+    
+    _messageIconController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _messageIconScale = Tween<double>(begin: 1.0, end: 0.8).animate(
+      CurvedAnimation(parent: _messageIconController!, curve: Curves.easeInOut),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _notificationService.stopPolling();
+    _messageIconController?.dispose(); // Safe dispose
     super.dispose();
   }
 
@@ -72,6 +94,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadFollowStats();
+    _initAnimations(); // Ensure animations are initialized on hot reload
   }
 
   void _showLogoutDialog() {
@@ -241,6 +264,22 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
     }
   }
 
+  void _onMessageIconTap() async {
+    // Play animation if available (don't block navigation if animation is null)
+    if (_messageIconController != null) {
+      await _messageIconController!.forward();
+      await _messageIconController!.reverse();
+    }
+
+    // Always navigate
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const InboxScreen()),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final loggedIn = _authService.isLoggedIn;
@@ -362,6 +401,7 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                     const Icon(
                       Icons.notifications_outlined,
                       size: 28,
+                      color: Colors.white,
                     ),
                     if (_unreadCount > 0)
                       Positioned(
@@ -393,20 +433,30 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
               ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.alternate_email),
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
+              // Inbox/Messages icon - UPDATED
+              GestureDetector(
+                onTap: _onMessageIconTap,
+                child: _messageIconScale != null ? AnimatedBuilder(
+                  animation: _messageIconScale!,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _messageIconScale!.value,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        color: Colors.transparent, // Hit test area
+                        child: const Icon(
+                          Icons.mail_outline, // Changed to mail icon
+                          size: 30,
+                          color: Colors.white,
+                        ),
+                      ),
+                    );
+                  },
+                ) : const Icon(Icons.mail_outline, color: Colors.white, size: 30),
               ),
-              IconButton(
-                onPressed: () {},
-                icon: const Icon(Icons.add_box_outlined),
-                splashColor: Colors.transparent,
-                highlightColor: Colors.transparent,
-              ),
+              
               PopupMenuButton<String>(
-                icon: const Icon(Icons.menu),
+                icon: const Icon(Icons.menu, color: Colors.white),
                 color: Colors.grey[900],
                 splashRadius: 0.1,
                 onSelected: (v) {
@@ -558,7 +608,6 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
 
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = _apiService.getAvatarUrl(avatarUrl);
-      print('🌐 Full avatar URL: $fullUrl');
       
       return CircleAvatar(
         radius: 40,
