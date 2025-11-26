@@ -94,7 +94,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadFollowStats();
-    _initAnimations(); // Ensure animations are initialized on hot reload
+    _initAnimations();
+    // Screen is rebuilt by MainScreen when auth state changes
   }
 
   void _showLogoutDialog() {

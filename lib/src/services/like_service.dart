@@ -61,8 +61,16 @@ class LikeService {
     try {
       print('🔍 Check like status: videoId=$videoId, userId=$userId');
       
+      final url = '$_baseUrl/likes/check/$videoId/$userId';
+      print('📡 Request URL: $url');
+      
       final response = await http.get(
-        Uri.parse('$_baseUrl/likes/check/$videoId/$userId'),
+        Uri.parse(url),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
       );
 
       print('📥 Check like response: ${response.statusCode} - ${response.body}');
@@ -70,9 +78,11 @@ class LikeService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final liked = data['liked'] ?? false;
-        print('✅ User $userId ${liked ? 'LIKED' : 'NOT LIKED'} video $videoId');
+        print('✅ isLikedByUser result: $liked');
         return liked;
       }
+      
+      print('⚠️ Unexpected status code: ${response.statusCode}');
       return false;
     } catch (e) {
       print('❌ Error checking like: $e');

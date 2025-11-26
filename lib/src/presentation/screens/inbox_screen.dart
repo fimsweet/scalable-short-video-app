@@ -1,5 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
+import 'package:scalable_short_video_app/src/services/message_service.dart';
+import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 class InboxScreen extends StatefulWidget {
   const InboxScreen({super.key});
@@ -9,58 +14,104 @@ class InboxScreen extends StatefulWidget {
 }
 
 class _InboxScreenState extends State<InboxScreen> {
-  // Mock data cho giao diện
-  final List<Map<String, dynamic>> _conversations = [
-    {
-      'id': '1',
-      'username': 'thanh_truong',
-      'avatar': null,
-      'lastMessage': 'Video hôm qua hay quá! 🔥',
-      'time': '2p',
-      'isRead': false,
-    },
-    {
-      'id': '2',
-      'username': 'minh_anh_99',
-      'avatar': null,
-      'lastMessage': 'Bạn đã gửi một video',
-      'time': '1h',
-      'isRead': true,
-    },
-    {
-      'id': '3',
-      'username': 'kols_vietnam',
-      'avatar': null,
-      'lastMessage': 'Chào bạn, mình muốn hợp tác...',
-      'time': '1d',
-      'isRead': false,
-    },
-    {
-      'id': '4',
-      'username': 'user_123456',
-      'avatar': null,
-      'lastMessage': 'Haha buồn cười quá 😂',
-      'time': '3d',
-      'isRead': true,
-    },
-  ];
+  final MessageService _messageService = MessageService();
+  final AuthService _authService = AuthService();
+  final ApiService _apiService = ApiService();
 
-  void _navigateToChat(Map<String, dynamic> conversation) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          recipientId: conversation['id'],
-          recipientUsername: conversation['username'],
-          recipientAvatar: conversation['avatar'],
-        ),
-      ),
-    ).then((_) {
-      // Mark as read when returning
-      setState(() {
-        conversation['isRead'] = true;
-      });
+  List<Map<String, dynamic>> _conversations = [];
+  Map<String, Map<String, dynamic>> _userCache = {};
+  bool _isLoading = true;
+  
+  StreamSubscription? _newMessageSubscription;
+
+  String get _currentUserId => _authService.user?['id']?.toString() ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+    _setupListeners();
+  }
+
+  void _setupListeners() {
+    // Connect to WebSocket
+    if (_currentUserId.isNotEmpty) {
+      _messageService.connect(_currentUserId);
+    }
+
+    // Listen for new messages to update conversation list
+    _newMessageSubscription = _messageService.newMessageStream.listen((message) {
+      _loadConversations(); // Reload to update last message
     });
+  }
+
+  Future<void> _loadConversations() async {
+    if (_currentUserId.isEmpty) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final conversations = await _messageService.getConversations(_currentUserId);
+
+      if (mounted) {
+        setState(() {
+          _conversations = conversations.map((c) => Map<String, dynamic>.from(c)).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading conversations: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _getUserInfo(String userId) async {
+    if (_userCache.containsKey(userId)) {
+      return _userCache[userId]!;
+    }
+
+    try {
+      final userInfo = await _apiService.getUserById(userId);
+      if (userInfo != null) {
+        _userCache[userId] = userInfo;
+        return userInfo;
+      }
+    } catch (e) {
+      print('❌ Error fetching user info: $e');
+    }
+
+    return {'username': 'User', 'avatar': null};
+  }
+
+  void _navigateToChat(Map<String, dynamic> conversation) async {
+    final otherUserId = conversation['otherUserId']?.toString() ?? '';
+    final userInfo = await _getUserInfo(otherUserId);
+
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            recipientId: otherUserId,
+            recipientUsername: userInfo['username'] ?? 'User',
+            recipientAvatar: userInfo['avatar'] != null 
+                ? _apiService.getAvatarUrl(userInfo['avatar']) 
+                : null,
+          ),
+        ),
+      ).then((_) {
+        _loadConversations(); // Refresh when returning
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _newMessageSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -87,7 +138,7 @@ class _InboxScreenState extends State<InboxScreen> {
           IconButton(
             icon: const Icon(Icons.edit_square, color: Colors.white, size: 24),
             onPressed: () {
-              // TODO: New chat
+              // TODO: New chat - search users
             },
           ),
         ],
@@ -118,148 +169,169 @@ class _InboxScreenState extends State<InboxScreen> {
 
           // Conversation List
           Expanded(
-            child: _conversations.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.mail_outline,
-                          size: 80,
-                          color: Colors.grey[700],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Chưa có tin nhắn',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Bắt đầu nhắn tin với bạn bè',
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _conversations.length,
-                    itemBuilder: (context, index) {
-                      final chat = _conversations[index];
-                      final isRead = chat['isRead'] as bool;
-
-                      return InkWell(
-                        onTap: () => _navigateToChat(chat),
-                        highlightColor: Colors.grey[900],
-                        splashColor: Colors.transparent,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          child: Row(
-                            children: [
-                              // Avatar with online indicator
-                              Stack(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 28,
-                                    backgroundColor: Colors.grey[800],
-                                    backgroundImage: chat['avatar'] != null
-                                        ? NetworkImage(chat['avatar'])
-                                        : null,
-                                    child: chat['avatar'] == null
-                                        ? const Icon(Icons.person, color: Colors.white, size: 28)
-                                        : null,
-                                  ),
-                                  // Online indicator
-                                  Positioned(
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Container(
-                                      width: 14,
-                                      height: 14,
-                                      decoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Colors.black, width: 2),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                : _conversations.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.mail_outline, size: 80, color: Colors.grey[700]),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Chưa có tin nhắn',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
                               ),
-                              const SizedBox(width: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Bắt đầu nhắn tin với bạn bè',
+                              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _loadConversations,
+                        child: ListView.builder(
+                          itemCount: _conversations.length,
+                          itemBuilder: (context, index) {
+                            final conversation = _conversations[index];
+                            final otherUserId = conversation['otherUserId']?.toString() ?? '';
+                            final unreadCount = conversation['unreadCount'] ?? 0;
 
-                              // Content
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
+                            return FutureBuilder<Map<String, dynamic>>(
+                              future: _getUserInfo(otherUserId),
+                              builder: (context, snapshot) {
+                                final userInfo = snapshot.data ?? {'username': 'User', 'avatar': null};
+
+                                return InkWell(
+                                  onTap: () => _navigateToChat(conversation),
+                                  highlightColor: Colors.grey[900],
+                                  splashColor: Colors.transparent,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    child: Row(
                                       children: [
-                                        Expanded(
-                                          child: Text(
-                                            chat['username'],
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
-                                              fontSize: 16,
+                                        // Avatar
+                                        Stack(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 28,
+                                              backgroundColor: Colors.grey[800],
+                                              backgroundImage: userInfo['avatar'] != null
+                                                  ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                                  : null,
+                                              child: userInfo['avatar'] == null
+                                                  ? const Icon(Icons.person, color: Colors.white, size: 28)
+                                                  : null,
                                             ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
+                                            Positioned(
+                                              right: 0,
+                                              bottom: 0,
+                                              child: Container(
+                                                width: 14,
+                                                height: 14,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green,
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(color: Colors.black, width: 2),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        Text(
-                                          chat['time'],
-                                          style: TextStyle(
-                                            color: isRead ? Colors.grey[600] : Colors.blue,
-                                            fontSize: 13,
+                                        const SizedBox(width: 12),
+
+                                        // Content
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      userInfo['username'] ?? 'User',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
+                                                        fontSize: 16,
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    _formatTime(conversation['updatedAt']),
+                                                    style: TextStyle(
+                                                      color: unreadCount > 0 ? Colors.blue : Colors.grey[600],
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      conversation['lastMessage'] ?? '',
+                                                      style: TextStyle(
+                                                        color: unreadCount > 0 ? Colors.white : Colors.grey[500],
+                                                        fontSize: 14,
+                                                        fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                  if (unreadCount > 0)
+                                                    Container(
+                                                      margin: const EdgeInsets.only(left: 8),
+                                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.blue,
+                                                        borderRadius: BorderRadius.circular(10),
+                                                      ),
+                                                      child: Text(
+                                                        unreadCount > 99 ? '99+' : unreadCount.toString(),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 12,
+                                                          fontWeight: FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            chat['lastMessage'],
-                                            style: TextStyle(
-                                              color: isRead ? Colors.grey[500] : Colors.white,
-                                              fontSize: 14,
-                                              fontWeight: isRead ? FontWeight.normal : FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        // Unread indicator
-                                        if (!isRead)
-                                          Container(
-                                            margin: const EdgeInsets.only(left: 8),
-                                            width: 10,
-                                            height: 10,
-                                            decoration: const BoxDecoration(
-                                              color: Colors.blue,
-                                              shape: BoxShape.circle,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
-                      );
-                    },
-                  ),
+                      ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatTime(String? dateString) {
+    if (dateString == null) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      return timeago.format(date, locale: 'vi');
+    } catch (e) {
+      return '';
+    }
   }
 }

@@ -22,7 +22,24 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
   @override
   void initState() {
     super.initState();
+    _authService.addLogoutListener(_onLogout);
+    _authService.addLoginListener(_onLogin);
     _loadSavedVideos();
+  }
+
+  void _onLogin() {
+    print('🔔 SavedVideoGrid: Login event - loading saved videos');
+    _loadSavedVideos();
+  }
+
+  void _onLogout() {
+    print('🔔 SavedVideoGrid: Logout event - clearing saved videos');
+    if (mounted) {
+      setState(() {
+        _savedVideos = [];
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _loadSavedVideos() async {
@@ -49,6 +66,13 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _authService.removeLogoutListener(_onLogout);
+    _authService.removeLoginListener(_onLogin);
+    super.dispose();
   }
 
   @override

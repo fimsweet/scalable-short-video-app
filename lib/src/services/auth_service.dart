@@ -27,6 +27,27 @@ class AuthService {
   String? get avatarUrl => _avatarUrl;
   String? get bio => _user?['bio'] as String?;
 
+  // Add callback list
+  final List<VoidCallback> _logoutListeners = [];
+  final List<VoidCallback> _loginListeners = []; // ADD THIS
+
+  void addLogoutListener(VoidCallback listener) {
+    _logoutListeners.add(listener);
+  }
+
+  void removeLogoutListener(VoidCallback listener) {
+    _logoutListeners.remove(listener);
+  }
+
+  // ADD THESE METHODS
+  void addLoginListener(VoidCallback listener) {
+    _loginListeners.add(listener);
+  }
+
+  void removeLoginListener(VoidCallback listener) {
+    _loginListeners.remove(listener);
+  }
+
   Future<void> login(Map<String, dynamic> userData, String token) async {
     _user = userData;
     _username = userData['username'];
@@ -44,17 +65,17 @@ class AuthService {
     // Save user data to SharedPreferences for bio
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user', json.encode(userData));
-  }
-
-  // Add callback list
-  final List<VoidCallback> _logoutListeners = [];
-
-  void addLogoutListener(VoidCallback listener) {
-    _logoutListeners.add(listener);
-  }
-
-  void removeLogoutListener(VoidCallback listener) {
-    _logoutListeners.remove(listener);
+    
+    print('✅ Login successful - notifying ${_loginListeners.length} listeners');
+    
+    // Notify all login listeners with error handling
+    for (var listener in List.from(_loginListeners)) { // Create copy to avoid modification during iteration
+      try {
+        listener();
+      } catch (e) {
+        print('❌ Error calling login listener: $e');
+      }
+    }
   }
 
   Future<void> logout() async {
@@ -79,9 +100,14 @@ class AuthService {
     print('🚪 Logging out - clearing all cached data');
     print('✅ Logout complete - isLoggedIn: $_isLoggedIn');
     
-    // Notify all listeners
-    for (var listener in _logoutListeners) {
-      listener();
+    // Notify all listeners with error handling
+    print('📢 Notifying ${_logoutListeners.length} logout listeners');
+    for (var listener in List.from(_logoutListeners)) { // Create copy to avoid modification during iteration
+      try {
+        listener();
+      } catch (e) {
+        print('❌ Error calling logout listener: $e');
+      }
     }
   }
 
