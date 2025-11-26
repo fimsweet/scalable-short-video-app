@@ -110,4 +110,55 @@ class FollowService {
       return [];
     }
   }
+
+  Future<List<Map<String, dynamic>>> getFollowersWithStatus(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/followers-with-status/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting followers with status: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFollowingWithStatus(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/following-with-status/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting following with status: $e');
+      return [];
+    }
+  }
+
+  Future<bool> isMutualFollow(int userId1, int userId2) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/check-mutual/$userId1/$userId2'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['isMutual'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error checking mutual follow: $e');
+      return false;
+    }
+  }
 }

@@ -184,6 +184,40 @@ class VideoService {
     return '$_baseUrl$hlsUrl';
   }
 
+  /// Get videos by user ID (for user profile)
+  Future<List<dynamic>> getVideosByUserId(String userId) async {
+    try {
+      print('📹 Fetching videos for user $userId...');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/user/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      print('Response status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        // Handle different response formats
+        if (data is Map && data['success'] == true && data['data'] != null) {
+          final List<dynamic> videos = data['data'];
+          // Filter only ready videos
+          return videos.where((v) => v != null && v['status'] == 'ready').toList();
+        } else if (data is List) {
+          return data.where((v) => v != null && v['status'] == 'ready').toList();
+        }
+        return [];
+      } else {
+        print('❌ Failed to load user videos: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error loading user videos: $e');
+      return [];
+    }
+  }
+
   Future<List<dynamic>> getFollowingVideos(String userId) async {
     try {
       print('📹 Fetching following videos for user $userId...');

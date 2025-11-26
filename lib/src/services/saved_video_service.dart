@@ -38,14 +38,30 @@ class SavedVideoService {
 
   Future<bool> isSavedByUser(String videoId, String userId) async {
     try {
+      print('🔍 Check saved status: videoId=$videoId, userId=$userId');
+      
+      final url = '$_baseUrl/saved-videos/check/$videoId/$userId';
+      print('📡 Request URL: $url');
+      
       final response = await http.get(
-        Uri.parse('$_baseUrl/saved-videos/check/$videoId/$userId'),
+        Uri.parse(url),
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
       );
+
+      print('📥 Check saved response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['saved'] ?? false;
+        final saved = data['saved'] ?? false;
+        print('✅ isSavedByUser result: $saved');
+        return saved;
       }
+      
+      print('⚠️ Unexpected status code: ${response.statusCode}');
       return false;
     } catch (e) {
       print('❌ Error checking saved status: $e');

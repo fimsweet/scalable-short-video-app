@@ -46,39 +46,109 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     super.initState();
     _currentPage = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    
+    // Listen to logout events
+    _authService.addLogoutListener(_onLogout);
+    
+    // Listen to login events - ADD THIS
+    _authService.addLoginListener(_onLogin);
+    
     _initializeVideoData();
+  }
+
+  // ADD THIS METHOD
+  void _onLogin() {
+    print('🔔 VideoDetailScreen: Login event received - reloading statuses');
+    _initializeVideoData();
+  }
+
+  void _onLogout() {
+    print('🔔 VideoDetailScreen: Logout event received - resetting statuses');
+    
+    // Clear all statuses
+    _likeStatus.clear();
+    _saveStatus.clear();
+    
+    // Set all to default (not liked, not saved)
+    for (var video in widget.videos) {
+      if (video == null || video['id'] == null) continue;
+      final videoId = video['id'].toString();
+      _likeStatus[videoId] = false;
+      _saveStatus[videoId] = false;
+    }
+    
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
+    _authService.removeLogoutListener(_onLogout);
+    _authService.removeLoginListener(_onLogin); // ADD THIS
     _pageController.dispose();
     super.dispose();
   }
 
   Future<void> _initializeVideoData() async {
+    // Clear old status
+    _likeStatus.clear();
+    _saveStatus.clear();
+    
+    // Initialize counts first
     for (var video in widget.videos) {
       if (video == null || video['id'] == null) continue;
 
       final videoId = video['id'].toString();
-      
-      // Get counts from video object first (immediate display)
       _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
       _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
+      
+      // Set default values
+      _likeStatus[videoId] = false;
+      _saveStatus[videoId] = false;
+    }
 
-      if (_authService.isLoggedIn && _authService.user != null) {
-        final userId = _authService.user!['id']?.toString();
-        if (userId != null) {
-          final isLiked = await _likeService.isLikedByUser(videoId, userId);
-          _likeStatus[videoId] = isLiked;
+    // Load status from server if logged in
+    if (_authService.isLoggedIn && _authService.user != null) {
+      final userId = _authService.user!['id']?.toString();
+      if (userId != null && userId.isNotEmpty) {
+        List<Future<void>> statusFutures = [];
 
-          final isSaved = await _savedVideoService.isSavedByUser(videoId, userId);
-          _saveStatus[videoId] = isSaved;
+        for (var video in widget.videos) {
+          if (video == null || video['id'] == null) continue;
+
+          final videoId = video['id'].toString();
+          
+          // Check like status
+          statusFutures.add(
+            _likeService.isLikedByUser(videoId, userId).then((isLiked) {
+              _likeStatus[videoId] = isLiked;
+              print('📌 Detail - Video $videoId liked: $isLiked');
+            }).catchError((e) {
+              _likeStatus[videoId] = false;
+            })
+          );
+
+          // Check save status
+          statusFutures.add(
+            _savedVideoService.isSavedByUser(videoId, userId).then((isSaved) {
+              _saveStatus[videoId] = isSaved;
+              print('📌 Detail - Video $videoId saved: $isSaved');
+            }).catchError((e) {
+              _saveStatus[videoId] = false;
+            })
+          );
         }
+
+        // Wait for all status checks
+        await Future.wait(statusFutures);
+        
+        print('✅ Detail screen - All statuses loaded');
       }
     }
 
     if (mounted) {
-      setState(() {}); // Trigger rebuild with initial counts
+      setState(() {}); // Trigger rebuild with loaded statuses
     }
   }
 

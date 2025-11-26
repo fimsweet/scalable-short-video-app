@@ -83,57 +83,33 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
     _lastLoginState = _authService.isLoggedIn;
     _lastUserId = _authService.user?['id'] as int?;
     
+    // Remove listeners - MainScreen handles rebuild now
+    // _authService.addLogoutListener(_onLogout);
+    // _authService.addLoginListener(_onLogin);
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideos();
     });
   }
 
-  // Add this to reload when screen becomes visible again
+  // Remove these methods - no longer needed
+  // void _onLogin() { ... }
+  // void _onLogout() { ... }
+
+  // Remove didChangeDependencies check - not needed with key-based rebuild
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Check if user logged out or changed - reload videos
-    _checkAndReloadIfNeeded();
+    // Remove _checkAndReloadIfNeeded() - MainScreen handles this now
   }
 
-  void _checkAndReloadIfNeeded() {
-    final currentLoginState = _authService.isLoggedIn;
-    final currentUserId = _authService.user?['id'] as int?;
-    
-    // If login state changed or user changed, reload
-    if (_lastLoginState != currentLoginState || _lastUserId != currentUserId) {
-      print('🔄 User state changed:');
-      print('   Last login: $_lastLoginState -> Current: $currentLoginState');
-      print('   Last userId: $_lastUserId -> Current: $currentUserId');
-      
-      _lastLoginState = currentLoginState;
-      _lastUserId = currentUserId;
-      
-      print('🔄 Reloading videos due to auth state change');
-      
-      // Clear cached videos to force reload
-      _forYouVideos.clear();
-      _followingVideos.clear();
-      _likeStatus.clear();
-      _followStatus.clear();
-      _saveStatus.clear();
-      
-      // Small delay to ensure state is updated
-      Future.delayed(const Duration(milliseconds: 100), () {
-        if (mounted) {
-          _loadVideos();
-        }
-      });
-    }
-  }
-
-  @override
-  void deactivate() {
-    super.deactivate();
-  }
+  // Remove _checkAndReloadIfNeeded method
 
   @override
   void dispose() {
+    // Remove listener cleanup
+    // _authService.removeLogoutListener(_onLogout);
+    // _authService.removeLoginListener(_onLogin);
     _pageController?.dispose();
     _userCache.clear();
     _likeStatus.clear();
@@ -177,20 +153,13 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
   }
 
   Future<void> _loadForYouVideos() async {
-    // Check if we already have cached For You videos
-    if (_forYouVideos.isNotEmpty) {
-      print('✅ Using cached For You videos (${_forYouVideos.length})');
-      if (mounted) {
-        setState(() {
-          _videos = _forYouVideos;
-        });
-      }
-      return;
-    }
+    // REMOVE cache check - always reload status from server
+    // if (_forYouVideos.isNotEmpty) { ... }
 
     final videos = await _videoService.getAllVideos();
     final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
 
+    // Process videos and wait for all status checks to complete
     await _processVideos(readyVideos);
     
     if (mounted) {
@@ -212,16 +181,8 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
       return;
     }
 
-    // Check if we already have cached Following videos
-    if (_followingVideos.isNotEmpty) {
-      print('✅ Using cached Following videos (${_followingVideos.length})');
-      if (mounted) {
-        setState(() {
-          _videos = _followingVideos;
-        });
-      }
-      return;
-    }
+    // REMOVE cache check - always reload status from server
+    // if (_followingVideos.isNotEmpty) { ... }
 
     final userId = _authService.user!['id'].toString();
     final videos = await _videoService.getFollowingVideos(userId);
@@ -238,12 +199,12 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
   }
 
   Future<void> _processVideos(List<dynamic> readyVideos) async {
-    // IMPORTANT: Clear all status maps before reloading
+    // Clear all status maps before reloading
     _likeStatus.clear();
     _followStatus.clear();
     _saveStatus.clear();
 
-    // Initialize counts and statuses
+    // Initialize counts first (immediate display)
     for (var video in readyVideos) {
       if (video == null || video['id'] == null) continue;
       
@@ -251,45 +212,97 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
       _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
       _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
       
-      if (_authService.isLoggedIn && _authService.user != null) {
-        try {
-          final userId = _authService.user!['id']?.toString();
-          if (userId != null && userId.isNotEmpty) {
-            final isLiked = await _likeService.isLikedByUser(videoId, userId);
-            _likeStatus[videoId] = isLiked;
-            
-            final isSaved = await _savedVideoService.isSavedByUser(videoId, userId);
-            _saveStatus[videoId] = isSaved;
-          } else {
-            _likeStatus[videoId] = false;
-            _saveStatus[videoId] = false;
-          }
-        } catch (e) {
-          _likeStatus[videoId] = false;
-          _saveStatus[videoId] = false;
+      // Set default values - NOT logged in defaults to false
+      _likeStatus[videoId] = false;
+      _saveStatus[videoId] = false;
+    }
+
+    // IMPORTANT: Update UI immediately with default values
+    if (mounted) {
+      setState(() {});
+    }
+
+    // Load like/save status from server if logged in
+    if (_authService.isLoggedIn && _authService.user != null) {
+      final userId = _authService.user!['id']?.toString();
+      print('🔐 User logged in, loading statuses for userId: $userId');
+      
+      if (userId != null && userId.isNotEmpty) {
+        // Create list of futures to run in parallel
+        List<Future<void>> statusFutures = [];
+
+        for (var video in readyVideos) {
+          if (video == null || video['id'] == null) continue;
+          
+          final videoId = video['id'].toString();
+          
+          // Check like status
+          statusFutures.add(
+            _likeService.isLikedByUser(videoId, userId).then((isLiked) {
+              _likeStatus[videoId] = isLiked;
+              print('📌 Video $videoId liked: $isLiked');
+            }).catchError((e) {
+              print('❌ Error checking like status for $videoId: $e');
+              _likeStatus[videoId] = false;
+            })
+          );
+          
+          // Check save status
+          statusFutures.add(
+            _savedVideoService.isSavedByUser(videoId, userId).then((isSaved) {
+              _saveStatus[videoId] = isSaved;
+              print('📌 Video $videoId saved: $isSaved');
+            }).catchError((e) {
+              print('❌ Error checking save status for $videoId: $e');
+              _saveStatus[videoId] = false;
+            })
+          );
         }
-      } else {
-        _likeStatus[videoId] = false;
-        _saveStatus[videoId] = false;
+
+        // Wait for all status checks to complete
+        await Future.wait(statusFutures);
+        
+        print('✅ All like/save statuses loaded:');
+        _likeStatus.forEach((k, v) => print('   Like $k: $v'));
+        _saveStatus.forEach((k, v) => print('   Save $k: $v'));
+        
+        // IMPORTANT: Trigger rebuild AFTER all statuses are loaded
+        if (mounted) {
+          setState(() {
+            print('🔄 Rebuilding UI with loaded statuses');
+          });
+        }
       }
+    } else {
+      print('🔓 User not logged in, all statuses set to false');
     }
 
     // Check follow status for each video owner
     if (_authService.isLoggedIn && _authService.user != null) {
       final currentUserId = _authService.user!['id'] as int;
       
+      List<Future<void>> followFutures = [];
+      
       for (var video in readyVideos) {
         if (video == null || video['userId'] == null) continue;
         
         final videoOwnerId = int.tryParse(video['userId'].toString());
         if (videoOwnerId != null && videoOwnerId != currentUserId) {
-          try {
-            final isFollowing = await _followService.isFollowing(currentUserId, videoOwnerId);
-            _followStatus[videoOwnerId.toString()] = isFollowing;
-          } catch (e) {
-            _followStatus[videoOwnerId.toString()] = false;
-          }
+          followFutures.add(
+            _followService.isFollowing(currentUserId, videoOwnerId).then((isFollowing) {
+              _followStatus[videoOwnerId.toString()] = isFollowing;
+            }).catchError((e) {
+              _followStatus[videoOwnerId.toString()] = false;
+            })
+          );
         }
+      }
+      
+      await Future.wait(followFutures);
+      
+      // Update UI after follow statuses loaded
+      if (mounted) {
+        setState(() {});
       }
     }
   }
