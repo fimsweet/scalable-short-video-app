@@ -9,6 +9,9 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
@@ -38,6 +41,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Map<String, bool> _likeStatus = {};
   Map<String, int> _likeCounts = {};
   Map<String, int> _commentCounts = {};
+  Map<String, int> _saveCounts = {};
+  Map<String, int> _shareCounts = {};
   Map<String, Map<String, dynamic>> _userCache = {};
   Map<String, bool> _saveStatus = {};
 
@@ -94,14 +99,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     // Clear old status
     _likeStatus.clear();
     _saveStatus.clear();
+    _saveCounts.clear();
+    _shareCounts.clear();
     
     // Initialize counts first
     for (var video in widget.videos) {
       if (video == null || video['id'] == null) continue;
 
       final videoId = video['id'].toString();
-      _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
-      _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
+      _likeCounts[videoId] = _parseIntSafe(video['likeCount']);
+      _commentCounts[videoId] = _parseIntSafe(video['commentCount']);
+      _saveCounts[videoId] = _parseIntSafe(video['saveCount']);
+      _shareCounts[videoId] = _parseIntSafe(video['shareCount']);
       
       // Set default values
       _likeStatus[videoId] = false;
@@ -189,10 +198,36 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     if (mounted) {
       setState(() {
         _saveStatus[videoId] = result['saved'] ?? false;
+        _saveCounts[videoId] = result['saveCount'] ?? (_saveCounts[videoId] ?? 0);
       });
 
       print(result['saved'] ? '🟡 Video saved' : '⚪ Video unsaved');
     }
+  }
+
+  void _handleShare(String videoId) {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để chia sẻ')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ShareVideoSheet(
+        videoId: videoId,
+        onShareComplete: (shareCount) {
+          if (mounted) {
+            setState(() {
+              _shareCounts[videoId] = shareCount;
+            });
+          }
+        },
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> _getUserInfo(String? userId) async {
@@ -224,6 +259,35 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       return '${(count / 1000).toStringAsFixed(1)}K';
     }
     return count.toString();
+  }
+
+  void _navigateToProfile(int? userId) {
+    if (userId == null) return;
+    
+    final currentUserId = _authService.user?['id'] as int?;
+    final isOwnProfile = currentUserId != null && currentUserId == userId;
+    
+    if (isOwnProfile) {
+      // Pop back to MainScreen and switch to profile tab
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      mainScreenKey.currentState?.switchToProfileTab();
+    } else {
+      // Navigate to other user's profile
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UserProfileScreen(userId: userId),
+        ),
+      );
+    }
+  }
+
+  // Add helper method
+  int _parseIntSafe(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
   }
 
   @override
@@ -316,6 +380,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                     future: _getUserInfo(userId),
                     builder: (context, snapshot) {
                       final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
+                      final videoOwnerId = int.tryParse(userId ?? '');
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,30 +388,38 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         children: [
                           Row(
                             children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundColor: Colors.grey[800],
-                                backgroundImage: userInfo['avatar'] != null
-                                    ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
-                                    : null,
-                                child: userInfo['avatar'] == null
-                                    ? const Icon(Icons.person, color: Colors.white, size: 20)
-                                    : null,
+                              // Avatar - clickable to go to profile
+                              GestureDetector(
+                                onTap: () => _navigateToProfile(videoOwnerId),
+                                child: CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.grey[800],
+                                  backgroundImage: userInfo['avatar'] != null
+                                      ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                      : null,
+                                  child: userInfo['avatar'] == null
+                                      ? const Icon(Icons.person, color: Colors.white, size: 20)
+                                      : null,
+                                ),
                               ),
                               const SizedBox(width: 10),
-                              Text(
-                                userInfo['username']?.toString() ?? 'user',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  shadows: [
-                                    Shadow(
-                                      blurRadius: 8.0,
-                                      color: Colors.black87,
-                                      offset: Offset(1, 1),
-                                    ),
-                                  ],
+                              // Username - clickable to go to profile
+                              GestureDetector(
+                                onTap: () => _navigateToProfile(videoOwnerId),
+                                child: Text(
+                                  userInfo['username']?.toString() ?? 'user',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    shadows: [
+                                      Shadow(
+                                        blurRadius: 8.0,
+                                        color: Colors.black87,
+                                        offset: Offset(1, 1),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -375,19 +448,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                 ),
               ),
 
-              // Controls - NOW WITH LIKE/COMMENT COUNTS
+              // Controls - NOW WITH SAVE COUNT
               if (videoId.isNotEmpty)
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: GestureDetector(
-                    onTap: () {}, // Absorb taps
+                    onTap: () {},
                     behavior: HitTestBehavior.opaque,
                     child: VideoControlsWidget(
                       isLiked: _likeStatus[videoId] ?? false,
                       isSaved: _saveStatus[videoId] ?? false,
                       likeCount: _formatCount(_likeCounts[videoId] ?? 0),
                       commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                      saveCount: _formatCount(_saveCounts[videoId] ?? 0),
+                      shareCount: _formatCount(_shareCounts[videoId] ?? 0), // ADD THIS
                       onLikeTap: () => _handleLike(videoId),
                       onCommentTap: () {
                         showModalBottomSheet(
@@ -417,7 +492,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         );
                       },
                       onSaveTap: () => _handleSave(videoId),
-                      onShareTap: () {},
+                      onShareTap: () => _handleShare(videoId), // CHANGE THIS
                     ),
                   ),
                 ),

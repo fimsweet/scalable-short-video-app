@@ -222,4 +222,70 @@ class ApiService {
       };
     }
   }
+
+  /// Get followers of a user
+  Future<List<Map<String, dynamic>>> getFollowers(String userId) async {
+    try {
+      // First get follower IDs
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/followers/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final followerIds = List<int>.from(data['followerIds'] ?? []);
+        
+        // Fetch user info for each follower
+        List<Map<String, dynamic>> followers = [];
+        for (var id in followerIds) {
+          final userInfo = await getUserById(id.toString());
+          if (userInfo != null) {
+            followers.add({
+              ...userInfo,
+              'id': id,
+            });
+          }
+        }
+        
+        return followers;
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting followers: $e');
+      return [];
+    }
+  }
+
+  /// Get following users of a user
+  Future<List<Map<String, dynamic>>> getFollowing(String userId) async {
+    try {
+      // First get following IDs
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/following/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final followingIds = List<int>.from(data['followingIds'] ?? []);
+        
+        // Fetch user info for each following
+        List<Map<String, dynamic>> following = [];
+        for (var id in followingIds) {
+          final userInfo = await getUserById(id.toString());
+          if (userInfo != null) {
+            following.add({
+              ...userInfo,
+              'id': id,
+            });
+          }
+        }
+        
+        return following;
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting following: $e');
+      return [];
+    }
+  }
 }

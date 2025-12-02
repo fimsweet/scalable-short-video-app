@@ -12,6 +12,9 @@ import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -43,6 +46,8 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
   Map<String, bool> _likeStatus = {};
   Map<String, int> _likeCounts = {};
   Map<String, int> _commentCounts = {};
+  Map<String, int> _saveCounts = {};
+  Map<String, int> _shareCounts = {}; // ADD THIS
   
   // Track follow status for each user
   Map<String, bool> _followStatus = {};
@@ -203,14 +208,18 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
     _likeStatus.clear();
     _followStatus.clear();
     _saveStatus.clear();
+    _saveCounts.clear();
+    _shareCounts.clear();
 
     // Initialize counts first (immediate display)
     for (var video in readyVideos) {
       if (video == null || video['id'] == null) continue;
       
       final videoId = video['id'].toString();
-      _likeCounts[videoId] = (video['likeCount'] ?? 0) as int;
-      _commentCounts[videoId] = (video['commentCount'] ?? 0) as int;
+      _likeCounts[videoId] = _parseIntSafe(video['likeCount']);
+      _commentCounts[videoId] = _parseIntSafe(video['commentCount']);
+      _saveCounts[videoId] = _parseIntSafe(video['saveCount']);
+      _shareCounts[videoId] = _parseIntSafe(video['shareCount']);
       
       // Set default values - NOT logged in defaults to false
       _likeStatus[videoId] = false;
@@ -307,6 +316,14 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
     }
   }
 
+  // Add helper method to safely parse int
+  int _parseIntSafe(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
   void _onTabChanged(int index) {
     if (_selectedFeedTab == index) return;
     
@@ -393,11 +410,36 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
     if (mounted) {
       setState(() {
         _saveStatus[videoId] = result['saved'] ?? false;
+        _saveCounts[videoId] = result['saveCount'] ?? (_saveCounts[videoId] ?? 0);
       });
 
-      // Removed SnackBar - icon color change is enough visual feedback
       print(result['saved'] ? '🟡 Video saved' : '⚪ Video unsaved');
     }
+  }
+
+  void _handleShare(String videoId) {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để chia sẻ')),
+      );
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => ShareVideoSheet(
+        videoId: videoId,
+        onShareComplete: (shareCount) {
+          if (mounted) {
+            setState(() {
+              _shareCounts[videoId] = shareCount;
+            });
+          }
+        },
+      ),
+    );
   }
 
   String _formatCount(int count) {
@@ -411,7 +453,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   Future<Map<String, dynamic>> _getUserInfo(String? userId) async {
     if (userId == null || userId.isEmpty) {
-      return {'username': 'user', 'avatar': null};
+      return <String, dynamic>{'username': 'user', 'avatar': null};
     }
     
     if (_userCache.containsKey(userId)) {
@@ -428,7 +470,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
       print('❌ Error fetching user info: $e');
     }
     
-    return {'username': 'user', 'avatar': null};
+    return <String, dynamic>{'username': 'user', 'avatar': null};
   }
 
   Widget _buildCaption(String caption, bool isExpanded) {
@@ -626,7 +668,13 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                         child: FutureBuilder<Map<String, dynamic>>(
                                           future: _getUserInfo(userId),
                                           builder: (context, snapshot) {
-                                            final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
+                                            Map<String, dynamic> userInfo;
+                                            if (snapshot.hasData && snapshot.data != null) {
+                                              userInfo = snapshot.data!;
+                                            } else {
+                                              userInfo = {'username': 'user', 'avatar': null};
+                                            }
+                                            
                                             final videoOwnerId = int.tryParse(userId ?? '');
                                             final currentUserId = _authService.user?['id'] as int?;
                                             final isOwnVideo = videoOwnerId != null && currentUserId != null && videoOwnerId == currentUserId;
@@ -638,41 +686,48 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                               children: [
                                                 Row(
                                                   children: [
-                                                    CircleAvatar(
-                                                      radius: 18,
-                                                      backgroundColor: Colors.grey[800],
-                                                      backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
-                                                          ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
-                                                          : null,
-                                                      child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
-                                                          ? const Icon(Icons.person, color: Colors.white, size: 20)
-                                                          : null,
+                                                    // Avatar - clickable to go to profile
+                                                    GestureDetector(
+                                                      onTap: () => _navigateToProfile(videoOwnerId),
+                                                      child: CircleAvatar(
+                                                        radius: 18,
+                                                        backgroundColor: Colors.grey[800],
+                                                        backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
+                                                            ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                                            : null,
+                                                        child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
+                                                            ? const Icon(Icons.person, color: Colors.white, size: 20)
+                                                            : null,
+                                                      ),
                                                     ),
                                                     const SizedBox(width: 10),
-                                                    Text(
-                                                      userInfo['username']?.toString() ?? 'user',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 14,
-                                                        fontWeight: FontWeight.w600,
-                                                        shadows: [Shadow(blurRadius: 8.0, color: Colors.black87, offset: Offset(1, 1))],
+                                                    // Username - clickable to go to profile
+                                                    GestureDetector(
+                                                      onTap: () => _navigateToProfile(videoOwnerId),
+                                                      child: Text(
+                                                        userInfo['username']?.toString() ?? 'user',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 14,
+                                                          fontWeight: FontWeight.w600,
+                                                          shadows: [Shadow(blurRadius: 8.0, color: Colors.black87, offset: Offset(1, 1))],
+                                                        ),
                                                       ),
                                                     ),
                                                     const SizedBox(width: 8),
+                                                    // Follow button
                                                     if (!isOwnVideo && videoOwnerId != null)
                                                       GestureDetector(
                                                         onTap: () => _handleFollow(videoOwnerId),
                                                         child: Container(
                                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                                           decoration: BoxDecoration(
-                                                            // Solid red background - modern & clean
                                                             color: isFollowing ? const Color(0xFFFF3B5C) : Colors.transparent,
                                                             border: Border.all(
                                                               color: isFollowing ? Colors.transparent : Colors.white, 
                                                               width: 1.5,
                                                             ),
                                                             borderRadius: BorderRadius.circular(4),
-                                                            // Subtle glow effect
                                                             boxShadow: isFollowing ? [
                                                               BoxShadow(
                                                                 color: const Color(0xFFFF3B5C).withOpacity(0.4),
@@ -695,18 +750,22 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                                       ),
                                                   ],
                                                 ),
-                                                const SizedBox(height: 8),
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    setState(() {
-                                                      _expandedCaptions[index] = !(_expandedCaptions[index] ?? false);
-                                                    });
-                                                  },
-                                                  child: _buildCaption(
-                                                    video['description']?.toString() ?? video['title']?.toString() ?? '',
-                                                    _expandedCaptions[index] ?? false,
+                                                // Description/Caption
+                                                if (video['description'] != null && video['description'].toString().isNotEmpty)
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(top: 8),
+                                                    child: GestureDetector(
+                                                      onTap: () {
+                                                        setState(() {
+                                                          _expandedCaptions[index] = !(_expandedCaptions[index] ?? false);
+                                                        });
+                                                      },
+                                                      child: _buildCaption(
+                                                        video['description'].toString(),
+                                                        _expandedCaptions[index] ?? false,
+                                                      ),
+                                                    ),
                                                   ),
-                                                ),
                                               ],
                                             );
                                           },
@@ -720,13 +779,15 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                         bottom: 0,
                                         right: 0,
                                         child: GestureDetector(
-                                          onTap: () {}, // Absorb taps
+                                          onTap: () {},
                                           behavior: HitTestBehavior.opaque,
                                           child: VideoControlsWidget(
                                             isLiked: _likeStatus[videoId] ?? false,
                                             isSaved: _saveStatus[videoId] ?? false,
                                             likeCount: _formatCount(_likeCounts[videoId] ?? 0),
                                             commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                                            saveCount: _formatCount(_saveCounts[videoId] ?? 0),
+                                            shareCount: _formatCount(_shareCounts[videoId] ?? 0),
                                             onLikeTap: () => _handleLike(videoId),
                                             onCommentTap: () {
                                               showModalBottomSheet(
@@ -761,14 +822,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                               );
                                             },
                                             onSaveTap: () => _handleSave(videoId),
-                                            onShareTap: () {
-                                              showModalBottomSheet(
-                                                context: context,
-                                                builder: (context) => const ShareSheetWidget(),
-                                                isScrollControlled: true,
-                                                backgroundColor: Colors.transparent,
-                                              );
-                                            },
+                                            onShareTap: () => _handleShare(videoId),
                                           ),
                                         ),
                                       ),
@@ -795,5 +849,22 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
       ),
     );
   }
-}
 
+  void _navigateToProfile(int? userId) {
+    if (userId == null) return;
+    
+    final currentUserId = _authService.user?['id'] as int?;
+    final isOwnProfile = currentUserId != null && currentUserId == userId;
+    
+    if (isOwnProfile) {
+      mainScreenKey.currentState?.switchToProfileTab();
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UserProfileScreen(userId: userId),
+        ),
+      );
+    }
+  }
+}

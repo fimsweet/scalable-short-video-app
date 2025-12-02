@@ -4,6 +4,9 @@ import 'package:scalable_short_video_app/src/presentation/screens/video_screen.d
 import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 
+// Global key to access MainScreen state
+final GlobalKey<_MainScreenState> mainScreenKey = GlobalKey<_MainScreenState>();
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -17,7 +20,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   
   // Key to force rebuild screens when auth state changes
   int _rebuildKey = 0;
-  
+
+  // Public method to switch to profile tab
+  void switchToProfileTab() {
+    setState(() {
+      _selectedIndex = 1; // Profile tab index
+    });
+  }
+
   @override
   void initState() {
     super.initState();
