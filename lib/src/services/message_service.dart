@@ -125,21 +125,6 @@ class MessageService {
     _currentUserId = null;
   }
 
-  void sendMessage(String recipientId, String content) {
-    if (_socket == null || _currentUserId == null) {
-      print('❌ Cannot send message: not connected');
-      return;
-    }
-
-    print('📤 Sending message to $recipientId: $content');
-
-    _socket!.emit('sendMessage', {
-      'senderId': _currentUserId,
-      'recipientId': recipientId,
-      'content': content,
-    });
-  }
-
   void markAsRead(String conversationId) {
     if (_socket == null || _currentUserId == null) return;
 
@@ -208,6 +193,48 @@ class MessageService {
     } catch (e) {
       print('❌ Error getting unread count: $e');
       return 0;
+    }
+  }
+
+  /// Send message - supports both WebSocket and REST API
+  Future<Map<String, dynamic>> sendMessage({
+    required String recipientId,
+    required String content,
+  }) async {
+    final actualSenderId = _currentUserId ?? '';
+    
+    if (actualSenderId.isEmpty) {
+      print('❌ Cannot send message: no sender ID');
+      return {'success': false};
+    }
+
+    try {
+      // Send via REST API only - server will handle WebSocket broadcast
+      final response = await http.post(
+        Uri.parse('$_baseUrl/messages/send'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'senderId': actualSenderId,
+          'recipientId': recipientId,
+          'content': content,
+        }),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ Message sent successfully');
+        
+        // Emit messageSent locally so UI can update temp message
+        if (data['data'] != null) {
+          _messageSentController.add(Map<String, dynamic>.from(data['data']));
+        }
+        
+        return data;
+      }
+      return {'success': false};
+    } catch (e) {
+      print('❌ Error sending message: $e');
+      return {'success': false};
     }
   }
 

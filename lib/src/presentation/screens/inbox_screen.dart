@@ -34,14 +34,12 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   void _setupListeners() {
-    // Connect to WebSocket
     if (_currentUserId.isNotEmpty) {
       _messageService.connect(_currentUserId);
     }
 
-    // Listen for new messages to update conversation list
     _newMessageSubscription = _messageService.newMessageStream.listen((message) {
-      _loadConversations(); // Reload to update last message
+      _loadConversations();
     });
   }
 
@@ -103,7 +101,7 @@ class _InboxScreenState extends State<InboxScreen> {
           ),
         ),
       ).then((_) {
-        _loadConversations(); // Refresh when returning
+        _loadConversations();
       });
     }
   }
@@ -112,6 +110,40 @@ class _InboxScreenState extends State<InboxScreen> {
   void dispose() {
     _newMessageSubscription?.cancel();
     super.dispose();
+  }
+
+  String _formatTime(String? dateString) {
+    if (dateString == null) return '';
+    try {
+      final date = DateTime.parse(dateString);
+      return timeago.format(date, locale: 'vi');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  String _formatMessagePreview(String? content) {
+    if (content == null || content.isEmpty) {
+      return '';
+    }
+    
+    if (content.startsWith('[VIDEO_SHARE:') && content.endsWith(']')) {
+      return 'Đã chia sẻ một video';
+    }
+    
+    if (content.startsWith('[IMAGE:') && content.endsWith(']')) {
+      return 'Đã gửi một hình ảnh';
+    }
+    
+    if (content.startsWith('[STICKER:') && content.endsWith(']')) {
+      return 'Đã gửi một sticker';
+    }
+    
+    if (content.startsWith('[VOICE:') && content.endsWith(']')) {
+      return 'Đã gửi tin nhắn thoại';
+    }
+    
+    return content;
   }
 
   @override
@@ -137,15 +169,12 @@ class _InboxScreenState extends State<InboxScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_square, color: Colors.white, size: 24),
-            onPressed: () {
-              // TODO: New chat - search users
-            },
+            onPressed: () {},
           ),
         ],
       ),
       body: Column(
         children: [
-          // Search Bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Container(
@@ -166,8 +195,6 @@ class _InboxScreenState extends State<InboxScreen> {
               ),
             ),
           ),
-
-          // Conversation List
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: Colors.white))
@@ -180,11 +207,7 @@ class _InboxScreenState extends State<InboxScreen> {
                             const SizedBox(height: 16),
                             const Text(
                               'Chưa có tin nhắn',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -216,7 +239,6 @@ class _InboxScreenState extends State<InboxScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                     child: Row(
                                       children: [
-                                        // Avatar
                                         Stack(
                                           children: [
                                             CircleAvatar(
@@ -245,8 +267,6 @@ class _InboxScreenState extends State<InboxScreen> {
                                           ],
                                         ),
                                         const SizedBox(width: 12),
-
-                                        // Content
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -278,7 +298,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                 children: [
                                                   Expanded(
                                                     child: Text(
-                                                      conversation['lastMessage'] ?? '',
+                                                      _formatMessagePreview(conversation['lastMessage']?.toString()),
                                                       style: TextStyle(
                                                         color: unreadCount > 0 ? Colors.white : Colors.grey[500],
                                                         fontSize: 14,
@@ -323,15 +343,5 @@ class _InboxScreenState extends State<InboxScreen> {
         ],
       ),
     );
-  }
-
-  String _formatTime(String? dateString) {
-    if (dateString == null) return '';
-    try {
-      final date = DateTime.parse(dateString);
-      return timeago.format(date, locale: 'vi');
-    } catch (e) {
-      return '';
-    }
   }
 }

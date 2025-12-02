@@ -22,6 +22,17 @@ class VideoService {
     }
   }
 
+  // User service URL
+  String get _userServiceUrl {
+    if (kIsWeb) {
+      return 'http://localhost:3000';
+    } else if (Platform.isAndroid) {
+      return 'http://10.0.2.2:3000';
+    } else {
+      return 'http://localhost:3000';
+    }
+  }
+
   String get _videoApiUrl => '$_baseUrl/videos';
 
   /// Upload video to video-service
@@ -91,16 +102,60 @@ class VideoService {
   /// Get video by ID
   Future<Map<String, dynamic>?> getVideoById(String videoId) async {
     try {
-      final response = await http.get(
-        Uri.parse('$_videoApiUrl/$videoId'),
-      );
+      print('📹 Fetching video by ID: $videoId');
       
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/$videoId'),
+      );
+
+      print('📥 Video response: ${response.statusCode}');
+
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final video = json.decode(response.body);
+        
+        print('📹 Video data: $video');
+        print('📹 Video userId: ${video['userId']}');
+        
+        // Fetch username if userId exists
+        if (video['userId'] != null) {
+          try {
+            final userUrl = '$_userServiceUrl/users/id/${video['userId']}';
+            print('👤 Fetching user from: $userUrl');
+            
+            final userResponse = await http.get(
+              Uri.parse(userUrl),
+            );
+            
+            print('👤 User response: ${userResponse.statusCode} - ${userResponse.body}');
+            
+            if (userResponse.statusCode == 200) {
+              final userData = json.decode(userResponse.body);
+              video['username'] = userData['username'] ?? 'user';
+              video['userAvatar'] = userData['avatar'];
+              print('✅ Got username: ${video['username']}');
+            } else {
+              print('❌ User fetch failed: ${userResponse.statusCode}');
+              video['username'] = 'user';
+              video['userAvatar'] = null;
+            }
+          } catch (e) {
+            print('❌ Error fetching user for video: $e');
+            video['username'] = 'user';
+            video['userAvatar'] = null;
+          }
+        } else {
+          print('⚠️ No userId in video');
+          video['username'] = 'user';
+          video['userAvatar'] = null;
+        }
+        
+        return video;
       }
+      
+      print('❌ Video not found: ${response.statusCode}');
       return null;
     } catch (e) {
-      print('❌ Error fetching video: $e');
+      print('❌ Error getting video by id: $e');
       return null;
     }
   }

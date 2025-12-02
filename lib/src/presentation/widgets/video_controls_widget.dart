@@ -9,6 +9,8 @@ class VideoControlsWidget extends StatefulWidget {
   final bool isSaved;
   final String likeCount;
   final String commentCount;
+  final String saveCount;
+  final String shareCount; // NEW
 
   const VideoControlsWidget({
     super.key,
@@ -20,6 +22,8 @@ class VideoControlsWidget extends StatefulWidget {
     this.isSaved = false,
     this.likeCount = '0',
     this.commentCount = '0',
+    this.saveCount = '0',
+    this.shareCount = '0', // NEW
   });
 
   @override
@@ -110,22 +114,22 @@ class _VideoControlsWidgetState extends State<VideoControlsWidget>
               onTap: widget.onCommentTap,
             ),
             const SizedBox(height: 20),
-            // Save button with animation
+            // Save button with animation - NOW WITH COUNT
             _buildAnimatedIconButton(
               animation: _saveScaleAnimation,
               icon: widget.isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-              label: '',
+              label: widget.saveCount,
               onTap: _onSaveTap,
               color: widget.isSaved ? const Color(0xFFFFC107) : Colors.white,
               isActive: widget.isSaved,
             ),
             const SizedBox(height: 20),
-            // Share button
+            // Share button - NOW WITH COUNT
             _buildIconButton(
               icon: Icons.send_rounded,
-              label: '',
+              label: widget.shareCount, // Changed from ''
               onTap: widget.onShareTap,
-              rotationAngle: -0.4, // Slight rotation like Instagram
+              rotationAngle: -0.4,
             ),
           ],
         ),
