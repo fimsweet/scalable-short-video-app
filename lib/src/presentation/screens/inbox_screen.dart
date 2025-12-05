@@ -115,35 +115,72 @@ class _InboxScreenState extends State<InboxScreen> {
   String _formatTime(String? dateString) {
     if (dateString == null) return '';
     try {
-      final date = DateTime.parse(dateString);
+      DateTime date;
+      // Parse ISO string từ server
+      // TypeORM với NestJS trả về Date như "2025-01-15T10:30:00.000Z" hoặc "2025-01-15T10:30:00.000"
+      if (dateString.endsWith('Z')) {
+        // Có 'Z' suffix = UTC, convert sang local
+        date = DateTime.parse(dateString).toLocal();
+      } else if (dateString.contains('+') || dateString.contains('-') && dateString.lastIndexOf('-') > 7) {
+        // Có timezone offset (+07:00 hoặc -05:00), parse bình thường
+        date = DateTime.parse(dateString).toLocal();
+      } else {
+        // Không có timezone info - server trả về local time hoặc UTC không có Z
+        // Assume là UTC và convert sang local
+        final utcDate = DateTime.parse(dateString);
+        date = DateTime.utc(utcDate.year, utcDate.month, utcDate.day, utcDate.hour, utcDate.minute, utcDate.second, utcDate.millisecond).toLocal();
+      }
       return timeago.format(date, locale: 'vi');
     } catch (e) {
+      print('Error parsing date: $e');
       return '';
     }
   }
 
-  String _formatMessagePreview(String? content) {
+  String _formatMessagePreview(String? content, {bool isMe = false, String otherUsername = ''}) {
     if (content == null || content.isEmpty) {
       return '';
     }
     
     if (content.startsWith('[VIDEO_SHARE:') && content.endsWith(']')) {
-      return 'Đã chia sẻ một video';
+      return isMe ? 'Bạn đã chia sẻ một video' : '$otherUsername đã chia sẻ một video';
     }
     
+    // Handle stacked images (4+ images)
+    if (content.startsWith('[STACKED_IMAGE:') && content.endsWith(']')) {
+      final start = content.indexOf(':') + 1;
+      final end = content.lastIndexOf(']');
+      if (start > 0 && end > start) {
+        final urlsString = content.substring(start, end);
+        final imageCount = urlsString.split(',').where((url) => url.isNotEmpty).length;
+        if (isMe) {
+          return 'Bạn đã gửi $imageCount ảnh';
+        } else {
+          return '$otherUsername đã gửi $imageCount ảnh';
+        }
+      }
+      return isMe ? 'Bạn đã gửi nhiều ảnh' : '$otherUsername đã gửi nhiều ảnh';
+    }
+    
+    // Handle single image
     if (content.startsWith('[IMAGE:') && content.endsWith(']')) {
-      return 'Đã gửi một hình ảnh';
+      return isMe ? 'Bạn đã gửi một ảnh' : '$otherUsername đã gửi một ảnh';
+    }
+    
+    // Handle image in text
+    if (content.contains('[IMAGE:')) {
+      return isMe ? 'Bạn đã gửi một ảnh' : '$otherUsername đã gửi một ảnh';
     }
     
     if (content.startsWith('[STICKER:') && content.endsWith(']')) {
-      return 'Đã gửi một sticker';
+      return isMe ? 'Bạn đã gửi một sticker' : '$otherUsername đã gửi một sticker';
     }
     
     if (content.startsWith('[VOICE:') && content.endsWith(']')) {
-      return 'Đã gửi tin nhắn thoại';
+      return isMe ? 'Bạn đã gửi tin nhắn thoại' : '$otherUsername đã gửi tin nhắn thoại';
     }
     
-    return content;
+    return isMe ? 'Bạn: $content' : content;
   }
 
   @override
@@ -225,11 +262,14 @@ class _InboxScreenState extends State<InboxScreen> {
                             final conversation = _conversations[index];
                             final otherUserId = conversation['otherUserId']?.toString() ?? '';
                             final unreadCount = conversation['unreadCount'] ?? 0;
+                            final lastMessageSenderId = conversation['lastMessageSenderId']?.toString() ?? '';
+                            final isMe = lastMessageSenderId == _currentUserId;
 
                             return FutureBuilder<Map<String, dynamic>>(
                               future: _getUserInfo(otherUserId),
                               builder: (context, snapshot) {
                                 final userInfo = snapshot.data ?? {'username': 'User', 'avatar': null};
+                                final otherUsername = userInfo['username'] ?? 'User';
 
                                 return InkWell(
                                   onTap: () => _navigateToChat(conversation),
@@ -298,7 +338,11 @@ class _InboxScreenState extends State<InboxScreen> {
                                                 children: [
                                                   Expanded(
                                                     child: Text(
-                                                      _formatMessagePreview(conversation['lastMessage']?.toString()),
+                                                      _formatMessagePreview(
+                                                        conversation['lastMessage']?.toString(),
+                                                        isMe: isMe,
+                                                        otherUsername: otherUsername,
+                                                      ),
                                                       style: TextStyle(
                                                         color: unreadCount > 0 ? Colors.white : Colors.grey[500],
                                                         fontSize: 14,

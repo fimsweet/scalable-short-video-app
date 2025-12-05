@@ -26,6 +26,31 @@ class AuthService {
   Map<String, dynamic>? get user => _user;
   String? get avatarUrl => _avatarUrl;
   String? get bio => _user?['bio'] as String?;
+  int? get userId => _userId;
+
+  /// Get current user data as a Map
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    if (_user != null) return _user;
+    
+    // Try to load from storage
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('user');
+    if (userJson != null) {
+      return json.decode(userJson);
+    }
+    
+    // Build from individual fields
+    if (_userId != null) {
+      return {
+        'id': _userId,
+        'username': _username,
+        'email': _email,
+        'avatar': _avatarUrl,
+      };
+    }
+    
+    return null;
+  }
 
   // Add callback list
   final List<VoidCallback> _logoutListeners = [];

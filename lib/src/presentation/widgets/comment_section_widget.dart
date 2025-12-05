@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 
 // Theme colors - matching TikTok/Instagram style
 class CommentTheme {
@@ -190,6 +191,18 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     }
   }
 
+  void _navigateToLogin() {
+    Navigator.pop(context); // Close comment sheet first
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+    ).then((result) {
+      if (result == true) {
+        // User logged in successfully, could show the comment sheet again
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
@@ -197,6 +210,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     
     final sheetHeight = screenHeight * 0.65;
+    final isLoggedIn = _authService.isLoggedIn;
     
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
@@ -337,8 +351,8 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                         ),
             ),
             
-            // Reply indicator
-            if (_replyingTo != null)
+            // Reply indicator (only show when logged in)
+            if (_replyingTo != null && isLoggedIn)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
@@ -379,108 +393,181 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                 ),
               ),
             
-            // Input
-            Container(
-              padding: EdgeInsets.only(
-                left: 12,
-                right: 12,
-                top: 10,
-                bottom: bottomPadding + 10,
-              ),
-              decoration: BoxDecoration(
-                color: CommentTheme.background,
-                border: Border(
-                  top: BorderSide(color: CommentTheme.divider, width: 0.5),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: CommentTheme.cardBackground,
-                    backgroundImage: _authService.avatarUrl != null
-                        ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
-                        : null,
-                    child: _authService.avatarUrl == null
-                        ? const Icon(Icons.person, size: 16, color: Colors.white54)
-                        : null,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Container(
-                      constraints: const BoxConstraints(
-                        minHeight: 36,
-                        maxHeight: 100,
-                      ),
-                      decoration: BoxDecoration(
-                        color: CommentTheme.inputBackground,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: TextField(
-                        controller: _textController,
-                        focusNode: _focusNode,
-                        style: const TextStyle(
-                          color: CommentTheme.textPrimary,
-                          fontSize: 14,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Thêm bình luận...',
-                          hintStyle: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
-                          ),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          isDense: true,
-                        ),
-                        enabled: !_isSending,
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendComment(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _isSending ? null : _sendComment,
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: _textController.text.trim().isNotEmpty
-                            ? CommentTheme.accent
-                            : Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: _isSending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Icon(
-                                Icons.send_rounded,
-                                color: _textController.text.trim().isNotEmpty
-                                    ? Colors.white
-                                    : CommentTheme.accent,
-                                size: 18,
-                              ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            // Input section - Different UI for logged in vs logged out
+            isLoggedIn 
+                ? _buildLoggedInInput(bottomPadding)
+                : _buildLoggedOutPrompt(bottomPadding),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoggedInInput(double bottomPadding) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 12,
+        right: 12,
+        top: 10,
+        bottom: bottomPadding + 10,
+      ),
+      decoration: BoxDecoration(
+        color: CommentTheme.background,
+        border: Border(
+          top: BorderSide(color: CommentTheme.divider, width: 0.5),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: CommentTheme.cardBackground,
+            backgroundImage: _authService.avatarUrl != null
+                ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
+                : null,
+            child: _authService.avatarUrl == null
+                ? const Icon(Icons.person, size: 16, color: Colors.white54)
+                : null,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(
+                minHeight: 36,
+                maxHeight: 100,
+              ),
+              decoration: BoxDecoration(
+                color: CommentTheme.inputBackground,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: TextField(
+                controller: _textController,
+                focusNode: _focusNode,
+                style: const TextStyle(
+                  color: CommentTheme.textPrimary,
+                  fontSize: 14,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Thêm bình luận...',
+                  hintStyle: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  isDense: true,
+                ),
+                enabled: !_isSending,
+                maxLines: null,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendComment(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _isSending ? null : _sendComment,
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _textController.text.trim().isNotEmpty
+                    ? CommentTheme.accent
+                    : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: _isSending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Icon(
+                        Icons.send_rounded,
+                        color: _textController.text.trim().isNotEmpty
+                            ? Colors.white
+                            : CommentTheme.accent,
+                        size: 18,
+                      ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoggedOutPrompt(double bottomPadding) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 14,
+        bottom: bottomPadding + 14,
+      ),
+      decoration: BoxDecoration(
+        color: CommentTheme.cardBackground,
+        border: Border(
+          top: BorderSide(color: CommentTheme.divider, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: CommentTheme.inputBackground,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.chat_bubble_outline_rounded,
+              color: Colors.grey[500],
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.4,
+              ),
+              children: [
+                TextSpan(
+                  text: 'Bạn cần ',
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: GestureDetector(
+                    onTap: _navigateToLogin,
+                    child: const Text(
+                      'đăng nhập',
+                      style: TextStyle(
+                        color: CommentTheme.primaryRed,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                TextSpan(
+                  text: ' để bình luận',
+                  style: TextStyle(color: Colors.grey[400]),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
