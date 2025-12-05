@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:image_picker/image_picker.dart';
 
 class MessageService {
   static final MessageService _instance = MessageService._internal();
@@ -47,7 +49,6 @@ class MessageService {
       return;
     }
 
-    // Disconnect existing socket if any
     _socket?.disconnect();
     _socket?.dispose();
     
@@ -58,7 +59,7 @@ class MessageService {
     _socket = IO.io(
       '$_baseUrl/chat',
       IO.OptionBuilder()
-          .setTransports(['websocket', 'polling']) // Try websocket first, fallback to polling
+          .setTransports(['websocket', 'polling'])
           .disableAutoConnect()
           .enableReconnection()
           .setReconnectionAttempts(5)
@@ -83,7 +84,6 @@ class MessageService {
       print('❌ WebSocket error: $error');
     });
 
-    // Listen for new messages
     _socket!.on('newMessage', (data) {
       print('📩 New message received: $data');
       if (data != null) {
@@ -91,7 +91,6 @@ class MessageService {
       }
     });
 
-    // Listen for sent message confirmation
     _socket!.on('messageSent', (data) {
       print('✅ Message sent confirmation: $data');
       if (data != null) {
@@ -99,7 +98,6 @@ class MessageService {
       }
     });
 
-    // Listen for read receipts
     _socket!.on('messagesRead', (data) {
       print('👁️ Messages read: $data');
       if (data != null) {
@@ -107,7 +105,6 @@ class MessageService {
       }
     });
 
-    // Listen for typing indicators
     _socket!.on('userTyping', (data) {
       if (data != null) {
         _userTypingController.add(Map<String, dynamic>.from(data));
@@ -196,7 +193,6 @@ class MessageService {
     }
   }
 
-  /// Send message - supports both WebSocket and REST API
   Future<Map<String, dynamic>> sendMessage({
     required String recipientId,
     required String content,
@@ -209,7 +205,6 @@ class MessageService {
     }
 
     try {
-      // Send via REST API only - server will handle WebSocket broadcast
       final response = await http.post(
         Uri.parse('$_baseUrl/messages/send'),
         headers: {'Content-Type': 'application/json'},
@@ -224,7 +219,6 @@ class MessageService {
         final data = json.decode(response.body);
         print('✅ Message sent successfully');
         
-        // Emit messageSent locally so UI can update temp message
         if (data['data'] != null) {
           _messageSentController.add(Map<String, dynamic>.from(data['data']));
         }
@@ -238,11 +232,123 @@ class MessageService {
     }
   }
 
+  /// Upload image for chat message
+  Future<String?> uploadImage(XFile image) async {
+    try {
+      final bytes = await image.readAsBytes();
+      final filename = image.name.isNotEmpty 
+          ? image.name 
+          : 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      
+      // Determine mime type
+      String mimeType = 'image/jpeg';
+      final ext = filename.toLowerCase().split('.').last;
+      switch (ext) {
+        case 'png':
+          mimeType = 'image/png';
+          break;
+        case 'gif':
+          mimeType = 'image/gif';
+          break;
+        case 'webp':
+          mimeType = 'image/webp';
+          break;
+        case 'jpg':
+        case 'jpeg':
+        default:
+          mimeType = 'image/jpeg';
+      }
+      
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/messages/upload-image'),
+      );
+      
+      // Add file with proper content type
+      request.files.add(http.MultipartFile.fromBytes(
+        'image',
+        bytes,
+        filename: filename,
+        contentType: MediaType.parse(mimeType),
+      ));
+      
+      print('📤 Uploading chat image: $filename (${bytes.length} bytes, $mimeType)');
+      
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      
+      print('📥 Upload response: ${response.statusCode} - $responseBody');
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(responseBody);
+        if (data['success'] == true) {
+          return data['imageUrl'] as String?;
+        }
+      }
+      
+      print('❌ Upload failed with status: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      print('❌ Error uploading image: $e');
+      return null;
+    }
+  }
+
   void dispose() {
     disconnect();
     _newMessageController.close();
     _messageSentController.close();
     _messagesReadController.close();
     _userTypingController.close();
+  }
+
+  // Get conversation settings (mute, pin)
+  Future<Map<String, dynamic>> getConversationSettings(String recipientId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/messages/settings/$recipientId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      
+      // Return defaults if not found
+      return {
+        'isMuted': false,
+        'isPinned': false,
+      };
+    } catch (e) {
+      print('Error getting conversation settings: $e');
+      return {
+        'isMuted': false,
+        'isPinned': false,
+      };
+    }
+  }
+
+  // Update conversation settings
+  Future<bool> updateConversationSettings(
+    String recipientId, {
+    bool? isMuted,
+    bool? isPinned,
+  }) async {
+    try {
+      final body = <String, dynamic>{};
+      if (isMuted != null) body['isMuted'] = isMuted;
+      if (isPinned != null) body['isPinned'] = isPinned;
+
+      final response = await http.put(
+        Uri.parse('$_baseUrl/messages/settings/$recipientId'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error updating conversation settings: $e');
+      return false;
+    }
   }
 }

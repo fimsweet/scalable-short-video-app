@@ -288,4 +288,78 @@ class ApiService {
       return [];
     }
   }
+
+  /// Block a user
+  Future<bool> blockUser(String targetUserId, {String? currentUserId}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/block/$targetUserId'),
+        headers: {'Content-Type': 'application/json'},
+        body: currentUserId != null ? jsonEncode({'userId': currentUserId}) : null,
+      );
+
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('❌ Error blocking user: $e');
+      return false;
+    }
+  }
+
+  /// Unblock a user
+  Future<bool> unblockUser(String targetUserId, {String? currentUserId}) async {
+    try {
+      final request = http.Request('DELETE', Uri.parse('$_baseUrl/users/block/$targetUserId'));
+      request.headers['Content-Type'] = 'application/json';
+      if (currentUserId != null) {
+        request.body = jsonEncode({'userId': currentUserId});
+      }
+      
+      final streamedResponse = await request.send();
+      return streamedResponse.statusCode == 200;
+    } catch (e) {
+      print('❌ Error unblocking user: $e');
+      return false;
+    }
+  }
+
+  /// Get list of blocked users
+  Future<List<Map<String, dynamic>>> getBlockedUsers(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/blocked/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting blocked users: $e');
+      return [];
+    }
+  }
+
+  /// Check if a user is blocked
+  Future<bool> isUserBlocked(String userId, String targetUserId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/blocked/$userId/check/$targetUserId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['isBlocked'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error checking blocked status: $e');
+      return false;
+    }
+  }
 }

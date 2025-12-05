@@ -15,6 +15,7 @@ import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.d
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -341,9 +342,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   Future<void> _handleLike(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để thích video')),
-      );
+      LoginRequiredDialog.show(context, 'thích');
       return;
     }
 
@@ -369,9 +368,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   Future<void> _handleFollow(int videoOwnerId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để theo dõi')),
-      );
+      LoginRequiredDialog.show(context, 'theo dõi');
       return;
     }
 
@@ -396,9 +393,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   Future<void> _handleSave(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để lưu video')),
-      );
+      LoginRequiredDialog.show(context, 'lưu');
       return;
     }
 
@@ -419,9 +414,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   void _handleShare(String videoId) {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để chia sẻ')),
-      );
+      LoginRequiredDialog.show(context, 'chia sẻ');
       return;
     }
 

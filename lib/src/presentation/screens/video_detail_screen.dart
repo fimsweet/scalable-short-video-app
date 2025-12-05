@@ -12,6 +12,7 @@ import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
@@ -163,9 +164,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   Future<void> _handleLike(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để thích video')),
-      );
+      LoginRequiredDialog.show(context, 'thích');
       return;
     }
 
@@ -184,9 +183,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   Future<void> _handleSave(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để lưu video')),
-      );
+      LoginRequiredDialog.show(context, 'lưu');
       return;
     }
 
@@ -207,9 +204,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   void _handleShare(String videoId) {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để chia sẻ')),
-      );
+      LoginRequiredDialog.show(context, 'chia sẻ');
       return;
     }
 

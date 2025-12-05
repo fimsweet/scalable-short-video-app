@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/profile_screen
 import 'package:scalable_short_video_app/src/presentation/screens/video_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
 
 // Global key to access MainScreen state
 final GlobalKey<_MainScreenState> mainScreenKey = GlobalKey<_MainScreenState>();
@@ -132,13 +133,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _navigateToUpload() async {
     if (!_authService.isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng đăng nhập để upload video'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      setState(() => _selectedIndex = 1);
+      LoginRequiredDialog.show(context, 'đăng');
       return;
     }
 
@@ -148,7 +143,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     if (result == true) {
       setState(() {
-        _rebuildKey++; // Force rebuild after upload
+        _rebuildKey++;
         _selectedIndex = 1;
       });
     }
