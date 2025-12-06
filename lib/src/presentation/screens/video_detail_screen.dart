@@ -12,16 +12,22 @@ import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/expandable_caption.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_management_sheet.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
   final int initialIndex;
+  final String? screenTitle;
+  final VoidCallback? onVideoDeleted; // Callback when video is deleted
 
   const VideoDetailScreen({
     super.key,
     required this.videos,
     required this.initialIndex,
+    this.screenTitle,
+    this.onVideoDeleted,
   });
 
   @override
@@ -37,7 +43,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   final SavedVideoService _savedVideoService = SavedVideoService();
 
   late PageController _pageController;
+  late List<dynamic> _videos; // Make videos mutable
   int _currentPage = 0;
+  int _pageViewKey = 0; // Add key for PageView rebuild
 
   Map<String, bool> _likeStatus = {};
   Map<String, int> _likeCounts = {};
@@ -50,6 +58,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   @override
   void initState() {
     super.initState();
+    print('🎬 VideoDetailScreen.initState');
+    print('   Initial videos count: ${widget.videos.length}');
+    print('   Initial index: ${widget.initialIndex}');
+    
+    _videos = List.from(widget.videos); // Create mutable copy
     _currentPage = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
     
@@ -76,7 +89,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     _saveStatus.clear();
     
     // Set all to default (not liked, not saved)
-    for (var video in widget.videos) {
+    for (var video in _videos) {
       if (video == null || video['id'] == null) continue;
       final videoId = video['id'].toString();
       _likeStatus[videoId] = false;
@@ -104,7 +117,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     _shareCounts.clear();
     
     // Initialize counts first
-    for (var video in widget.videos) {
+    for (var video in _videos) {
       if (video == null || video['id'] == null) continue;
 
       final videoId = video['id'].toString();
@@ -117,6 +130,17 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       _likeStatus[videoId] = false;
       _saveStatus[videoId] = false;
     }
+    
+    // Increment view count for the initial video
+    if (_videos.isNotEmpty && 
+        widget.initialIndex < _videos.length &&
+        _videos[widget.initialIndex] != null) {
+      final initialVideo = _videos[widget.initialIndex];
+      if (initialVideo['id'] != null) {
+        final videoId = initialVideo['id'].toString();
+        _videoService.incrementViewCount(videoId);
+      }
+    }
 
     // Load status from server if logged in
     if (_authService.isLoggedIn && _authService.user != null) {
@@ -124,7 +148,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       if (userId != null && userId.isNotEmpty) {
         List<Future<void>> statusFutures = [];
 
-        for (var video in widget.videos) {
+        for (var video in _videos) {
           if (video == null || video['id'] == null) continue;
 
           final videoId = video['id'].toString();
@@ -293,46 +317,78 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.arrow_back, color: Colors.white, size: 20),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+            size: 28,
+            shadows: [
+              Shadow(
+                blurRadius: 12.0,
+                color: Colors.black87,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Text(
-            'Video đã lưu',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+        title: Text(
+          widget.screenTitle ?? 'Video',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            shadows: [
+              Shadow(
+                blurRadius: 12.0,
+                color: Colors.black87,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
         ),
         titleSpacing: 0, // Remove spacing between leading and title
         centerTitle: false, // Align title to the left, close to back button
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        itemCount: widget.videos.length,
-        onPageChanged: (index) {
-          setState(() {
-            _currentPage = index;
-          });
+      body: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          // Only handle at last video when trying to scroll down
+          if (_currentPage == _videos.length - 1) {
+            if (notification is ScrollUpdateNotification) {
+              // Check if trying to scroll down (negative delta means scrolling down)
+              if (notification.metrics.pixels > notification.metrics.maxScrollExtent) {
+                final overscroll = notification.metrics.pixels - notification.metrics.maxScrollExtent;
+                if (overscroll > 100) {
+                  Navigator.pop(context);
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
         },
+        child: PageView.builder(
+          key: ValueKey('pageview_$_pageViewKey'),
+          controller: _pageController,
+          scrollDirection: Axis.vertical,
+          itemCount: _videos.length,
+          physics: const ClampingScrollPhysics(),
+          onPageChanged: (index) {
+            setState(() {
+              _currentPage = index;
+            });
+            
+            // Increment view count when video is viewed
+            final video = _videos[index];
+            if (video != null && video['id'] != null) {
+              final videoId = video['id'].toString();
+              _videoService.incrementViewCount(videoId);
+            }
+          },
         itemBuilder: (context, index) {
-          final video = widget.videos[index];
+          final video = _videos[index];
           if (video == null) {
             return const Center(
               child: Text('Video không hợp lệ', style: TextStyle(color: Colors.white)),
@@ -399,42 +455,32 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                               ),
                               const SizedBox(width: 10),
                               // Username - clickable to go to profile
-                              GestureDetector(
-                                onTap: () => _navigateToProfile(videoOwnerId),
-                                child: Text(
-                                  userInfo['username']?.toString() ?? 'user',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    shadows: [
-                                      Shadow(
-                                        blurRadius: 8.0,
-                                        color: Colors.black87,
-                                        offset: Offset(1, 1),
-                                      ),
-                                    ],
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () => _navigateToProfile(videoOwnerId),
+                                  child: Text(
+                                    userInfo['username']?.toString() ?? 'user',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      shadows: [
+                                        Shadow(
+                                          blurRadius: 8.0,
+                                          color: Colors.black87,
+                                          offset: Offset(1, 1),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Text(
-                            video['description']?.toString() ?? video['title']?.toString() ?? '',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              shadows: [
-                                Shadow(
-                                  blurRadius: 8.0,
-                                  color: Colors.black87,
-                                  offset: Offset(1, 1),
-                                ),
-                              ],
-                            ),
-                            maxLines: 3,
-                            overflow: TextOverflow.ellipsis,
+                          ExpandableCaption(
+                            key: ValueKey('caption_$videoId'),
+                            description: video['description']?.toString() ?? video['title']?.toString() ?? '',
                           ),
                         ],
                       );
@@ -457,7 +503,89 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                       likeCount: _formatCount(_likeCounts[videoId] ?? 0),
                       commentCount: _formatCount(_commentCounts[videoId] ?? 0),
                       saveCount: _formatCount(_saveCounts[videoId] ?? 0),
-                      shareCount: _formatCount(_shareCounts[videoId] ?? 0), // ADD THIS
+                      shareCount: _formatCount(_shareCounts[videoId] ?? 0),
+                      showManageButton: _authService.isLoggedIn && 
+                          _authService.user != null && 
+                          userId != null &&
+                          _authService.user!['id'].toString() == userId,
+                      onManageTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          builder: (modalContext) => VideoManagementSheet(
+                            videoId: videoId,
+                            userId: userId!,
+                            isHidden: video['isHidden'] ?? false,
+                            onDeleted: () {
+                              print('📱 VideoDetailScreen.onDeleted called');
+                              print('   Current page: $_currentPage');
+                              print('   Videos count before removal: ${_videos.length}');
+                              print('   Mounted: $mounted');
+                              
+                              // Remove video from list
+                              if (!mounted) {
+                                print('   ⚠️ Widget not mounted, skipping...');
+                                return;
+                              }
+                              
+                              // If no more videos, close the screen immediately
+                              if (_videos.length <= 1) {
+                                print('   📤 Last video or empty, closing VideoDetailScreen...');
+                                
+                                // Call parent callback first
+                                widget.onVideoDeleted?.call();
+                                
+                                // Then pop after a short delay to ensure callback completes
+                                Future.delayed(const Duration(milliseconds: 100), () {
+                                  if (mounted && Navigator.of(context).canPop()) {
+                                    print('   🚪 Popping navigation...');
+                                    Navigator.of(context).pop();
+                                    print('   ✅ Navigated back to parent');
+                                  }
+                                });
+                                return;
+                              }
+                              
+                              // Remove video and update state
+                              setState(() {
+                                _videos.removeAt(_currentPage);
+                                print('   ✅ Video removed from list');
+                                print('   Videos count after removal: ${_videos.length}');
+                                
+                                // Adjust current page if needed
+                                if (_currentPage >= _videos.length) {
+                                  _currentPage = _videos.length - 1;
+                                  print('   🔄 Adjusted current page to: $_currentPage');
+                                }
+                                
+                                // Increment key to force PageView rebuild
+                                _pageViewKey++;
+                                print('   🔄 PageView key updated to: $_pageViewKey');
+                              });
+                              
+                              // Recreate PageController with new page
+                              _pageController.dispose();
+                              _pageController = PageController(initialPage: _currentPage);
+                              print('   🔄 PageController recreated for page: $_currentPage');
+                              
+                              // Call the callback to refresh parent screen
+                              widget.onVideoDeleted?.call();
+                              print('   ✅ Parent callback called');
+                              
+                              // Force a rebuild
+                              setState(() {});
+                              print('   ✅ State updated, UI should rebuild');
+                            },
+                            onHiddenChanged: (isHidden) {
+                              if (mounted) {
+                                setState(() {
+                                  video['isHidden'] = isHidden;
+                                });
+                              }
+                            },
+                          ),
+                        );
+                      },
                       onLikeTap: () => _handleLike(videoId),
                       onCommentTap: () {
                         showModalBottomSheet(
@@ -487,13 +615,14 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         );
                       },
                       onSaveTap: () => _handleSave(videoId),
-                      onShareTap: () => _handleShare(videoId), // CHANGE THIS
+                      onShareTap: () => _handleShare(videoId),
                     ),
                   ),
                 ),
             ],
           );
         },
+        ),
       ),
     );
   }

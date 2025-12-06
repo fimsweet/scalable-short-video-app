@@ -24,6 +24,18 @@ class _UserVideoGridState extends State<UserVideoGrid> {
     _loadUserVideos();
   }
 
+
+
+
+
+
+
+
+
+
+
+
+
   Future<void> _loadUserVideos() async {
     if (!_authService.isLoggedIn || _authService.user == null) {
       setState(() {
@@ -40,11 +52,26 @@ class _UserVideoGridState extends State<UserVideoGrid> {
 
       final userId = _authService.user!['id'].toString();
       final videos = await _videoService.getUserVideos(userId);
-      final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
+      
+      // Debug: Log first video data
+      if (videos.isNotEmpty) {
+        final firstVideo = videos[0];
+        print('🔍 First video from backend:');
+        print('   Video ID: ${firstVideo['id']}');
+        print('   likeCount: ${firstVideo['likeCount']}');
+        print('   commentCount: ${firstVideo['commentCount']}');
+        print('   saveCount: ${firstVideo['saveCount']}');
+        print('   shareCount: ${firstVideo['shareCount']}');
+        print('   viewCount: ${firstVideo['viewCount']}');
+        print('   isHidden: ${firstVideo['isHidden']}');
+      }
+      
+      // Show only non-hidden videos
+      final allVideos = videos.where((v) => v != null && v['isHidden'] != true).toList();
 
       if (mounted) {
         setState(() {
-          _videos = readyVideos;
+          _videos = allVideos;
           _isLoading = false;
         });
       }
@@ -117,9 +144,11 @@ class _UserVideoGridState extends State<UserVideoGrid> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadUserVideos,
-      child: GridView.builder(
+    return Stack(
+      children: [
+        RefreshIndicator(
+          onRefresh: _loadUserVideos,
+          child: GridView.builder(
         padding: const EdgeInsets.all(2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
@@ -130,8 +159,10 @@ class _UserVideoGridState extends State<UserVideoGrid> {
         itemCount: _videos.length,
         itemBuilder: (context, index) {
           final video = _videos[index];
+          final isProcessing = video['status'] != 'ready';
           
           print('📹 Video ${index}: ${video['id']}');
+          print('   status: ${video['status']}');
           print('   thumbnailUrl: ${video['thumbnailUrl']}');
           
           final thumbnailUrl = video['thumbnailUrl'] != null
@@ -140,17 +171,27 @@ class _UserVideoGridState extends State<UserVideoGrid> {
           
           print('   Full thumbnail URL: $thumbnailUrl');
 
+          final isHidden = video['isHidden'] == true;
+
           return GestureDetector(
-            onTap: () {
+            onTap: isProcessing ? null : () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => VideoDetailScreen(
-                    videos: _videos,
-                    initialIndex: index,
+                    videos: _videos.where((v) => v['status'] == 'ready').toList(),
+                    initialIndex: _videos.where((v) => v['status'] == 'ready').toList().indexOf(video),
+                    screenTitle: 'Video đã đăng',
+                    onVideoDeleted: () {
+                      // Refresh the videos list
+                      _loadUserVideos();
+                    },
                   ),
                 ),
-              );
+              ).then((_) {
+                // Refresh videos to update view counts
+                _loadUserVideos();
+              });
             },
             child: Container(
               decoration: BoxDecoration(
@@ -205,6 +246,121 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                           ),
                         ),
                       ),
+                    
+                    // Dark gradient overlay from top to bottom (smooth fade)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: IgnorePointer(
+                        child: Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.75),
+                                Colors.black.withOpacity(0.4),
+                                Colors.black.withOpacity(0.15),
+                                Colors.transparent,
+                              ],
+                              stops: const [0.0, 0.35, 0.65, 1.0],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    // Hidden overlay (full screen semi-transparent)
+                    if (isHidden && !isProcessing)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withOpacity(0.6),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.visibility_off_rounded,
+                                  size: 32,
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Ẩn',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    
+                    // Processing overlay or view count
+                    if (isProcessing)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withOpacity(0.7),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Đang xử lý',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Positioned(
+                        bottom: 6,
+                        left: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.play_arrow,
+                                size: 14,
+                                color: Colors.white,
+                              ),
+                              const SizedBox(width: 2),
+                              Text(
+                                _formatCount(video['viewCount'] ?? 0),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -212,6 +368,8 @@ class _UserVideoGridState extends State<UserVideoGrid> {
           );
         },
       ),
+        ),
+      ],
     );
   }
 

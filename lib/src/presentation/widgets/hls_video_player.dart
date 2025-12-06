@@ -8,18 +8,21 @@ import 'web_video_player_stub.dart'
 class HLSVideoPlayer extends StatefulWidget {
   final String videoUrl;
   final bool autoPlay;
+  final ValueChanged<HLSVideoPlayerState?>? onPlayerCreated;
 
   const HLSVideoPlayer({
     super.key,
     required this.videoUrl,
     this.autoPlay = true,
+    this.onPlayerCreated,
   });
 
   @override
-  State<HLSVideoPlayer> createState() => _HLSVideoPlayerState();
+  State<HLSVideoPlayer> createState() => HLSVideoPlayerState();
 }
 
-class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
+// Export state class so it can be accessed from outside
+class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller;
   bool _isInitialized = false;
   bool _hasError = false;
@@ -55,14 +58,27 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initializePlayer();
+    // Notify parent about player state creation
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onPlayerCreated?.call(this);
+    });
+  }
+
+  // Public methods to control video from outside
+  void pauseVideo() {
+    _controller?.pause();
+  }
+  
+  void resumeVideo() {
+    if (_isInitialized && !(_controller?.value.isPlaying ?? false)) {
+      _controller?.play();
+    }
   }
 
   Future<void> _initializePlayer() async {
     if (_isDisposed) return;
     
     try {
-      print('🎬 Initializing HLS player for: ${widget.videoUrl}');
-      
       // Dispose previous controller if exists
       await _controller?.dispose();
       
@@ -90,9 +106,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
         }
       }
 
-      print('✅ HLS player initialized successfully');
     } catch (e) {
-      print('❌ Error initializing video player: $e');
       if (!_isDisposed && mounted) {
         setState(() {
           _hasError = true;
@@ -104,7 +118,6 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
 
   void _videoListener() {
     if (_controller?.value.hasError ?? false) {
-      print('❌ Video player error: ${_controller?.value.errorDescription}');
       if (!_isDisposed && mounted) {
         setState(() {
           _hasError = true;
@@ -159,8 +172,12 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
     if (widget.autoPlay != oldWidget.autoPlay) {
       if (widget.autoPlay) {
         _controller?.play();
+        _controller?.setLooping(true);
+        print('▶️ Video resumed (now active)');
       } else {
+        // Pause IMMEDIATELY when scrolling away
         _controller?.pause();
+        print('⏸️ Video paused immediately (scrolled away)');
       }
     }
   }
@@ -379,7 +396,7 @@ class _HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObse
           right: 12,
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.only(top: 40), // Giảm từ 40 xuống 8 để sát trên cùng
+              padding: const EdgeInsets.only(top: 40),
               child: GestureDetector(
                 onTap: _toggleMute,
                 child: Container(

@@ -1,69 +1,95 @@
 import 'package:flutter/material.dart';
-import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
-import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 
-class SavedVideoGrid extends StatefulWidget {
-  const SavedVideoGrid({super.key});
+class HiddenVideoGrid extends StatefulWidget {
+  const HiddenVideoGrid({super.key});
 
   @override
-  State<SavedVideoGrid> createState() => _SavedVideoGridState();
+  State<HiddenVideoGrid> createState() => _HiddenVideoGridState();
 }
 
-class _SavedVideoGridState extends State<SavedVideoGrid> {
-  final SavedVideoService _savedVideoService = SavedVideoService();
-  final AuthService _authService = AuthService();
+class _HiddenVideoGridState extends State<HiddenVideoGrid> {
   final VideoService _videoService = VideoService();
+  final AuthService _authService = AuthService();
   
-  List<dynamic> _savedVideos = [];
+  List<dynamic> _hiddenVideos = [];
   bool _isLoading = true;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _authService.addLogoutListener(_onLogout);
     _authService.addLoginListener(_onLogin);
-    _loadSavedVideos();
+    _loadHiddenVideos();
   }
 
   void _onLogin() {
-    print('🔔 SavedVideoGrid: Login event - loading saved videos');
-    _loadSavedVideos();
+    print('🔔 HiddenVideoGrid: Login event - loading hidden videos');
+    _loadHiddenVideos();
   }
 
   void _onLogout() {
-    print('🔔 SavedVideoGrid: Logout event - clearing saved videos');
+    print('🔔 HiddenVideoGrid: Logout event - clearing hidden videos');
     if (mounted) {
       setState(() {
-        _savedVideos = [];
+        _hiddenVideos = [];
         _isLoading = false;
       });
     }
   }
 
-  Future<void> _loadSavedVideos() async {
+  Future<void> _loadHiddenVideos() async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+      });
       return;
     }
 
-    setState(() => _isLoading = true);
-
     try {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+
       final userId = _authService.user!['id'].toString();
-      final videos = await _savedVideoService.getSavedVideos(userId);
+      final videos = await _videoService.getUserVideos(userId);
+
+      // Debug: Log all videos data
+      print('🔍 All videos from backend: ${videos.length}');
+      for (var video in videos) {
+        print('   Video ID: ${video['id']}');
+        print('   likeCount: ${video['likeCount']}');
+        print('   commentCount: ${video['commentCount']}');
+        print('   saveCount: ${video['saveCount']}');
+        print('   shareCount: ${video['shareCount']}');
+        print('   viewCount: ${video['viewCount']}');
+        print('   isHidden: ${video['isHidden']}');
+        print('   ---');
+      }
+
+      // Filter only hidden videos
+      final hiddenVideos = videos
+          .where((video) => video['isHidden'] == true)
+          .toList();
 
       if (mounted) {
         setState(() {
-          _savedVideos = videos;
+          _hiddenVideos = hiddenVideos;
           _isLoading = false;
         });
+        print('🔒 Loaded ${hiddenVideos.length} hidden videos');
       }
     } catch (e) {
-      print('❌ Error loading saved videos: $e');
+      print('❌ Error loading hidden videos: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _error = 'Không thể tải video: $e';
+          _isLoading = false;
+        });
       }
     }
   }
@@ -83,19 +109,37 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
       );
     }
 
-    if (_savedVideos.isEmpty) {
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text(_error!, style: const TextStyle(color: Colors.white)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadHiddenVideos,
+              child: const Text('Thử lại'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_hiddenVideos.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.bookmark_border,
+              Icons.lock_outline,
               size: 80,
               color: Colors.grey[700],
             ),
             const SizedBox(height: 16),
             const Text(
-              'Chưa có video đã lưu',
+              'Chưa có video đã ẩn',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,
@@ -104,7 +148,7 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Lưu video yêu thích để xem lại sau',
+              'Video đã ẩn chỉ hiển thị cho người theo dõi',
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
@@ -116,18 +160,18 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
     }
 
     return RefreshIndicator(
-      onRefresh: _loadSavedVideos,
+      onRefresh: _loadHiddenVideos,
       child: GridView.builder(
         padding: const EdgeInsets.all(2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           crossAxisSpacing: 2,
           mainAxisSpacing: 2,
-          childAspectRatio: 1.0,
+          childAspectRatio: 1.0, // Square tiles like other grids
         ),
-        itemCount: _savedVideos.length,
+        itemCount: _hiddenVideos.length,
         itemBuilder: (context, index) {
-          final video = _savedVideos[index];
+          final video = _hiddenVideos[index];
           
           final thumbnailUrl = video['thumbnailUrl'] != null
               ? _videoService.getVideoUrl(video['thumbnailUrl'])
@@ -139,14 +183,17 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
                 context,
                 MaterialPageRoute(
                   builder: (_) => VideoDetailScreen(
-                    videos: _savedVideos,
+                    videos: _hiddenVideos,
                     initialIndex: index,
-                    screenTitle: 'Video đã lưu',
+                    screenTitle: 'Video đã ẩn',
+                    onVideoDeleted: () {
+                      // Refresh the hidden videos list
+                      _loadHiddenVideos();
+                    },
                   ),
                 ),
               ).then((_) {
-                // Refresh videos to update view counts
-                _loadSavedVideos();
+                _loadHiddenVideos();
               });
             },
             child: Container(
@@ -157,6 +204,7 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
+                    // Thumbnail
                     if (thumbnailUrl != null)
                       Image.network(
                         thumbnailUrl,
@@ -182,50 +230,45 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
                         ),
                       ),
                     
-                    // Dark gradient overlay from top to bottom (smooth fade)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
+                    // Dark gradient overlay
+                    Positioned.fill(
                       child: IgnorePointer(
                         child: Container(
-                          height: 100,
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                Colors.black.withOpacity(0.75),
-                                Colors.black.withOpacity(0.4),
-                                Colors.black.withOpacity(0.15),
+                                Colors.black.withOpacity(0.7),
                                 Colors.transparent,
+                                Colors.black.withOpacity(0.85),
                               ],
-                              stops: const [0.0, 0.35, 0.65, 1.0],
+                              stops: const [0.0, 0.4, 1.0],
                             ),
                           ),
                         ),
                       ),
                     ),
                     
-                    // Bookmark indicator
+                    // Lock icon indicator at top right
                     Positioned(
-                      top: 6,
-                      right: 6,
+                      top: 8,
+                      right: 8,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.4),
-                          borderRadius: BorderRadius.circular(4),
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Icon(
-                          Icons.bookmark,
-                          size: 16,
+                          Icons.lock,
+                          size: 18,
                           color: Colors.white,
                         ),
                       ),
                     ),
                     
-                    // View count overlay
+                    // View count overlay at bottom (like other grids)
                     Positioned(
                       bottom: 6,
                       left: 6,

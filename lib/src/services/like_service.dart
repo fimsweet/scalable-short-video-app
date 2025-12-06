@@ -89,4 +89,28 @@ class LikeService {
       return false;
     }
   }
+
+  Future<List<Map<String, dynamic>>> getUserLikedVideos(String userId) async {
+    try {
+      print('📥 Fetching liked videos for user: $userId');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/likes/user/$userId'),
+      );
+
+      print('📦 Liked videos response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        print('✅ Found ${data.length} liked videos');
+        return data.cast<Map<String, dynamic>>();
+      }
+      
+      print('⚠️ Unexpected status code: ${response.statusCode}');
+      return [];
+    } catch (e) {
+      print('❌ Error fetching liked videos: $e');
+      return [];
+    }
+  }
 }

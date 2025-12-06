@@ -407,6 +407,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 builder: (_) => VideoDetailScreen(
                   videos: _userVideos,
                   initialIndex: index,
+                  onVideoDeleted: () {
+                    // Refresh the profile videos when a video is deleted
+                    _loadUserData();
+                  },
                 ),
               ),
             );

@@ -54,11 +54,30 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
 
     try {
       final userId = _authService.user!['id'].toString();
-      final followers = await _apiService.getFollowers(userId);
+      
+      // Load followers and blocked users in parallel
+      final results = await Future.wait([
+        _apiService.getFollowers(userId),
+        _apiService.getBlockedUsers(userId),
+      ]);
+      
+      final followers = results[0] as List<dynamic>;
+      final blockedUsers = results[1] as List<dynamic>;
+      
+      // Get set of blocked user IDs for fast lookup
+      final blockedUserIds = blockedUsers
+          .map((u) => u['blockedUserId']?.toString() ?? u['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      
+      // Filter out blocked users from followers list
+      final filteredList = followers
+          .where((user) => !blockedUserIds.contains(user['id']?.toString()))
+          .toList();
       
       if (mounted) {
         setState(() {
-          _followers = List<Map<String, dynamic>>.from(followers);
+          _followers = List<Map<String, dynamic>>.from(filteredList);
           _filteredFollowers = _followers;
           _isLoading = false;
         });
@@ -172,15 +191,22 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
       if (mounted) {
         widget.onShareComplete?.call(lastShareCount);
         
+        // Get the root overlay BEFORE popping the sheet
+        final overlay = Overlay.of(context, rootOverlay: true);
+        
         Navigator.pop(context); // Close sheet
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Đã chia sẻ cho $successCount người'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
+        // Show floating toast using root overlay
+        late OverlayEntry overlayEntry;
+        overlayEntry = OverlayEntry(
+          builder: (context) => _AnimatedShareToast(
+            message: 'Đã chia sẻ cho $successCount người',
+            onDismiss: () {
+              overlayEntry.remove();
+            },
           ),
         );
+        overlay.insert(overlayEntry);
       }
     } catch (e) {
       print('❌ Error sharing video: $e');
@@ -624,6 +650,114 @@ class _ConfirmShareDialog extends StatelessWidget {
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Animated floating toast widget
+class _AnimatedShareToast extends StatefulWidget {
+  final String message;
+  final VoidCallback onDismiss;
+
+  const _AnimatedShareToast({
+    required this.message,
+    required this.onDismiss,
+  });
+
+  @override
+  State<_AnimatedShareToast> createState() => _AnimatedShareToastState();
+}
+
+class _AnimatedShareToastState extends State<_AnimatedShareToast>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _slideAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    
+    // Slide from bottom up (positive to 0)
+    _slideAnimation = Tween<double>(begin: 50, end: 0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+    
+    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
+    
+    _controller.forward();
+    
+    // Auto dismiss after 2 seconds
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) {
+        _controller.reverse().then((_) {
+          widget.onDismiss();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: MediaQuery.of(context).padding.bottom + 100,
+      left: 0,
+      right: 0,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, child) {
+          return Transform.translate(
+            offset: Offset(0, _slideAnimation.value),
+            child: Opacity(
+              opacity: _fadeAnimation.value,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF3A3A3C), // Dark grey color
+                    borderRadius: BorderRadius.circular(25),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
