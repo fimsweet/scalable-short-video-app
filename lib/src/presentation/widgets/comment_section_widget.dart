@@ -826,7 +826,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Text(
                           widget.comment['content'] ?? '',
                           style: const TextStyle(
@@ -900,7 +900,9 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                   ),
                   
                   Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
+                      const SizedBox(height: 2),
                       GestureDetector(
                         onTap: _toggleLike,
                         child: _likeScaleAnimation != null
@@ -961,7 +963,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                         child: Icon(
                           Icons.more_horiz_rounded,
                           color: Colors.grey[600],
-                          size: 16,
+                          size: 20,
                         ),
                       ),
                     ],
@@ -1210,7 +1212,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                         ),
                       ],
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: 5),
                     _buildReplyContent(widget.reply['content'] ?? ''),
                     const SizedBox(height: 6),
                     GestureDetector(
@@ -1232,7 +1234,9 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
               ),
               
               Column(
+                mainAxisAlignment: MainAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 2),
                   GestureDetector(
                     onTap: _toggleLike,
                     child: _likeScaleAnimation != null
@@ -1246,7 +1250,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                                     Icon(
                                       _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                                       color: _isLiked ? CommentTheme.likeRed : Colors.grey[600],
-                                      size: 16,
+                                      size: 20,
                                     ),
                                     if (_likeCount > 0)
                                       Padding(
@@ -1255,7 +1259,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                                           widget.formatCount(_likeCount),
                                           style: TextStyle(
                                             color: _isLiked ? CommentTheme.likeRed : Colors.grey[600],
-                                            fontSize: 9,
+                                            fontSize: 10,
                                           ),
                                         ),
                                       ),
@@ -1269,7 +1273,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                               Icon(
                                 _isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                                 color: _isLiked ? CommentTheme.likeRed : Colors.grey[600],
-                                size: 16,
+                                size: 20,
                               ),
                               if (_likeCount > 0)
                                 Padding(
@@ -1278,7 +1282,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                                     widget.formatCount(_likeCount),
                                     style: TextStyle(
                                       color: _isLiked ? CommentTheme.likeRed : Colors.grey[600],
-                                      fontSize: 9,
+                                      fontSize: 10,
                                     ),
                                   ),
                                 ),
@@ -1291,7 +1295,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                     child: Icon(
                       Icons.more_horiz_rounded,
                       color: Colors.grey[600],
-                      size: 14,
+                      size: 20,
                     ),
                   ),
                 ],

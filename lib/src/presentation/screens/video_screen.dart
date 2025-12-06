@@ -15,16 +15,18 @@ import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.d
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_management_sheet.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
 
   @override
-  State<VideoScreen> createState() => _VideoScreenState();
+  State<VideoScreen> createState() => VideoScreenState();
 }
 
-class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientMixin {
+// Export state class so it can be accessed from MainScreen
+class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
@@ -36,6 +38,12 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
   List<dynamic> _videos = [];
   bool _isLoading = true;
   String? _error;
+  
+  // Track if this tab is currently visible
+  bool _isTabVisible = true;
+  
+  // Store reference to current video player state
+  HLSVideoPlayerState? _currentVideoPlayerState;
   
   // Track expanded state for each video caption
   Map<int, bool> _expandedCaptions = {};
@@ -72,6 +80,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pageController = PageController();
     
     _pageController!.addListener(() {
@@ -97,6 +106,43 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
       _loadVideos();
     });
   }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Pause video when app goes to background
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pauseCurrentVideo();
+    } else if (state == AppLifecycleState.resumed) {
+      // Resume video when app comes back if tab is visible
+      if (_isTabVisible) {
+        _resumeCurrentVideo();
+      }
+    }
+  }
+  
+  // Call this when tab becomes visible
+  void onTabVisible() {
+    print('🎬 VideoScreen: Tab became visible');
+    _isTabVisible = true;
+    _resumeCurrentVideo();
+  }
+  
+  // Call this when tab becomes invisible
+  void onTabInvisible() {
+    print('⏸️ VideoScreen: Tab became invisible');
+    _isTabVisible = false;
+    _pauseCurrentVideo();
+  }
+  
+  void _pauseCurrentVideo() {
+    _currentVideoPlayerState?.pauseVideo();
+  }
+  
+  void _resumeCurrentVideo() {
+    _currentVideoPlayerState?.resumeVideo();
+  }
 
   // Remove these methods - no longer needed
   // void _onLogin() { ... }
@@ -113,6 +159,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Remove listener cleanup
     // _authService.removeLogoutListener(_onLogout);
     // _authService.removeLoginListener(_onLogin);
@@ -122,6 +169,7 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
     _likeCounts.clear();
     _commentCounts.clear();
     _followStatus.clear();
+    _currentVideoPlayerState = null;
     super.dispose();
   }
 
@@ -471,36 +519,18 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
 
     const int maxLinesCollapsed = 2;
     
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          height: 1.3,
-          shadows: [
-            Shadow(
-              blurRadius: 8.0,
-              color: Colors.black87,
-              offset: Offset(1, 1),
-            ),
-          ],
-        ),
-        children: [
-          TextSpan(
-            text: isExpanded 
-                ? caption 
-                : (caption.length > 100 
-                    ? '${caption.substring(0, 100)}...' 
-                    : caption),
+    return Text(
+      caption,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        height: 1.3,
+        shadows: [
+          Shadow(
+            blurRadius: 8.0,
+            color: Colors.black87,
+            offset: Offset(1, 1),
           ),
-          if (!isExpanded && caption.length > 100)
-            const TextSpan(
-              text: ' xem thêm',
-              style: TextStyle(
-                color: Colors.white70,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
         ],
       ),
       maxLines: isExpanded ? null : maxLinesCollapsed,
@@ -603,6 +633,13 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                 setState(() {
                                   _currentPage = index;
                                 });
+                                
+                                // Increment view count when video is viewed
+                                final video = _videos[index];
+                                if (video != null && video['id'] != null) {
+                                  final videoId = video['id'].toString();
+                                  _videoService.incrementViewCount(videoId);
+                                }
                               },
                               itemBuilder: (context, index) {
                                 final video = _videos[index];
@@ -619,7 +656,8 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                     : '';
                                 final userId = video['userId']?.toString();
                                 
-                                final shouldLoadVideo = (index - _currentPage).abs() <= 1;
+                                // Load videos within range of 2 to allow smooth pause transition
+                                final shouldLoadVideo = (index - _currentPage).abs() <= 2;
                                 
                                 return Stack(
                                   children: [
@@ -628,7 +666,12 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                       HLSVideoPlayer(
                                         key: ValueKey('video_${_selectedFeedTab}_$videoId'), // Unique key per tab
                                         videoUrl: hlsUrl,
-                                        autoPlay: index == _currentPage,
+                                        autoPlay: index == _currentPage, // Only play current video
+                                        onPlayerCreated: (playerState) {
+                                          if (index == _currentPage) {
+                                            _currentVideoPlayerState = playerState;
+                                          }
+                                        },
                                       )
                                     else if (!shouldLoadVideo)
                                       Container(
@@ -775,6 +818,29 @@ class _VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClient
                                           onTap: () {},
                                           behavior: HitTestBehavior.opaque,
                                           child: VideoControlsWidget(
+                                            showManageButton: _authService.isLoggedIn && 
+                                                _authService.user != null && 
+                                                _authService.user!['id'].toString() == userId,
+                                            onManageTap: () {
+                                              showModalBottomSheet(
+                                                context: context,
+                                                backgroundColor: Colors.transparent,
+                                                builder: (context) => VideoManagementSheet(
+                                                  videoId: videoId,
+                                                  userId: userId!,
+                                                  isHidden: video['isHidden'] ?? false,
+                                                  onDeleted: () {
+                                                    Navigator.pop(context);
+                                                    _loadVideos();
+                                                  },
+                                                  onHiddenChanged: (isHidden) {
+                                                    setState(() {
+                                                      video['isHidden'] = isHidden;
+                                                    });
+                                                  },
+                                                ),
+                                              );
+                                            },
                                             isLiked: _likeStatus[videoId] ?? false,
                                             isSaved: _saveStatus[videoId] ?? false,
                                             likeCount: _formatCount(_likeCounts[videoId] ?? 0),

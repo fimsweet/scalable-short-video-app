@@ -3,11 +3,16 @@ import 'package:scalable_short_video_app/src/presentation/screens/login_screen.d
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/user_video_grid.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/hidden_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/saved_video_grid.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/liked_video_grid.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
+import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart'; // Import InboxScreen
 import 'package:image_picker/image_picker.dart';
@@ -27,6 +32,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   final ImagePicker _picker = ImagePicker();
   final FollowService _followService = FollowService();
   final NotificationService _notificationService = NotificationService();
+  final LikeService _likeService = LikeService();
   
   // Animation controller for message icon - Changed from late to nullable to fix Hot Reload error
   AnimationController? _messageIconController;
@@ -36,6 +42,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   int _followerCount = 0;
   int _followingCount = 0;
   int _unreadCount = 0;
+  int _likedCount = 0;
+  int _videoGridKey = 0; // Key to force rebuild video grid
 
   @override
   void initState() {
@@ -45,6 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     _initAnimations();
 
     _loadFollowStats();
+    _loadLikedCount();
     
     // Start polling for notifications
     if (_authService.isLoggedIn && _authService.user != null) {
@@ -82,6 +91,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Force rebuild video grid when screen is rebuilt
+    setState(() {
+      _videoGridKey++;
+    });
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       // Reload stats when app resumes
@@ -94,6 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void didChangeDependencies() {
     super.didChangeDependencies();
     _loadFollowStats();
+    _loadLikedCount();
     _initAnimations();
     // Screen is rebuilt by MainScreen when auth state changes
   }
@@ -121,6 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 setState(() {
                   _followerCount = 0;
                   _followingCount = 0;
+                  _likedCount = 0;
                 });
                 
                 print('🔄 Logout successful - rebuilding UI');
@@ -265,6 +285,45 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     }
   }
 
+  Future<void> _loadLikedCount() async {
+    if (_authService.isLoggedIn && _authService.user != null) {
+      try {
+        final userIdValue = _authService.user!['id'];
+        if (userIdValue == null) {
+          if (mounted) {
+            setState(() {
+              _likedCount = 0;
+            });
+          }
+          return;
+        }
+        
+        final userId = userIdValue.toString();
+        final videos = await _likeService.getUserLikedVideos(userId);
+        
+        if (mounted) {
+          setState(() {
+            _likedCount = videos.length;
+          });
+          print('✅ Liked count: ${videos.length}');
+        }
+      } catch (e) {
+        print('❌ Error loading liked count: $e');
+        if (mounted) {
+          setState(() {
+            _likedCount = 0;
+          });
+        }
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _likedCount = 0;
+        });
+      }
+    }
+  }
+
   void _onMessageIconTap() async {
     // Play animation if available (don't block navigation if animation is null)
     if (_messageIconController != null) {
@@ -350,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   // Logged IN view
   Widget _buildLoggedIn() {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Theme(
         data: Theme.of(context).copyWith(
           splashColor: Colors.transparent,
@@ -365,14 +424,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           appBar: AppBar(
             backgroundColor: Colors.black,
             elevation: 0,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_authService.username ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                const Icon(Icons.keyboard_arrow_down),
-                const SizedBox(width: 4),
-                Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)),
-              ],
+            title: const Text(
+              'Hồ sơ cá nhân',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
             actions: [
               // Notification icon
@@ -530,7 +584,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                _ProfileStat(count: '0', label: 'bài viết', onTap: () => _navigateToFollowerFollowing(2)),
+                                _ProfileStat(count: _likedCount.toString(), label: 'đã thích', onTap: null),
                                 _ProfileStat(count: _followerCount.toString(), label: 'người theo dõi', onTap: () => _navigateToFollowerFollowing(0)),
                                 _ProfileStat(count: _followingCount.toString(), label: 'đang theo dõi', onTap: () => _navigateToFollowerFollowing(1)),
                               ],
@@ -572,8 +626,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               ),
             ],
             body: Column(
-              children: const [
-                TabBar(
+              children: [
+                const TabBar(
                   indicatorColor: Colors.white,
                   indicatorSize: TabBarIndicatorSize.label,
                   indicatorWeight: 1.5,
@@ -581,18 +635,22 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   overlayColor: MaterialStatePropertyAll(Colors.transparent),
                   labelColor: Colors.white,
                   unselectedLabelColor: Colors.grey,
+                  dividerColor: Colors.transparent, // Remove gray divider line
+                  dividerHeight: 0, // Remove divider height
                   tabs: [
                     Tab(icon: Icon(Icons.grid_on)),
-                    Tab(icon: Icon(Icons.bookmark_border)), // Changed from movie to bookmark
-                    Tab(icon: Icon(Icons.person_pin_outlined)),
+                    Tab(icon: Icon(Icons.lock_outline)),
+                    Tab(icon: Icon(Icons.bookmark_border)),
+                    Tab(icon: Icon(Icons.favorite_border)),
                   ],
                 ),
                 Expanded(
                   child: TabBarView(
                     children: [
-                      UserVideoGrid(),
-                      SavedVideoGrid(), // Changed from placeholder
-                      Center(child: Text('Tagged')),
+                      UserVideoGrid(key: ValueKey('user_videos_$_videoGridKey')),
+                      HiddenVideoGrid(key: ValueKey('hidden_videos_$_videoGridKey')),
+                      const SavedVideoGrid(),
+                      const LikedVideoGrid(),
                     ],
                   ),
                 ),

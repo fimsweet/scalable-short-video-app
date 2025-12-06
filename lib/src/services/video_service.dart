@@ -161,6 +161,26 @@ class VideoService {
   }
 
   /// Get videos by user ID
+  Future<void> incrementViewCount(String videoId) async {
+    try {
+      print('👁️ Incrementing view count for video: $videoId');
+      
+      final response = await http.post(
+        Uri.parse('$_baseUrl/videos/$videoId/view'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ View count updated: ${data['viewCount']}');
+      } else {
+        print('⚠️ Failed to increment view count: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('❌ Error incrementing view count: $e');
+    }
+  }
+
   Future<List<dynamic>> getUserVideos(String userId) async {
     try {
       print('📹 Fetching videos for user $userId...');
@@ -295,6 +315,58 @@ class VideoService {
     } catch (e) {
       print('❌ Error fetching following videos: $e');
       return [];
+    }
+  }
+
+  /// Toggle hide status of a video
+  Future<Map<String, dynamic>> toggleHideVideo(String videoId, String userId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/videos/$videoId/hide'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'userId': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to toggle hide video');
+      }
+    } catch (e) {
+      print('❌ Error toggling hide video: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a video
+  Future<bool> deleteVideo(String videoId, String userId) async {
+    try {
+      print('🗑️ Deleting video: $videoId');
+      final response = await http.post(
+        Uri.parse('$_baseUrl/videos/$videoId/delete'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'userId': userId}),
+      );
+
+      print('📥 Delete response: ${response.statusCode}');
+      print('📥 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          print('✅ Video deleted successfully');
+          return true;
+        } else {
+          print('❌ Delete failed: ${data['message']}');
+          throw Exception(data['message'] ?? 'Failed to delete video');
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to delete video');
+      }
+    } catch (e) {
+      print('❌ Error deleting video: $e');
+      rethrow; // Re-throw to handle in UI
     }
   }
 }

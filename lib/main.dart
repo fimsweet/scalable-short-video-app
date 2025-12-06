@@ -26,6 +26,10 @@ class MyApp extends StatelessWidget {
       ),
       home: MainScreen(key: mainScreenKey),
       debugShowCheckedModeBanner: false,
+      // Add builder to ensure we always have a navigator
+      builder: (context, child) {
+        return child ?? const SizedBox.shrink();
+      },
     );
   }
 }

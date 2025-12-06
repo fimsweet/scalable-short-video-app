@@ -101,21 +101,26 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
         js.context.callMethod('eval', ['''
           (function() {
             var video = document.getElementById('video-$_viewId');
+            
             if (Hls.isSupported()) {
               var hls = new Hls({
                 debug: false,
                 enableWorker: true,
               });
+              
               hls.loadSource('${widget.videoUrl}');
               hls.attachMedia(video);
+              
               hls.on(Hls.Events.MANIFEST_PARSED, function() {
                 video.play().catch(function(e) {
-                  console.log('Play failed:', e);
+                  // Silently ignore autoplay errors
                 });
               });
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
               video.src = '${widget.videoUrl}';
-              video.play();
+              video.play().catch(function(e) {
+                // Silently ignore autoplay errors
+              });
             }
           })();
         ''']);

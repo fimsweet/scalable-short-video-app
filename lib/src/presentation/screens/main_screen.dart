@@ -21,6 +21,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   
   // Key to force rebuild screens when auth state changes
   int _rebuildKey = 0;
+  
+  // Key to access VideoScreen state for pausing/resuming videos
+  final GlobalKey<VideoScreenState> _videoScreenKey = GlobalKey<VideoScreenState>();
 
   // Public method to switch to profile tab
   void switchToProfileTab() {
@@ -72,7 +75,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         key: ValueKey('main_stack_$_rebuildKey'), // Force rebuild when key changes
         index: _selectedIndex,
         children: [
-          VideoScreen(key: ValueKey('video_screen_$_rebuildKey')),
+          VideoScreen(key: _videoScreenKey),
           ProfileScreen(key: ValueKey('profile_screen_$_rebuildKey')),
         ],
       ),
@@ -116,9 +119,16 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             if (index == 1) {
               _navigateToUpload();
             } else if (index == 2) {
+              // Switching to Profile tab - pause video
+              _videoScreenKey.currentState?.onTabInvisible();
               setState(() => _selectedIndex = 1);
             } else {
+              // Switching to Feed tab - resume video
+              final wasOnProfile = _selectedIndex == 1;
               setState(() => _selectedIndex = 0);
+              if (wasOnProfile) {
+                _videoScreenKey.currentState?.onTabVisible();
+              }
             }
           },
           backgroundColor: Colors.black,

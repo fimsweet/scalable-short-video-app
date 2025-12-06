@@ -91,6 +91,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showEmojiPicker = false;
   bool _isUserBlocked = false; // Track if I blocked the recipient
   bool _amIBlocked = false; // Track if recipient blocked me
+  bool _isCheckingBlockStatus = true; // Track if we're still checking block status
 
   // Common emojis for quick access - CHANGED TO STATIC CONST
   static const List<String> _commonEmojis = [
@@ -227,10 +228,16 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _isUserBlocked = isBlocked;
           _amIBlocked = amIBlocked;
+          _isCheckingBlockStatus = false;
         });
       }
     } catch (e) {
       print('Error checking blocked status: $e');
+      if (mounted) {
+        setState(() {
+          _isCheckingBlockStatus = false;
+        });
+      }
     }
   }
 
@@ -752,7 +759,10 @@ class _ChatScreenState extends State<ChatScreen> {
           recipientAvatar: widget.recipientAvatar,
         ),
       ),
-    );
+    ).then((_) {
+      // Refresh blocked status when returning from options
+      _checkBlockedStatus();
+    });
   }
 
   @override
@@ -941,15 +951,18 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           // Image attachment preview - use safe getter
-          if (_hasSelectedImages && !_isUserBlocked && !_amIBlocked) _buildImageAttachmentPreview(),
+          if (_hasSelectedImages && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus) _buildImageAttachmentPreview(),
           // Show blocked message, cannot contact message, or input area
-          if (_isUserBlocked)
+          // Hide input while checking block status to prevent flicker
+          if (_isCheckingBlockStatus)
+            const SizedBox.shrink() // Don't show anything while checking
+          else if (_isUserBlocked)
             _buildBlockedMessage()
           else if (_amIBlocked)
             _buildCannotContactMessage()
           else
             _buildInputArea(bottomInset, bottomPadding),
-          if (_showEmojiPicker && !_isUserBlocked && !_amIBlocked) _buildEmojiPicker(),
+          if (_showEmojiPicker && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus) _buildEmojiPicker(),
         ],
       ),
     );
@@ -1443,7 +1456,6 @@ class _MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProviderStateMixin {
   bool _showTime = false;
   late AnimationController _animationController;
-  late Animation<double> _heightAnimation;
   late Animation<double> _opacityAnimation;
 
   @override
@@ -1452,9 +1464,6 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
-    );
-    _heightAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
     );
     _opacityAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
@@ -1531,11 +1540,15 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       );
     }
     
-    // Đã gửi
-    return Text(
-      'Đã gửi',
-      style: TextStyle(color: Colors.grey[600], fontSize: 11),
-    );
+    // Đã gửi - Only show if showStatus is true (latest message)
+    if (widget.showStatus) {
+      return Text(
+        'Đã gửi',
+        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+      );
+    }
+    
+    return const SizedBox.shrink();
   }
 
   @override
@@ -1586,42 +1599,40 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
               ),
             ],
           ),
-          // Status and time row - show when tapped (animated)
-          AnimatedBuilder(
-            animation: _animationController,
-            builder: (context, child) {
-              return ClipRect(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  heightFactor: _heightAnimation.value,
-                  child: Opacity(
-                    opacity: _opacityAnimation.value,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Column(
-                        crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+          // Status and time row - only show when needed
+          if (_showTime || (widget.isMe && widget.showStatus))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!widget.isMe) const SizedBox(width: 36),
+                  // Time - animated (only visible on tap)
+                  if (_showTime)
+                    AnimatedBuilder(
+                      animation: _animationController,
+                      builder: (context, child) {
+                        return Opacity(
+                          opacity: _opacityAnimation.value,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (!widget.isMe) const SizedBox(width: 36),
-                              Text(widget.time, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+                              Text(
+                                widget.time,
+                                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                              ),
+                              if (widget.isMe && widget.showStatus) const SizedBox(width: 8),
                             ],
                           ),
-                          // Show status for my messages when tapped
-                          if (widget.isMe && widget.showStatus)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: _buildStatusIndicator(),
-                            ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  ),
-                ),
-              );
-            },
-          ),
+                  // Status - always visible for latest message
+                  if (widget.isMe && widget.showStatus) _buildStatusIndicator(),
+                ],
+              ),
+            ),
         ],
       ),
     );

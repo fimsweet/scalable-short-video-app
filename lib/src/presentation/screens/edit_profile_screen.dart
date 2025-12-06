@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -24,6 +25,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   
   bool _isLoading = false;
   bool _isUploading = false;
+  
+  // Privacy settings
+  bool _isPrivateAccount = false;
+  bool _commentsDisabled = false;
+  bool _allowSaveVideo = true;
+  bool _pushNotificationsEnabled = true;
 
   @override
   void initState() {
@@ -242,49 +249,135 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             _buildSectionTitle('Thông tin cơ bản'),
             _buildEditField(
               label: 'Tên',
-              hint: 'Thêm tên',
+              hint: 'Thêm Tên',
               controller: _nameController,
               showArrow: true,
             ),
             _buildEditField(
-              label: 'TikTok ID',
-              hint: _usernameController.text,
-              controller: _usernameController,
-              showArrow: true,
-              enabled: false,
-            ),
-            _buildProfileLink(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Tiểu sử'),
-            _buildEditField(
-              label: '',
-              hint: 'Viết mô tả ngắn gọn để cho mọi người biết bạn là ai hoặc tài khoản của bạn tập trung vào chủ đề gì',
+              label: 'Tiểu sử',
+              hint: 'Thêm tiểu sử',
               controller: _bioController,
-              maxLines: 4,
+              maxLines: 3,
               showArrow: true,
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Liên kết'),
-            _buildEditField(
-              label: '',
-              hint: 'Thêm liên kết',
-              controller: _linkController,
-              showArrow: true,
+            _buildSectionTitle('Quyền riêng tư và bảo mật'),
+            _buildSettingSwitch(
+              title: 'Tài khoản riêng tư',
+              subtitle: 'Chỉ người theo dõi mới có thể xem video của bạn',
+              value: _isPrivateAccount,
+              onChanged: (value) {
+                setState(() {
+                  _isPrivateAccount = value;
+                });
+                _showSnackBar(
+                  value ? 'Đã bật tài khoản riêng tư' : 'Đã tắt tài khoản riêng tư',
+                  Colors.grey[700]!,
+                );
+              },
+            ),
+            _buildMenuItem(
+              title: 'Ai có thể xem video của bạn',
+              subtitle: 'Mọi người',
+              onTap: () {
+                // TODO: Navigate to video privacy settings
+              },
+            ),
+            _buildMenuItem(
+              title: 'Ai có thể gửi tin nhắn cho bạn',
+              subtitle: 'Bạn bè',
+              onTap: () {
+                // TODO: Navigate to message privacy settings
+              },
+            ),
+            _buildMenuItem(
+              title: 'Ai có thể Duet hoặc Stitch với video của bạn',
+              subtitle: 'Mọi người',
+              onTap: () {
+                // TODO: Navigate to duet/stitch settings
+              },
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Khác'),
+            _buildSectionTitle('Tương tác'),
             _buildMenuItem(
-              title: 'Chương trình gây quỹ',
-              subtitle: 'Thêm chương trình gây quỹ...',
-              onTap: () {},
+              title: 'Quản lý bình luận',
+              subtitle: 'Lọc và kiểm duyệt bình luận',
+              onTap: () {
+                // TODO: Navigate to comment management
+              },
             ),
-            _buildMenuItem(
-              title: 'AI Self',
-              subtitle: 'Thêm AI Self',
-              onTap: () {},
+            _buildSettingSwitch(
+              title: 'Tắt bình luận',
+              subtitle: 'Tắt bình luận cho tất cả video của bạn',
+              value: _commentsDisabled,
+              onChanged: (value) {
+                setState(() {
+                  _commentsDisabled = value;
+                });
+                _showSnackBar(
+                  value ? 'Đã tắt bình luận' : 'Đã bật bình luận',
+                  Colors.grey[700]!,
+                );
+              },
+            ),
+            _buildSettingSwitch(
+              title: 'Cho phép lưu video',
+              subtitle: 'Người khác có thể lưu video của bạn',
+              value: _allowSaveVideo,
+              onChanged: (value) {
+                setState(() {
+                  _allowSaveVideo = value;
+                });
+                _showSnackBar(
+                  value ? 'Đã cho phép lưu video' : 'Đã tắt lưu video',
+                  Colors.grey[700]!,
+                );
+              },
             ),
             const SizedBox(height: 24),
-            _buildSectionTitle('Thay đổi thứ tự hiển thị'),
+            _buildSectionTitle('Thông báo'),
+            _buildMenuItem(
+              title: 'Cài đặt thông báo',
+              subtitle: 'Quản lý thông báo bạn nhận được',
+              onTap: () {
+                // TODO: Navigate to notification settings
+              },
+            ),
+            _buildSettingSwitch(
+              title: 'Thông báo đẩy',
+              subtitle: 'Nhận thông báo về hoạt động mới',
+              value: _pushNotificationsEnabled,
+              onChanged: (value) {
+                setState(() {
+                  _pushNotificationsEnabled = value;
+                });
+                _showSnackBar(
+                  value ? 'Đã bật thông báo đẩy' : 'Đã tắt thông báo đẩy',
+                  Colors.grey[700]!,
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Nội dung và hiển thị'),
+            _buildMenuItem(
+              title: 'Ngôn ngữ',
+              subtitle: 'Tiếng Việt',
+              onTap: () {
+                // TODO: Navigate to language settings
+              },
+            ),
+            _buildMenuItem(
+              title: 'Quản lý tài khoản',
+              subtitle: 'Bảo mật, mật khẩu, xóa tài khoản',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AccountManagementScreen(),
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 100),
           ],
         ),
@@ -410,50 +503,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildProfileLink() {
-    return Column(
-      children: [
-        Container(
-          color: Colors.black,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'tiktok.com/@${_usernameController.text}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.copy,
-                  color: Colors.grey[600],
-                  size: 20,
-                ),
-                onPressed: () {
-                  _showSnackBar('Đã sao chép liên kết', Colors.grey[700]!);
-                },
-              ),
-            ],
-          ),
-        ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: Colors.grey[900],
-        ),
-      ],
-    );
-  }
-
   Widget _buildMenuItem({
     required String title,
     required String subtitle,
@@ -497,6 +546,58 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(left: 16),
+          height: 0.5,
+          color: Colors.grey[900],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingSwitch({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Column(
+      children: [
+        Container(
+          color: Colors.black,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: value,
+                onChanged: onChanged,
+                activeColor: Colors.blue,
+              ),
+            ],
           ),
         ),
         Container(

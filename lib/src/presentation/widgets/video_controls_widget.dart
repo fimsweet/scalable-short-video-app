@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 class VideoControlsWidget extends StatefulWidget {
+  final VoidCallback? onManageTap;
   final VoidCallback onLikeTap;
   final VoidCallback onCommentTap;
   final VoidCallback onSaveTap;
   final VoidCallback onShareTap;
   final bool isLiked;
   final bool isSaved;
+  final bool showManageButton;
   final String likeCount;
   final String commentCount;
   final String saveCount;
@@ -14,12 +16,14 @@ class VideoControlsWidget extends StatefulWidget {
 
   const VideoControlsWidget({
     super.key,
+    this.onManageTap,
     required this.onLikeTap,
     required this.onCommentTap,
     required this.onSaveTap,
     required this.onShareTap,
     this.isLiked = false,
     this.isSaved = false,
+    this.showManageButton = false,
     this.likeCount = '0',
     this.commentCount = '0',
     this.saveCount = '0',
@@ -97,6 +101,15 @@ class _VideoControlsWidgetState extends State<VideoControlsWidget>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Manage button (owner only)
+            if (widget.showManageButton) ...[
+              _buildIconButton(
+                icon: Icons.more_horiz,
+                label: '',
+                onTap: widget.onManageTap,
+              ),
+              const SizedBox(height: 20),
+            ],
             // Like button with animation
             _buildAnimatedIconButton(
               animation: _likeScaleAnimation,
