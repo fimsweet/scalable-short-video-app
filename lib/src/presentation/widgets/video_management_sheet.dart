@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
-class VideoManagementSheet extends StatelessWidget {
+class VideoManagementSheet extends StatefulWidget {
   final String videoId;
   final String userId;
   final bool isHidden;
@@ -16,6 +17,31 @@ class VideoManagementSheet extends StatelessWidget {
     required this.onDeleted,
     required this.onHiddenChanged,
   });
+
+  @override
+  State<VideoManagementSheet> createState() => _VideoManagementSheetState();
+}
+
+class _VideoManagementSheetState extends State<VideoManagementSheet> {
+  final ThemeService _themeService = ThemeService();
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
 
   void _showSuccessDialog(BuildContext context, String message) {
     showModalBottomSheet(
@@ -64,9 +90,9 @@ class VideoManagementSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1C1C1C),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         child: Column(
@@ -78,7 +104,7 @@ class VideoManagementSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[600],
+                color: _themeService.textSecondaryColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -86,34 +112,34 @@ class VideoManagementSheet extends StatelessWidget {
             // Hide/Show option
             ListTile(
               leading: Icon(
-                isHidden ? Icons.visibility : Icons.visibility_off,
-                color: Colors.white,
+                widget.isHidden ? Icons.visibility : Icons.visibility_off,
+                color: _themeService.iconColor,
               ),
               title: Text(
-                isHidden ? 'Hiển thị video' : 'Ẩn video',
-                style: const TextStyle(
-                  color: Colors.white,
+                widget.isHidden ? 'Hiển thị video' : 'Ẩn video',
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
                   fontSize: 16,
                 ),
               ),
               subtitle: Text(
-                isHidden 
+                widget.isHidden 
                     ? 'Video sẽ hiển thị cho mọi người' 
                     : 'Chỉ người theo dõi của bạn mới thấy video này',
                 style: TextStyle(
-                  color: Colors.grey[400],
+                  color: _themeService.textSecondaryColor,
                   fontSize: 13,
                 ),
               ),
               onTap: () async {
                 try {
                   final videoService = VideoService();
-                  final result = await videoService.toggleHideVideo(videoId, userId);
-                  final newHiddenStatus = result['isHidden'] ?? !isHidden;
+                  final result = await videoService.toggleHideVideo(widget.videoId, widget.userId);
+                  final newHiddenStatus = result['isHidden'] ?? !widget.isHidden;
                   
                   if (context.mounted) {
                     Navigator.pop(context);
-                    onHiddenChanged(newHiddenStatus);
+                    widget.onHiddenChanged(newHiddenStatus);
                     
                     final message = newHiddenStatus 
                         ? 'Video chỉ hiển thị cho người theo dõi' 
@@ -161,7 +187,7 @@ class VideoManagementSheet extends StatelessWidget {
               },
             ),
 
-            const Divider(color: Colors.grey, height: 1),
+            Divider(color: _themeService.dividerColor, height: 1),
 
             // Delete option
             ListTile(
@@ -180,7 +206,7 @@ class VideoManagementSheet extends StatelessWidget {
               subtitle: Text(
                 'Video sẽ bị xóa vĩnh viễn',
                 style: TextStyle(
-                  color: Colors.grey[400],
+                  color: _themeService.textSecondaryColor,
                   fontSize: 13,
                 ),
               ),
@@ -200,16 +226,16 @@ class VideoManagementSheet extends StatelessWidget {
                 child: TextButton(
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
-                    backgroundColor: Colors.grey[800],
+                    backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Hủy',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: _themeService.textPrimaryColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -226,13 +252,14 @@ class VideoManagementSheet extends StatelessWidget {
 
   void _showDeleteConfirmation(BuildContext context) {
     final videoService = VideoService();
+    final themeService = ThemeService();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: themeService.backgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: SafeArea(
           child: Padding(
@@ -246,10 +273,10 @@ class VideoManagementSheet extends StatelessWidget {
                   size: 64,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Xóa video này?',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: themeService.textPrimaryColor,
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
@@ -259,7 +286,7 @@ class VideoManagementSheet extends StatelessWidget {
                   'Video sẽ bị xóa vĩnh viễn và không thể khôi phục.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.grey[400],
+                    color: themeService.textSecondaryColor,
                     fontSize: 15,
                   ),
                 ),
@@ -270,16 +297,16 @@ class VideoManagementSheet extends StatelessWidget {
                       child: TextButton(
                         onPressed: () => Navigator.pop(context),
                         style: TextButton.styleFrom(
-                          backgroundColor: Colors.grey[800],
+                          backgroundColor: themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Hủy',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: themeService.textPrimaryColor,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -291,8 +318,8 @@ class VideoManagementSheet extends StatelessWidget {
                       child: TextButton(
                         onPressed: () async {
                           print('🗑️ DELETE BUTTON PRESSED');
-                          print('   VideoId: $videoId');
-                          print('   UserId: $userId');
+                          print('   VideoId: ${widget.videoId}');
+                          print('   UserId: ${widget.userId}');
                           
                           // Get the navigator before any async operations
                           final navigator = Navigator.of(context);
@@ -317,7 +344,7 @@ class VideoManagementSheet extends StatelessWidget {
                             
                             print('   Step 3: Calling deleteVideo API...');
                             // Delete video
-                            await videoService.deleteVideo(videoId, userId);
+                            await videoService.deleteVideo(widget.videoId, widget.userId);
                             
                             print('   Step 4: Video deleted successfully!');
                             
@@ -332,7 +359,7 @@ class VideoManagementSheet extends StatelessWidget {
                             
                             print('   Step 6: Calling onDeleted callback...');
                             // Call onDeleted callback - this will handle navigation
-                            onDeleted();
+                            widget.onDeleted();
                             
                             print('   ✅ Delete process completed!');
                             

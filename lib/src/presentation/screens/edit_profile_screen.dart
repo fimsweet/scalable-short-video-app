@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -17,6 +18,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ImagePicker _picker = ImagePicker();
+  final ThemeService _themeService = ThemeService();
   
   late TextEditingController _nameController;
   late TextEditingController _usernameController;
@@ -39,6 +41,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController = TextEditingController(text: _authService.username ?? '');
     _bioController = TextEditingController(text: _authService.bio ?? '');
     _linkController = TextEditingController();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -47,6 +56,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController.dispose();
     _bioController.dispose();
     _linkController.dispose();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -166,35 +176,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: _themeService.iconColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Sửa hồ sơ',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         actions: [
           TextButton(
             onPressed: _isLoading ? null : _saveProfile,
             child: _isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: _themeService.textPrimaryColor,
                     ),
                   )
-                : const Text(
+                : Text(
                     'Lưu',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: _themeService.textPrimaryColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -217,13 +227,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       Positioned.fill(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.black54,
+                            color: _themeService.isLightMode ? Colors.white54 : Colors.black54,
                             shape: BoxShape.circle,
                           ),
-                          child: const Center(
+                          child: Center(
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: _themeService.textPrimaryColor,
                             ),
                           ),
                         ),
@@ -272,7 +282,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 });
                 _showSnackBar(
                   value ? 'Đã bật tài khoản riêng tư' : 'Đã tắt tài khoản riêng tư',
-                  Colors.grey[700]!,
+                  _themeService.snackBarBackground,
                 );
               },
             ),
@@ -316,7 +326,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 });
                 _showSnackBar(
                   value ? 'Đã tắt bình luận' : 'Đã bật bình luận',
-                  Colors.grey[700]!,
+                  _themeService.snackBarBackground,
                 );
               },
             ),
@@ -330,7 +340,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 });
                 _showSnackBar(
                   value ? 'Đã cho phép lưu video' : 'Đã tắt lưu video',
-                  Colors.grey[700]!,
+                  _themeService.snackBarBackground,
                 );
               },
             ),
@@ -353,12 +363,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 });
                 _showSnackBar(
                   value ? 'Đã bật thông báo đẩy' : 'Đã tắt thông báo đẩy',
-                  Colors.grey[700]!,
+                  _themeService.snackBarBackground,
                 );
               },
             ),
             const SizedBox(height: 24),
             _buildSectionTitle('Nội dung và hiển thị'),
+            _buildSettingSwitch(
+              title: 'Chế độ sáng',
+              subtitle: 'Chuyển đổi giữa giao diện sáng và tối',
+              value: _themeService.isLightMode,
+              onChanged: (value) {
+                _themeService.toggleTheme(value);
+                _showSnackBar(
+                  value ? 'Đã bật chế độ sáng' : 'Đã bật chế độ tối',
+                  _themeService.snackBarBackground,
+                );
+              },
+            ),
             _buildMenuItem(
               title: 'Ngôn ngữ',
               subtitle: 'Tiếng Việt',
@@ -393,7 +415,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       
       return CircleAvatar(
         radius: 48,
-        backgroundColor: Colors.grey[800],
+        backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
         child: ClipOval(
           child: Image.network(
             fullUrl,
@@ -401,7 +423,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             height: 96,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              return const Icon(Icons.person, size: 48, color: Colors.white);
+              return Icon(Icons.person, size: 48, color: _themeService.textPrimaryColor);
             },
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
@@ -416,8 +438,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     return CircleAvatar(
       radius: 48,
-      backgroundColor: Colors.grey[800],
-      child: const Icon(Icons.person, size: 48, color: Colors.white),
+      backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+      child: Icon(Icons.person, size: 48, color: _themeService.textPrimaryColor),
     );
   }
 
@@ -425,11 +447,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[900],
+      color: _themeService.sectionTitleBackground,
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.grey[600],
+          color: _themeService.textSecondaryColor,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
@@ -448,7 +470,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       children: [
         Container(
-          color: Colors.black,
+          color: _themeService.inputBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             crossAxisAlignment: maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
@@ -458,8 +480,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   width: 100,
                   child: Text(
                     label,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
                       fontSize: 16,
                     ),
                   ),
@@ -470,13 +492,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   enabled: enabled,
                   maxLines: maxLines,
                   style: TextStyle(
-                    color: enabled ? Colors.white : Colors.grey[600],
+                    color: enabled ? _themeService.textPrimaryColor : _themeService.textSecondaryColor,
                     fontSize: 16,
                   ),
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: TextStyle(
-                      color: Colors.grey[600],
+                      color: _themeService.textSecondaryColor,
                       fontSize: 16,
                     ),
                     border: InputBorder.none,
@@ -488,7 +510,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               if (showArrow)
                 Icon(
                   Icons.chevron_right,
-                  color: Colors.grey[600],
+                  color: _themeService.textSecondaryColor,
                   size: 24,
                 ),
             ],
@@ -497,7 +519,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Container(
           margin: const EdgeInsets.only(left: 16),
           height: 0.5,
-          color: Colors.grey[900],
+          color: _themeService.dividerColor,
         ),
       ],
     );
@@ -513,7 +535,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         InkWell(
           onTap: onTap,
           child: Container(
-            color: Colors.black,
+            color: _themeService.inputBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
@@ -523,8 +545,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
                           fontSize: 16,
                         ),
                       ),
@@ -532,7 +554,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: Colors.grey[600],
+                          color: _themeService.textSecondaryColor,
                           fontSize: 14,
                         ),
                       ),
@@ -541,7 +563,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 Icon(
                   Icons.chevron_right,
-                  color: Colors.grey[600],
+                  color: _themeService.textSecondaryColor,
                   size: 24,
                 ),
               ],
@@ -551,7 +573,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Container(
           margin: const EdgeInsets.only(left: 16),
           height: 0.5,
-          color: Colors.grey[900],
+          color: _themeService.dividerColor,
         ),
       ],
     );
@@ -566,7 +588,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Column(
       children: [
         Container(
-          color: Colors.black,
+          color: _themeService.inputBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
@@ -576,8 +598,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
                         fontSize: 16,
                       ),
                     ),
@@ -585,7 +607,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.grey[600],
+                        color: _themeService.textSecondaryColor,
                         fontSize: 14,
                       ),
                     ),
@@ -596,6 +618,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 value: value,
                 onChanged: onChanged,
                 activeColor: Colors.blue,
+                activeTrackColor: Colors.blue.withOpacity(0.5),
+                inactiveThumbColor: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[600],
+                inactiveTrackColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
               ),
             ],
           ),
@@ -603,7 +628,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Container(
           margin: const EdgeInsets.only(left: 16),
           height: 0.5,
-          color: Colors.grey[900],
+          color: _themeService.dividerColor,
         ),
       ],
     );

@@ -2,6 +2,69 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'dart:ui' as ui;
+
+// Custom painter for dashed border
+class DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double dashWidth;
+  final double dashSpace;
+  final double borderRadius;
+
+  DashedBorderPainter({
+    required this.color,
+    this.strokeWidth = 2,
+    this.dashWidth = 8,
+    this.dashSpace = 4,
+    this.borderRadius = 16,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final path = Path();
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Radius.circular(borderRadius),
+    );
+    path.addRRect(rrect);
+
+    final dashPath = _createDashedPath(path, dashWidth, dashSpace);
+    canvas.drawPath(dashPath, paint);
+  }
+
+  Path _createDashedPath(Path source, double dashWidth, double dashSpace) {
+    final dashedPath = Path();
+    for (final metric in source.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final nextDash = distance + dashWidth;
+        final nextSpace = nextDash + dashSpace;
+        dashedPath.addPath(
+          metric.extractPath(distance, nextDash.clamp(0.0, metric.length)),
+          Offset.zero,
+        );
+        distance = nextSpace;
+      }
+    }
+    return dashedPath;
+  }
+
+  @override
+  bool shouldRepaint(DashedBorderPainter oldDelegate) {
+    return color != oldDelegate.color ||
+        strokeWidth != oldDelegate.strokeWidth ||
+        dashWidth != oldDelegate.dashWidth ||
+        dashSpace != oldDelegate.dashSpace ||
+        borderRadius != oldDelegate.borderRadius;
+  }
+}
 
 class UploadVideoScreen extends StatefulWidget {
   const UploadVideoScreen({super.key});
@@ -16,9 +79,22 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   final ImagePicker _picker = ImagePicker();
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
 
   XFile? _selectedVideo;
   bool _isUploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   Future<void> _pickVideo() async {
     try {
@@ -215,33 +291,34 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   @override
   void dispose() {
     _descriptionController.dispose();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: _themeService.iconColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Upload Video',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         actions: [
           if (!_isUploading)
             TextButton(
               onPressed: _uploadVideo,
-              child: const Text(
+              child: Text(
                 'Đăng',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: _themeService.textPrimaryColor,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -260,28 +337,32 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                 // Video Preview Area
                 GestureDetector(
                   onTap: _isUploading ? null : _pickVideo,
-                  child: Container(
-                    width: double.infinity,
-                    height: 400,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[900],
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: _selectedVideo != null 
-                            ? Colors.white.withOpacity(0.3)
-                            : Colors.grey[800]!.withOpacity(0.5),
-                        width: 2,
-                      ),
-                      boxShadow: _selectedVideo != null
-                          ? [
-                              BoxShadow(
-                                color: Colors.pink.withOpacity(0.1),
-                                blurRadius: 20,
-                                spreadRadius: 2,
-                              ),
-                            ]
-                          : null,
+                  child: CustomPaint(
+                    painter: DashedBorderPainter(
+                      color: _selectedVideo != null 
+                          ? (_themeService.isLightMode ? Colors.black.withOpacity(0.3) : Colors.white.withOpacity(0.3))
+                          : (_themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!),
+                      strokeWidth: 2,
+                      dashWidth: 10,
+                      dashSpace: 5,
+                      borderRadius: 16,
                     ),
+                    child: Container(
+                      width: double.infinity,
+                      height: 400,
+                      decoration: BoxDecoration(
+                        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: _selectedVideo != null
+                            ? [
+                                BoxShadow(
+                                  color: Colors.pink.withOpacity(0.1),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                              ]
+                            : null,
+                      ),
                     child: _selectedVideo == null
                         ? Column(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -305,21 +386,21 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                 child: Container(
                                   margin: const EdgeInsets.all(2),
                                   decoration: BoxDecoration(
-                                    color: Colors.grey[900],
+                                    color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
                                     borderRadius: BorderRadius.circular(22),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.cloud_upload_outlined,
                                     size: 56,
-                                    color: Colors.white,
+                                    color: _themeService.textPrimaryColor,
                                   ),
                                 ),
                               ),
                               const SizedBox(height: 32),
-                              const Text(
+                              Text(
                                 'Chọn video từ thư viện',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: _themeService.textPrimaryColor,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
                                   letterSpacing: 0.5,
@@ -329,7 +410,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.grey[800]?.withOpacity(0.5),
+                                  color: _themeService.isLightMode ? Colors.grey[200]?.withOpacity(0.5) : Colors.grey[800]?.withOpacity(0.5),
                                   borderRadius: BorderRadius.circular(20),
                                 ),
                                 child: Row(
@@ -338,13 +419,13 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                     Icon(
                                       Icons.info_outline,
                                       size: 16,
-                                      color: Colors.grey[400],
+                                      color: _themeService.textSecondaryColor,
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
                                       'Tối đa 500MB • MP4, MOV, AVI',
                                       style: TextStyle(
-                                        color: Colors.grey[400],
+                                        color: _themeService.textSecondaryColor,
                                         fontSize: 13,
                                         fontWeight: FontWeight.w500,
                                       ),
@@ -354,33 +435,38 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                               ),
                               const SizedBox(height: 24),
                               // Tap to upload hint
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.2),
-                                    width: 1.5,
-                                  ),
-                                  borderRadius: BorderRadius.circular(25),
+                              CustomPaint(
+                                painter: DashedBorderPainter(
+                                  color: _themeService.isLightMode ? Colors.black.withOpacity(0.2) : Colors.white.withOpacity(0.2),
+                                  strokeWidth: 1.5,
+                                  dashWidth: 6,
+                                  dashSpace: 3,
+                                  borderRadius: 25,
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.touch_app,
-                                      size: 18,
-                                      color: Colors.white70,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Nhấn để chọn video',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(25),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.touch_app,
+                                        size: 18,
+                                        color: _themeService.textPrimaryColor.withOpacity(0.7),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Nhấn để chọn video',
+                                        style: TextStyle(
+                                          color: _themeService.textPrimaryColor.withOpacity(0.7),
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ],
@@ -422,22 +508,23 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                       decoration: BoxDecoration(
-                                        color: Colors.black87,
+                                        color: _themeService.isLightMode ? Colors.white.withOpacity(0.9) : Colors.black87,
                                         borderRadius: BorderRadius.circular(12),
+                                        border: _themeService.isLightMode ? Border.all(color: Colors.grey[300]!, width: 1) : null,
                                       ),
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(
+                                          Icon(
                                             Icons.video_library,
-                                            color: Colors.white70,
+                                            color: _themeService.textPrimaryColor.withOpacity(0.7),
                                             size: 20,
                                           ),
                                           const SizedBox(width: 8),
-                                          const Text(
+                                          Text(
                                             'Video đã chọn',
                                             style: TextStyle(
-                                              color: Colors.white70,
+                                              color: _themeService.textPrimaryColor.withOpacity(0.7),
                                               fontSize: 13,
                                               fontWeight: FontWeight.w500,
                                             ),
@@ -450,8 +537,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                       padding: const EdgeInsets.symmetric(horizontal: 24),
                                       child: Text(
                                         _selectedVideo!.name,
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: _themeService.textPrimaryColor,
                                           fontSize: 14,
                                           fontWeight: FontWeight.w500,
                                         ),
@@ -467,7 +554,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                       icon: const Icon(Icons.swap_horiz, size: 18),
                                       label: const Text('Chọn video khác'),
                                       style: TextButton.styleFrom(
-                                        foregroundColor: Colors.white70,
+                                        foregroundColor: _themeService.textPrimaryColor.withOpacity(0.7),
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                       ),
                                     ),
@@ -478,21 +565,21 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                 Positioned.fill(
                                   child: Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.black87,
+                                      color: _themeService.isLightMode ? Colors.white.withOpacity(0.95) : Colors.black87,
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: const Column(
+                                    child: Column(
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
                                         CircularProgressIndicator(
-                                          color: Colors.white,
+                                          color: _themeService.textPrimaryColor,
                                           strokeWidth: 3,
                                         ),
-                                        SizedBox(height: 24),
+                                        const SizedBox(height: 24),
                                         Text(
                                           'Đang upload...',
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: _themeService.textPrimaryColor,
                                             fontSize: 16,
                                             fontWeight: FontWeight.w500,
                                           ),
@@ -503,6 +590,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                 ),
                             ],
                           ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -511,22 +599,22 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                 TextFormField(
                   controller: _descriptionController,
                   enabled: !_isUploading,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
+                  style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 15),
                   maxLength: 2200,
                   maxLines: 6,
                   decoration: InputDecoration(
                     labelText: 'Mô tả video',
-                    labelStyle: TextStyle(color: Colors.grey[500], fontSize: 13),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 13),
                     hintText: 'Kể về video của bạn...',
-                    hintStyle: TextStyle(color: Colors.grey[600], fontSize: 15),
+                    hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
                     filled: true,
-                    fillColor: Colors.grey[900],
+                    fillColor: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                     contentPadding: const EdgeInsets.all(16),
-                    counterStyle: TextStyle(color: Colors.grey[600]),
+                    counterStyle: TextStyle(color: _themeService.textSecondaryColor),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {

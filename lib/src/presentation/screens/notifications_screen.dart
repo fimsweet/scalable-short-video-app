@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class NotificationsScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final NotificationService _notificationService = NotificationService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
+  final ThemeService _themeService = ThemeService();
 
   List<dynamic> _notifications = [];
   bool _isLoading = true;
@@ -23,7 +25,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _loadNotifications();
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadNotifications() async {
@@ -133,10 +148,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('Thông báo', style: TextStyle(color: Colors.white)),
+        backgroundColor: _themeService.appBarBackground,
+        title: Text('Thông báo', style: TextStyle(color: _themeService.textPrimaryColor)),
+        iconTheme: IconThemeData(color: _themeService.iconColor),
         actions: [
           if (_notifications.any((n) => !(n['isRead'] ?? false)))
             TextButton(
@@ -149,22 +165,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
           : _notifications.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.notifications_none, size: 80, color: Colors.grey[700]),
+                      Icon(Icons.notifications_none, size: 80, color: _themeService.textSecondaryColor),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Chưa có thông báo nào',
-                        style: TextStyle(color: Colors.white, fontSize: 18),
+                        style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         'Các thông báo của bạn sẽ hiển thị ở đây',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                        style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
                       ),
                     ],
                   ),
@@ -191,7 +207,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               decoration: BoxDecoration(
                                 color: isRead ? Colors.transparent : Colors.blue.withOpacity(0.1),
                                 border: Border(
-                                  bottom: BorderSide(color: Colors.grey[900]!, width: 1),
+                                  bottom: BorderSide(color: _themeService.dividerColor, width: 1),
                                 ),
                               ),
                               child: Row(
@@ -202,12 +218,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     children: [
                                       CircleAvatar(
                                         radius: 24,
-                                        backgroundColor: Colors.grey[800],
+                                        backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                                         backgroundImage: userInfo['avatar'] != null
                                             ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
                                             : null,
                                         child: userInfo['avatar'] == null
-                                            ? const Icon(Icons.person, color: Colors.white)
+                                            ? Icon(Icons.person, color: _themeService.textPrimaryColor)
                                             : null,
                                       ),
                                       Positioned(
@@ -218,7 +234,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           decoration: BoxDecoration(
                                             color: _getNotificationColor(type),
                                             shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.black, width: 2),
+                                            border: Border.all(color: _themeService.backgroundColor, width: 2),
                                           ),
                                           child: Icon(
                                             _getNotificationIcon(type),
@@ -239,7 +255,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         Text(
                                           _getNotificationMessage(notification, userInfo['username'] ?? 'user'),
                                           style: TextStyle(
-                                            color: Colors.white,
+                                            color: _themeService.textPrimaryColor,
                                             fontSize: 14,
                                             fontWeight: isRead ? FontWeight.normal : FontWeight.w600,
                                           ),
@@ -251,7 +267,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                             locale: 'vi',
                                           ),
                                           style: TextStyle(
-                                            color: Colors.grey[500],
+                                            color: _themeService.textSecondaryColor,
                                             fontSize: 12,
                                           ),
                                         ),

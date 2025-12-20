@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
 import 'dart:io';
@@ -35,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final AuthService _authService = AuthService();
   final VideoService _videoService = VideoService();
   final ApiService _apiService = ApiService();
+  final ThemeService _themeService = ThemeService();
   
   // Initialize ImagePicker as late to ensure proper initialization
   late final ImagePicker _imagePicker;
@@ -111,11 +113,18 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _selectedImagesList = [];
     _imagePreviewCacheMap = {};
     _imagePicker = ImagePicker();
     _initChat();
     _messageController.addListener(_onTextChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _initChat() async {
@@ -428,6 +437,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _newMessageSubscription?.cancel();
     _messageSentSubscription?.cancel();
     _typingSubscription?.cancel();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -771,12 +781,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final bottomPadding = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
@@ -784,12 +794,12 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundColor: Colors.grey[800],
+              backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
               backgroundImage: widget.recipientAvatar != null
                   ? NetworkImage(widget.recipientAvatar!)
                   : null,
               child: widget.recipientAvatar == null
-                  ? const Icon(Icons.person, color: Colors.white, size: 18)
+                  ? Icon(Icons.person, color: _themeService.iconColor, size: 18)
                   : null,
             ),
             const SizedBox(width: 12),
@@ -799,8 +809,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 children: [
                   Text(
                     widget.recipientUsername,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -817,7 +827,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   else
                     Text(
                       'Đang hoạt động',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
                     ),
                 ],
               ),
@@ -826,7 +836,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.white),
+            icon: Icon(Icons.more_vert, color: _themeService.iconColor),
             onPressed: _showChatOptions,
           ),
           const SizedBox(width: 4),
@@ -834,7 +844,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          Container(height: 0.5, color: Colors.grey[900]),
+          Container(height: 0.5, color: _themeService.dividerColor),
           Expanded(
             child: GestureDetector(
               onTap: () {
@@ -842,7 +852,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 setState(() => _showEmojiPicker = false);
               },
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                  ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
                   : _messages.isEmpty
                       ? _buildEmptyState()
                       : ListView.builder(
@@ -945,6 +955,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               isRead: message['isRead'] ?? false,
                               status: status,
                               showStatus: isLastMyMessage,
+                              themeService: _themeService,
                             );
                           },
                         ),
@@ -971,12 +982,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildCannotContactMessage() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      color: Colors.black,
+      color: _themeService.backgroundColor,
       child: Center(
         child: Text(
           'Hiện tại không thể liên lạc với người này',
           style: TextStyle(
-            color: Colors.grey[600],
+            color: _themeService.textSecondaryColor,
             fontSize: 13,
           ),
         ),
@@ -987,16 +998,16 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildBlockedMessage() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      color: Colors.black,
+      color: _themeService.backgroundColor,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.block, color: Colors.grey[600], size: 18),
+          Icon(Icons.block, color: _themeService.textSecondaryColor, size: 18),
           const SizedBox(width: 8),
           Text(
             'Bạn đã chặn người dùng này.',
             style: TextStyle(
-              color: Colors.grey[500],
+              color: _themeService.textSecondaryColor,
               fontSize: 13,
             ),
           ),
@@ -1035,14 +1046,14 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           CircleAvatar(
             radius: 40,
-            backgroundColor: Colors.grey[800],
+            backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
             backgroundImage: widget.recipientAvatar != null ? NetworkImage(widget.recipientAvatar!) : null,
-            child: widget.recipientAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 40) : null,
+            child: widget.recipientAvatar == null ? Icon(Icons.person, color: _themeService.iconColor, size: 40) : null,
           ),
           const SizedBox(height: 16),
-          Text(widget.recipientUsername, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+          Text(widget.recipientUsername, style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Text('Bắt đầu cuộc trò chuyện', style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+          Text('Bắt đầu cuộc trò chuyện', style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14)),
         ],
       ),
     );
@@ -1061,9 +1072,9 @@ class _ChatScreenState extends State<ChatScreen> {
               child: showAvatar
                   ? CircleAvatar(
                       radius: 14,
-                      backgroundColor: Colors.grey[800],
+                      backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                       backgroundImage: widget.recipientAvatar != null ? NetworkImage(widget.recipientAvatar!) : null,
-                      child: widget.recipientAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 14) : null,
+                      child: widget.recipientAvatar == null ? Icon(Icons.person, color: _themeService.iconColor, size: 14) : null,
                     )
                   : const SizedBox(width: 28),
             ),
@@ -1086,9 +1097,9 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
         border: Border(
-          top: BorderSide(color: Colors.grey[800]!, width: 0.5),
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
         ),
       ),
       child: Column(
@@ -1217,8 +1228,8 @@ class _ChatScreenState extends State<ChatScreen> {
         bottom: _showEmojiPicker ? 10 : (bottomInset > 0 ? 10 : bottomPadding + 10),
       ),
       decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border(top: BorderSide(color: Colors.grey[900]!, width: 0.5)),
+        color: _themeService.backgroundColor,
+        border: Border(top: BorderSide(color: _themeService.dividerColor, width: 0.5)),
       ),
       child: SafeArea(
         top: false,
@@ -1262,7 +1273,7 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Container(
                 constraints: const BoxConstraints(minHeight: 44, maxHeight: 120),
                 decoration: BoxDecoration(
-                  color: Colors.grey[900],
+                  color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
                   borderRadius: BorderRadius.circular(22),
                 ),
                 child: Row(
@@ -1273,12 +1284,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: TextField(
                         controller: _messageController,
                         focusNode: _focusNode,
-                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                        style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 16),
                         decoration: InputDecoration(
                           hintText: _hasSelectedImages  // Use safe getter
                               ? 'Thêm tin nhắn...' 
                               : 'Nhắn tin...',
-                          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 16),
+                          hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, 
@@ -1324,7 +1335,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.send_rounded,
-                  color: canSend ? Colors.blue : Colors.grey[600],
+                  color: canSend ? Colors.blue : _themeService.textSecondaryColor,
                   size: 28,
                 ),
               ),
@@ -1365,8 +1376,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       height: 280,
       decoration: BoxDecoration(
-        color: Colors.grey[900],
-        border: Border(top: BorderSide(color: Colors.grey[800]!, width: 0.5)),
+        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+        border: Border(top: BorderSide(color: _themeService.dividerColor, width: 0.5)),
       ),
       child: Column(
         children: [
@@ -1378,7 +1389,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 Text(
                   'Biểu tượng cảm xúc',
                   style: TextStyle(
-                    color: Colors.grey[400],
+                    color: _themeService.textSecondaryColor,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1388,7 +1399,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onTap: () => setState(() => _showEmojiPicker = false),
                   child: Icon(
                     Icons.keyboard_arrow_down_rounded,
-                    color: Colors.grey[500],
+                    color: _themeService.textSecondaryColor,
                     size: 24,
                   ),
                 ),
@@ -1437,6 +1448,7 @@ class _MessageBubble extends StatefulWidget {
   final bool isRead;
   final String? status;
   final bool showStatus;
+  final ThemeService themeService;
 
   const _MessageBubble({
     required this.message,
@@ -1447,6 +1459,7 @@ class _MessageBubble extends StatefulWidget {
     this.isRead = false,
     this.status,
     this.showStatus = false,
+    required this.themeService,
   });
 
   @override
@@ -1584,7 +1597,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: widget.isMe ? Colors.blue : Colors.grey[900],
+                        color: widget.isMe ? Colors.blue : (widget.themeService.isLightMode ? Colors.grey[300] : Colors.grey[900]),
                         borderRadius: BorderRadius.only(
                           topLeft: const Radius.circular(18),
                           topRight: const Radius.circular(18),
@@ -1592,7 +1605,14 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                           bottomRight: Radius.circular(widget.isMe ? 4 : 18),
                         ),
                       ),
-                      child: Text(widget.message, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.3)),
+                      child: Text(
+                        widget.message, 
+                        style: TextStyle(
+                          color: widget.isMe ? Colors.white : widget.themeService.textPrimaryColor, 
+                          fontSize: 15, 
+                          height: 1.3,
+                        ),
+                      ),
                     ),
                   ),
                 ),

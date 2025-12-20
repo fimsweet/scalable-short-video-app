@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.da
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class InboxScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _InboxScreenState extends State<InboxScreen> {
   final MessageService _messageService = MessageService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
+  final ThemeService _themeService = ThemeService();
 
   List<Map<String, dynamic>> _conversations = [];
   Map<String, Map<String, dynamic>> _userCache = {};
@@ -29,8 +31,15 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _loadConversations();
     _setupListeners();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _setupListeners() {
@@ -109,6 +118,7 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   void dispose() {
     _newMessageSubscription?.cancel();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -186,18 +196,18 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Hộp thư',
           style: TextStyle(
-            color: Colors.white,
+            color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.bold,
             fontSize: 18,
           ),
@@ -205,7 +215,7 @@ class _InboxScreenState extends State<InboxScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit_square, color: Colors.white, size: 24),
+            icon: Icon(Icons.edit_square, color: _themeService.iconColor, size: 24),
             onPressed: () {},
           ),
         ],
@@ -217,15 +227,15 @@ class _InboxScreenState extends State<InboxScreen> {
             child: Container(
               height: 40,
               decoration: BoxDecoration(
-                color: Colors.grey[900],
+                color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
                 borderRadius: BorderRadius.circular(10),
               ),
               child: TextField(
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: _themeService.textPrimaryColor),
                 decoration: InputDecoration(
                   hintText: 'Tìm kiếm',
-                  hintStyle: TextStyle(color: Colors.grey[600], fontSize: 15),
-                  prefixIcon: Icon(Icons.search, color: Colors.grey[600], size: 20),
+                  hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
+                  prefixIcon: Icon(Icons.search, color: _themeService.textSecondaryColor, size: 20),
                   border: InputBorder.none,
                   contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
@@ -234,22 +244,22 @@ class _InboxScreenState extends State<InboxScreen> {
           ),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
                 : _conversations.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.mail_outline, size: 80, color: Colors.grey[700]),
+                            Icon(Icons.mail_outline, size: 80, color: _themeService.textSecondaryColor),
                             const SizedBox(height: 16),
-                            const Text(
+                            Text(
                               'Chưa có tin nhắn',
-                              style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+                              style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Bắt đầu nhắn tin với bạn bè',
-                              style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                              style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
                             ),
                           ],
                         ),
@@ -273,7 +283,7 @@ class _InboxScreenState extends State<InboxScreen> {
 
                                 return InkWell(
                                   onTap: () => _navigateToChat(conversation),
-                                  highlightColor: Colors.grey[900],
+                                  highlightColor: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
                                   splashColor: Colors.transparent,
                                   child: Padding(
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -283,12 +293,12 @@ class _InboxScreenState extends State<InboxScreen> {
                                           children: [
                                             CircleAvatar(
                                               radius: 28,
-                                              backgroundColor: Colors.grey[800],
+                                              backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                                               backgroundImage: userInfo['avatar'] != null
                                                   ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
                                                   : null,
                                               child: userInfo['avatar'] == null
-                                                  ? const Icon(Icons.person, color: Colors.white, size: 28)
+                                                  ? Icon(Icons.person, color: _themeService.textPrimaryColor, size: 28)
                                                   : null,
                                             ),
                                             Positioned(
@@ -300,7 +310,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                 decoration: BoxDecoration(
                                                   color: Colors.green,
                                                   shape: BoxShape.circle,
-                                                  border: Border.all(color: Colors.black, width: 2),
+                                                  border: Border.all(color: _themeService.backgroundColor, width: 2),
                                                 ),
                                               ),
                                             ),
@@ -317,7 +327,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                     child: Text(
                                                       userInfo['username'] ?? 'User',
                                                       style: TextStyle(
-                                                        color: Colors.white,
+                                                        color: _themeService.textPrimaryColor,
                                                         fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
                                                         fontSize: 16,
                                                       ),
@@ -327,7 +337,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                   Text(
                                                     _formatTime(conversation['updatedAt']),
                                                     style: TextStyle(
-                                                      color: unreadCount > 0 ? Colors.blue : Colors.grey[600],
+                                                      color: unreadCount > 0 ? Colors.blue : _themeService.textSecondaryColor,
                                                       fontSize: 13,
                                                     ),
                                                   ),
@@ -344,7 +354,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                         otherUsername: otherUsername,
                                                       ),
                                                       style: TextStyle(
-                                                        color: unreadCount > 0 ? Colors.white : Colors.grey[500],
+                                                        color: unreadCount > 0 ? _themeService.textPrimaryColor : _themeService.textSecondaryColor,
                                                         fontSize: 14,
                                                         fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
                                                       ),

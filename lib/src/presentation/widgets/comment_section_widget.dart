@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 
 // Theme colors - matching TikTok/Instagram style
@@ -37,6 +38,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   final CommentService _commentService = CommentService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
+  final ThemeService _themeService = ThemeService();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -53,10 +55,17 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _loadComments();
     _textController.addListener(() {
       setState(() {});
     });
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -64,6 +73,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     _textController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -216,9 +226,9 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         height: sheetHeight,
-        decoration: const BoxDecoration(
-          color: CommentTheme.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: _themeService.backgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -237,7 +247,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.grey[600],
+                      color: _themeService.textSecondaryColor,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -253,10 +263,10 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                 children: [
                   Text(
                     '${_comments.length} bình luận',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: CommentTheme.textPrimary,
+                      color: _themeService.textPrimaryColor,
                     ),
                   ),
                   GestureDetector(
@@ -264,12 +274,12 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                     child: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: CommentTheme.cardBackground,
+                        color: _themeService.inputBackground,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.close_rounded,
-                        color: CommentTheme.textPrimary,
+                        color: _themeService.textPrimaryColor,
                         size: 20,
                       ),
                     ),
@@ -278,14 +288,14 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
               ),
             ),
             
-            Container(height: 0.5, color: CommentTheme.divider),
+            Container(height: 0.5, color: _themeService.dividerColor),
             
             // Comments list
             Expanded(
               child: _isLoading
-                  ? const Center(
+                  ? Center(
                       child: CircularProgressIndicator(
-                        color: CommentTheme.primaryRed,
+                        color: _themeService.textPrimaryColor,
                         strokeWidth: 2,
                       ),
                     )
@@ -297,7 +307,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               Icon(
                                 Icons.chat_bubble_outline_rounded,
                                 size: 56,
-                                color: Colors.grey[700],
+                                color: _themeService.textSecondaryColor,
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -331,6 +341,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               apiService: _apiService,
                               authService: _authService,
                               commentService: _commentService,
+                              themeService: _themeService,
                               formatDate: _formatDate,
                               formatCount: _formatCount,
                               onReply: _startReply,
@@ -412,9 +423,9 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         bottom: bottomPadding + 10,
       ),
       decoration: BoxDecoration(
-        color: CommentTheme.background,
+        color: _themeService.backgroundColor,
         border: Border(
-          top: BorderSide(color: CommentTheme.divider, width: 0.5),
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
         ),
       ),
       child: Row(
@@ -422,12 +433,12 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: CommentTheme.cardBackground,
+            backgroundColor: _themeService.inputBackground,
             backgroundImage: _authService.avatarUrl != null
                 ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
                 : null,
             child: _authService.avatarUrl == null
-                ? const Icon(Icons.person, size: 16, color: Colors.white54)
+                ? Icon(Icons.person, size: 16, color: _themeService.textSecondaryColor)
                 : null,
           ),
           const SizedBox(width: 10),
@@ -438,20 +449,20 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                 maxHeight: 100,
               ),
               decoration: BoxDecoration(
-                color: CommentTheme.inputBackground,
+                color: _themeService.inputBackground,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: TextField(
                 controller: _textController,
                 focusNode: _focusNode,
-                style: const TextStyle(
-                  color: CommentTheme.textPrimary,
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
                   fontSize: 14,
                 ),
                 decoration: InputDecoration(
                   hintText: 'Thêm bình luận...',
                   hintStyle: TextStyle(
-                    color: Colors.grey[600],
+                    color: _themeService.textSecondaryColor,
                     fontSize: 14,
                   ),
                   border: InputBorder.none,
@@ -578,6 +589,7 @@ class _CommentItem extends StatefulWidget {
   final ApiService apiService;
   final AuthService authService;
   final CommentService commentService;
+  final ThemeService themeService;
   final String Function(String?) formatDate;
   final String Function(int) formatCount;
   final Function(String, String) onReply;
@@ -590,6 +602,7 @@ class _CommentItem extends StatefulWidget {
     required this.apiService,
     required this.authService,
     required this.commentService,
+    required this.themeService,
     required this.formatDate,
     required this.formatCount,
     required this.onReply,
@@ -829,8 +842,8 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                         const SizedBox(height: 6),
                         Text(
                           widget.comment['content'] ?? '',
-                          style: const TextStyle(
-                            color: CommentTheme.textPrimary,
+                          style: TextStyle(
+                            color: widget.themeService.textPrimaryColor,
                             fontSize: 14,
                             height: 1.4,
                           ),
@@ -982,6 +995,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                         apiService: widget.apiService,
                         authService: widget.authService,
                         commentService: widget.commentService,
+                        themeService: widget.themeService,
                         formatDate: widget.formatDate,
                         formatCount: widget.formatCount,
                         onReply: widget.onReply,
@@ -1019,6 +1033,7 @@ class _ReplyItem extends StatefulWidget {
   final ApiService apiService;
   final AuthService authService;
   final CommentService commentService;
+  final ThemeService themeService;
   final String Function(String?) formatDate;
   final String Function(int) formatCount;
   final Function(String, String) onReply;
@@ -1030,6 +1045,7 @@ class _ReplyItem extends StatefulWidget {
     required this.apiService,
     required this.authService,
     required this.commentService,
+    required this.themeService,
     required this.formatDate,
     required this.formatCount,
     required this.onReply,
@@ -1314,8 +1330,8 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
     if (matches.isEmpty) {
       return Text(
         content,
-        style: const TextStyle(
-          color: CommentTheme.textPrimary,
+        style: TextStyle(
+          color: widget.themeService.textPrimaryColor,
           fontSize: 13,
           height: 1.3,
         ),
@@ -1329,7 +1345,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
       if (match.start > lastEnd) {
         spans.add(TextSpan(
           text: content.substring(lastEnd, match.start),
-          style: const TextStyle(color: CommentTheme.textPrimary),
+          style: TextStyle(color: widget.themeService.textPrimaryColor),
         ));
       }
       
@@ -1347,7 +1363,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
     if (lastEnd < content.length) {
       spans.add(TextSpan(
         text: content.substring(lastEnd),
-        style: const TextStyle(color: CommentTheme.textPrimary),
+        style: TextStyle(color: widget.themeService.textPrimaryColor),
       ));
     }
 

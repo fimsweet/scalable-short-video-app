@@ -13,6 +13,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart'; // Import InboxScreen
 import 'package:image_picker/image_picker.dart';
@@ -33,6 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   final FollowService _followService = FollowService();
   final NotificationService _notificationService = NotificationService();
   final LikeService _likeService = LikeService();
+  final ThemeService _themeService = ThemeService();
   
   // Animation controller for message icon - Changed from late to nullable to fix Hot Reload error
   AnimationController? _messageIconController;
@@ -49,6 +51,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _themeService.addListener(_onThemeChanged);
     
     _initAnimations();
 
@@ -70,6 +73,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     }
   }
 
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _initAnimations() {
     if (_messageIconController != null) return;
     
@@ -87,6 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     WidgetsBinding.instance.removeObserver(this);
     _notificationService.stopPolling();
     _messageIconController?.dispose(); // Safe dispose
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -121,13 +131,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('Đăng xuất', style: TextStyle(color: Colors.white)),
-        content: const Text('Bạn chắc chắn muốn đăng xuất?', style: TextStyle(color: Colors.grey)),
+        backgroundColor: _themeService.cardColor,
+        title: Text('Đăng xuất', style: TextStyle(color: _themeService.textPrimaryColor)),
+        content: Text('Bạn chắc chắn muốn đăng xuất?', style: TextStyle(color: _themeService.textSecondaryColor)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+            child: Text('Hủy', style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           TextButton(
             onPressed: () async {
@@ -349,22 +359,21 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   // Logged OUT view (giống TikTok hiển thị lời mời đăng nhập)
   Widget _buildLoggedOut() {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
-        title: const Text('Hồ sơ'),
+        title: Text('Hồ sơ', style: TextStyle(color: _themeService.textPrimaryColor)),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.menu),
-            color: Colors.grey[900],
+            icon: Icon(Icons.menu, color: _themeService.iconColor),
             onSelected: (v) {
               if (v == 'login') _mockLogin();
             },
-            itemBuilder: (_) => const [
+            itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'login',
-                child: Row(children: [Icon(Icons.login, color: Colors.white), SizedBox(width: 12), Text('Đăng nhập', style: TextStyle(color: Colors.white))]),
+                child: Row(children: [Icon(Icons.login, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Đăng nhập', style: TextStyle(color: _themeService.textPrimaryColor))]),
               ),
             ],
           ),
@@ -376,13 +385,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.person_outline, size: 80, color: Colors.grey[700]),
+              Icon(Icons.person_outline, size: 80, color: _themeService.textSecondaryColor),
               const SizedBox(height: 24),
-              const Text('Đăng nhập để xem hồ sơ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text('Đăng nhập để xem hồ sơ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Theo dõi người khác, thích video và tạo nội dung của riêng bạn.',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(color: _themeService.textSecondaryColor),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
@@ -391,8 +400,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 height: 44,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white, // Nút màu trắng
-                    foregroundColor: Colors.black, // Chữ màu đen
+                    backgroundColor: _themeService.isLightMode ? Colors.black : Colors.white,
+                    foregroundColor: _themeService.isLightMode ? Colors.white : Colors.black,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   onPressed: _navigateToLogin, // Dẫn tới màn hình đăng nhập
@@ -420,13 +429,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           ),
         ),
         child: Scaffold(
-          backgroundColor: Colors.black,
+          backgroundColor: _themeService.backgroundColor,
           appBar: AppBar(
-            backgroundColor: Colors.black,
+            backgroundColor: _themeService.appBarBackground,
             elevation: 0,
-            title: const Text(
+            title: Text(
               'Hồ sơ cá nhân',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor),
             ),
             actions: [
               // Notification icon
@@ -453,10 +462,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 },
                 icon: Stack(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.notifications_outlined,
                       size: 28,
-                      color: Colors.white,
+                      color: _themeService.iconColor,
                     ),
                     if (_unreadCount > 0)
                       Positioned(
@@ -499,35 +508,34 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         color: Colors.transparent, // Hit test area
-                        child: const Icon(
+                        child: Icon(
                           Icons.mail_outline, // Changed to mail icon
                           size: 30,
-                          color: Colors.white,
+                          color: _themeService.iconColor,
                         ),
                       ),
                     );
                   },
-                ) : const Icon(Icons.mail_outline, color: Colors.white, size: 30),
+                ) : Icon(Icons.mail_outline, color: _themeService.iconColor, size: 30),
               ),
               
               PopupMenuButton<String>(
-                icon: const Icon(Icons.menu, color: Colors.white),
-                color: Colors.grey[900],
+                icon: Icon(Icons.menu, color: _themeService.iconColor),
                 splashRadius: 0.1,
                 onSelected: (v) {
                   if (v == 'logout') _showLogoutDialog();
                 },
-                itemBuilder: (_) => const [
+                itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'settings',
-                    child: Row(children: [Icon(Icons.settings, color: Colors.white), SizedBox(width: 12), Text('Cài đặt', style: TextStyle(color: Colors.white))]),
+                    child: Row(children: [Icon(Icons.settings, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Cài đặt', style: TextStyle(color: _themeService.textPrimaryColor))]),
                   ),
                   PopupMenuItem(
                     value: 'help',
-                    child: Row(children: [Icon(Icons.help, color: Colors.white), SizedBox(width: 12), Text('Trợ giúp', style: TextStyle(color: Colors.white))]),
+                    child: Row(children: [Icon(Icons.help, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Trợ giúp', style: TextStyle(color: _themeService.textPrimaryColor))]),
                   ),
-                  PopupMenuDivider(),
-                  PopupMenuItem(
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                     value: 'logout',
                     child: Row(children: [Icon(Icons.logout, color: Colors.red), SizedBox(width: 12), Text('Đăng xuất', style: TextStyle(color: Colors.red))]),
                   ),
@@ -554,13 +562,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                   Positioned.fill(
                                     child: Container(
                                       decoration: BoxDecoration(
-                                        color: Colors.black54,
+                                        color: _themeService.isLightMode ? Colors.white70 : Colors.black54,
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Center(
+                                      child: Center(
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: Colors.white,
+                                          color: _themeService.textPrimaryColor,
                                         ),
                                       ),
                                     ),
@@ -593,7 +601,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(_authService.username ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Text(_authService.username ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
                       const SizedBox(height: 4),
                       // Bio section with character limit
                       if (_authService.bio != null && _authService.bio!.isNotEmpty)
@@ -603,8 +611,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             _authService.bio!.length > 150 
                                 ? '${_authService.bio!.substring(0, 150)}...' 
                                 : _authService.bio!,
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: _themeService.textPrimaryColor,
                               fontSize: 14,
                             ),
                             maxLines: 3,
@@ -627,17 +635,17 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             ],
             body: Column(
               children: [
-                const TabBar(
-                  indicatorColor: Colors.white,
+                TabBar(
+                  indicatorColor: _themeService.isLightMode ? Colors.black : Colors.white,
                   indicatorSize: TabBarIndicatorSize.label,
                   indicatorWeight: 1.5,
                   splashFactory: NoSplash.splashFactory,
-                  overlayColor: MaterialStatePropertyAll(Colors.transparent),
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.grey,
+                  overlayColor: const MaterialStatePropertyAll(Colors.transparent),
+                  labelColor: _themeService.textPrimaryColor,
+                  unselectedLabelColor: _themeService.textSecondaryColor,
                   dividerColor: Colors.transparent, // Remove gray divider line
                   dividerHeight: 0, // Remove divider height
-                  tabs: [
+                  tabs: const [
                     Tab(icon: Icon(Icons.grid_on)),
                     Tab(icon: Icon(Icons.lock_outline)),
                     Tab(icon: Icon(Icons.bookmark_border)),
@@ -670,7 +678,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       
       return CircleAvatar(
         radius: 40,
-        backgroundColor: Colors.grey,
+        backgroundColor: _themeService.isLightMode ? Colors.white : Colors.grey[700],
         child: ClipOval(
           child: Image.network(
             fullUrl,
@@ -679,7 +687,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
               print('❌ Error loading avatar: $error');
-              return const Icon(Icons.person, size: 40, color: Colors.white);
+              return Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor);
             },
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
@@ -692,10 +700,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       );
     }
 
-    return const CircleAvatar(
+    return CircleAvatar(
       radius: 40,
-      backgroundColor: Colors.grey,
-      child: Icon(Icons.person, size: 40, color: Colors.white),
+      backgroundColor: _themeService.isLightMode ? Colors.white : Colors.grey[700],
+      child: Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor),
     );
   }
 }
@@ -707,15 +715,18 @@ class _ProfileStat extends StatelessWidget {
   const _ProfileStat({required this.count, required this.label, this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final themeService = ThemeService();
+    return GestureDetector(
         onTap: onTap,
         child: Column(
           children: [
-            Text(count, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            Text(label, style: const TextStyle(color: Colors.grey)),
+            Text(count, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeService.textPrimaryColor)),
+            Text(label, style: TextStyle(color: themeService.textSecondaryColor)),
           ],
         ),
       );
+  }
 }
 
 class _ActionButton extends StatelessWidget {
@@ -724,12 +735,19 @@ class _ActionButton extends StatelessWidget {
   const _ActionButton({required this.text, this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final themeService = ThemeService();
+    return GestureDetector(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
-          child: Center(child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold))),
+          decoration: BoxDecoration(
+            color: themeService.isLightMode ? Colors.white : Colors.grey[800],
+            border: themeService.isLightMode ? Border.all(color: const Color(0xFFE0E0E0), width: 1) : null,
+            borderRadius: BorderRadius.circular(8)
+          ),
+          child: Center(child: Text(text, style: TextStyle(fontWeight: FontWeight.bold, color: themeService.textPrimaryColor))),
         ),
       );
+  }
 }

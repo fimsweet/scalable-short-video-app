@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 
 class FollowerFollowingScreen extends StatefulWidget {
@@ -15,10 +16,12 @@ class FollowerFollowingScreen extends StatefulWidget {
 class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
 
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _tabController = TabController(
       length: 3,
       vsync: this,
@@ -26,9 +29,16 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
     );
   }
 
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
+    _themeService.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -37,18 +47,18 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
     final username = _authService.username ?? 'user';
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           username,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.bold,
             fontSize: 18,
           ),
@@ -60,18 +70,18 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
-                  color: Colors.grey[900]!,
+                  color: _themeService.dividerColor,
                   width: 0.5,
                 ),
               ),
             ),
             child: TabBar(
               controller: _tabController,
-              indicatorColor: Colors.white,
+              indicatorColor: _themeService.textPrimaryColor,
               indicatorWeight: 2,
               indicatorSize: TabBarIndicatorSize.label,
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.grey[600],
+              labelColor: _themeService.textPrimaryColor,
+              unselectedLabelColor: _themeService.textSecondaryColor,
               labelStyle: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -94,9 +104,9 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
       body: TabBarView(
         controller: _tabController,
         children: [
-          _ModernUserList(key: const PageStorageKey('followers'), type: 'follower'),
-          _ModernUserList(key: const PageStorageKey('following'), type: 'following'),
-          const _ModernPostGrid(key: PageStorageKey('posts')),
+          _ModernUserList(key: const PageStorageKey('followers'), type: 'follower', themeService: _themeService),
+          _ModernUserList(key: const PageStorageKey('following'), type: 'following', themeService: _themeService),
+          _ModernPostGrid(key: const PageStorageKey('posts'), themeService: _themeService),
         ],
       ),
     );
@@ -105,7 +115,8 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
 
 class _ModernUserList extends StatefulWidget {
   final String type;
-  const _ModernUserList({super.key, required this.type});
+  final ThemeService themeService;
+  const _ModernUserList({super.key, required this.type, required this.themeService});
 
   @override
   State<_ModernUserList> createState() => _ModernUserListState();
@@ -210,8 +221,8 @@ class _ModernUserListState extends State<_ModernUserList> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+      return Center(
+        child: CircularProgressIndicator(color: widget.themeService.textPrimaryColor, strokeWidth: 2),
       );
     }
 
@@ -223,12 +234,12 @@ class _ModernUserListState extends State<_ModernUserList> {
             Icon(
               widget.type == 'follower' ? Icons.people_outline : Icons.person_add_outlined,
               size: 64,
-              color: Colors.grey[700],
+              color: widget.themeService.textSecondaryColor,
             ),
             const SizedBox(height: 16),
             Text(
               widget.type == 'follower' ? 'Chưa có người theo dõi' : 'Chưa theo dõi ai',
-              style: TextStyle(color: Colors.grey[400], fontSize: 16, fontWeight: FontWeight.w500),
+              style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -247,6 +258,7 @@ class _ModernUserListState extends State<_ModernUserList> {
         return _UserListItem(
           userId: userId,
           apiService: _apiService,
+          themeService: widget.themeService,
           isFollowing: isFollowing,
           isMutual: isMutual, // NEW
           isProcessing: _isProcessing[userId] ?? false,
@@ -262,6 +274,7 @@ class _ModernUserListState extends State<_ModernUserList> {
 class _UserListItem extends StatelessWidget {
   final int userId;
   final ApiService apiService;
+  final ThemeService themeService;
   final bool isFollowing;
   final bool isMutual; // NEW
   final bool isProcessing;
@@ -272,6 +285,7 @@ class _UserListItem extends StatelessWidget {
   const _UserListItem({
     required this.userId,
     required this.apiService,
+    required this.themeService,
     required this.isFollowing,
     required this.isMutual, // NEW
     required this.isProcessing,
@@ -308,12 +322,12 @@ class _UserListItem extends StatelessWidget {
                 // Avatar
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Colors.grey[850],
+                  backgroundColor: themeService.isLightMode ? Colors.grey[300] : Colors.grey[850],
                   backgroundImage: avatar != null && avatar.toString().isNotEmpty
                       ? NetworkImage(apiService.getAvatarUrl(avatar))
                       : null,
                   child: avatar == null || avatar.toString().isEmpty
-                      ? const Icon(Icons.person, color: Colors.white54, size: 24)
+                      ? Icon(Icons.person, color: themeService.textSecondaryColor, size: 24)
                       : null,
                 ),
                 const SizedBox(width: 14),
@@ -325,8 +339,8 @@ class _UserListItem extends StatelessWidget {
                     children: [
                       Text(
                         username,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: themeService.textPrimaryColor,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -334,7 +348,7 @@ class _UserListItem extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '@$username',
-                        style: TextStyle(color: Colors.grey[500], fontSize: 13),
+                        style: TextStyle(color: themeService.textSecondaryColor, fontSize: 13),
                       ),
                     ],
                   ),
@@ -352,7 +366,7 @@ class _UserListItem extends StatelessWidget {
                           : const Color(0xFFFF2D55),
                       border: Border.all(
                         color: isMutual || isFollowing 
-                            ? Colors.grey[700]!
+                            ? (themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!)
                             : Colors.transparent,
                         width: 1,
                       ),
@@ -387,7 +401,8 @@ class _UserListItem extends StatelessWidget {
 }
 
 class _ModernPostGrid extends StatelessWidget {
-  const _ModernPostGrid({super.key});
+  final ThemeService themeService;
+  const _ModernPostGrid({super.key, required this.themeService});
 
   @override
   Widget build(BuildContext context) {
@@ -395,11 +410,11 @@ class _ModernPostGrid extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.grid_on_outlined, size: 64, color: Colors.grey[700]),
+          Icon(Icons.grid_on_outlined, size: 64, color: themeService.textSecondaryColor),
           const SizedBox(height: 16),
           Text(
             'Chưa có bài viết',
-            style: TextStyle(color: Colors.grey[400], fontSize: 16, fontWeight: FontWeight.w500),
+            style: TextStyle(color: themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
           ),
         ],
       ),
