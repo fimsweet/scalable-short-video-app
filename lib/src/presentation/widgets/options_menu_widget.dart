@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
 class OptionsMenuWidget extends StatefulWidget {
   final String? videoId;
@@ -20,11 +21,25 @@ class OptionsMenuWidget extends StatefulWidget {
 
 class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
   late bool _isSaved;
+  final ThemeService _themeService = ThemeService();
 
   @override
   void initState() {
     super.initState();
     _isSaved = widget.isSaved ?? false;
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
   }
 
   void _handleSaveToggle() {
@@ -37,9 +52,9 @@ class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF2C2C2E),
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(16.0),
           topRight: Radius.circular(16.0),
         ),
@@ -54,7 +69,7 @@ class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
                 width: 40,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.grey,
+                  color: _themeService.textSecondaryColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
