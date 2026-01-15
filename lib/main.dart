@@ -5,8 +5,19 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  print('🚀 App starting - initializing services...');
+  
+  // Initialize ThemeService first to register login/logout listeners
+  // This ensures the singleton is created and listeners are registered
+  final themeService = ThemeService();
+  await themeService.init();
+  print('✅ ThemeService initialized');
+  
+  // Then try auto-login which will trigger the listeners if successful
   await AuthService().tryAutoLogin();
-  await ThemeService().init();
+  print('✅ Auth check completed');
+  
   runApp(const MyApp());
 }
 

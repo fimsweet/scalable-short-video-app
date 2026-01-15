@@ -94,12 +94,17 @@ class AuthService {
     print('✅ Login successful - notifying ${_loginListeners.length} listeners');
     
     // Notify all login listeners with error handling
+    int listenerIndex = 0;
     for (var listener in List.from(_loginListeners)) { // Create copy to avoid modification during iteration
       try {
+        print('   Calling listener #$listenerIndex...');
         listener();
-      } catch (e) {
-        print('❌ Error calling login listener: $e');
+        print('   ✅ Listener #$listenerIndex completed');
+      } catch (e, stackTrace) {
+        print('❌ Error calling login listener #$listenerIndex: $e');
+        print('   Stack trace: $stackTrace');
       }
+      listenerIndex++;
     }
   }
 
@@ -153,6 +158,7 @@ class AuthService {
       _email = email;
       _avatarUrl = avatarUrl;
       _isLoggedIn = true;
+      _token = token;
 
       if (userJson != null) {
         _user = json.decode(userJson);
@@ -163,6 +169,17 @@ class AuthService {
           'email': email,
           'avatar': avatarUrl,
         };
+      }
+      
+      print('✅ Auto-login successful - notifying ${_loginListeners.length} listeners');
+      
+      // Notify all login listeners with error handling
+      for (var listener in List.from(_loginListeners)) {
+        try {
+          listener();
+        } catch (e) {
+          print('❌ Error calling login listener: $e');
+        }
       }
     }
     return _isLoggedIn;
