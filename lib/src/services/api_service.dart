@@ -362,4 +362,67 @@ class ApiService {
       return false;
     }
   }
+
+  // ============= USER SETTINGS METHODS =============
+
+  /// Get user settings
+  Future<Map<String, dynamic>> getUserSettings(String token) async {
+    try {
+      final url = '$_baseUrl/users/settings';
+      print('🌐 Calling getUserSettings API: $url');
+      print('   Token: ${token.substring(0, 20)}...');
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📥 getUserSettings response status: ${response.statusCode}');
+      print('📦 Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        print('✅ Decoded response: $decoded');
+        return decoded;
+      } else {
+        print('⚠️ Failed to get user settings: ${response.statusCode}');
+        print('   Response body: ${response.body}');
+        return {'success': false};
+      }
+    } catch (e, stackTrace) {
+      print('❌ Error getting user settings: $e');
+      print('   Stack trace: $stackTrace');
+      return {'success': false};
+    }
+  }
+
+  /// Update user settings
+  Future<Map<String, dynamic>> updateUserSettings(
+    String token,
+    Map<String, dynamic> settings,
+  ) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/settings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(settings),
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        print('⚠️ Failed to update user settings: ${response.statusCode}');
+        return {'success': false};
+      }
+    } catch (e) {
+      print('❌ Error updating user settings: $e');
+      return {'success': false};
+    }
+  }
 }

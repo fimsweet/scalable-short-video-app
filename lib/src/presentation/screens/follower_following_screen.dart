@@ -361,13 +361,17 @@ class _UserListItem extends StatelessWidget {
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isMutual || isFollowing 
-                          ? Colors.transparent
-                          : const Color(0xFFFF2D55),
+                      color: isMutual && themeService.isLightMode
+                          ? const Color(0xFFFF2D55) // Red background for "Bạn bè" in light mode
+                          : (isMutual || isFollowing 
+                              ? Colors.transparent
+                              : const Color(0xFFFF2D55)),
                       border: Border.all(
-                        color: isMutual || isFollowing 
-                            ? (themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!)
-                            : Colors.transparent,
+                        color: isMutual && themeService.isLightMode
+                            ? Colors.transparent
+                            : (isMutual || isFollowing 
+                                ? (themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!)
+                                : Colors.transparent),
                         width: 1,
                       ),
                       borderRadius: BorderRadius.circular(8),
