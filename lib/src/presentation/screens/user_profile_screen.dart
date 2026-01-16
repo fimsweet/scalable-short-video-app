@@ -3,6 +3,8 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
 
@@ -20,6 +22,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final AuthService _authService = AuthService();
   final FollowService _followService = FollowService();
   final VideoService _videoService = VideoService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   Map<String, dynamic>? _userInfo;
   bool _isLoading = true;
@@ -33,7 +37,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
     _loadUserData();
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadUserData() async {
@@ -117,18 +132,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _authService.user!['id'] == widget.userId;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           _userInfo?['username'] ?? '...',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
@@ -136,7 +151,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_horiz, color: Colors.white),
+            icon: Icon(Icons.more_horiz, color: _themeService.iconColor),
             onPressed: () {
               // Show options menu
             },
@@ -144,12 +159,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
           : _userInfo == null
-              ? const Center(
+              ? Center(
                   child: Text(
-                    'Không tìm thấy người dùng',
-                    style: TextStyle(color: Colors.white),
+                    _localeService.get('user_not_found'),
+                    style: TextStyle(color: _themeService.textPrimaryColor),
                   ),
                 )
               : DefaultTabController(
@@ -164,16 +179,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             Container(
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                border: Border.all(color: Colors.grey[900]!, width: 1),
+                                border: Border.all(
+                                  color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[900]!,
+                                  width: 1,
+                                ),
                               ),
                               child: CircleAvatar(
                                 radius: 48,
-                                backgroundColor: Colors.grey[900],
+                                backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[900],
                                 backgroundImage: _userInfo!['avatar'] != null
                                     ? NetworkImage(_apiService.getAvatarUrl(_userInfo!['avatar']))
                                     : null,
                                 child: _userInfo!['avatar'] == null
-                                    ? const Icon(Icons.person, size: 48, color: Colors.grey)
+                                    ? Icon(Icons.person, size: 48, color: _themeService.textSecondaryColor)
                                     : null,
                               ),
                             ),
@@ -182,8 +200,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             // Username
                             Text(
                               '@${_userInfo!['username'] ?? 'user'}',
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: _themeService.textPrimaryColor,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -194,11 +212,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                _buildStatItem(_followingCount.toString(), 'Đang follow'),
+                                _buildStatItem(_followingCount.toString(), _localeService.get('following')),
                                 _buildDivider(),
-                                _buildStatItem(_followerCount.toString(), 'Follower'),
+                                _buildStatItem(_followerCount.toString(), _localeService.get('followers')),
                                 _buildDivider(),
-                                _buildStatItem(_userVideos.length.toString(), 'Thích'),
+                                _buildStatItem(_userVideos.length.toString(), _localeService.get('likes')),
                               ],
                             ),
                             const SizedBox(height: 24),
@@ -228,7 +246,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 32),
                                 child: Text(
                                   _userInfo!['bio'],
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 14),
                                   textAlign: TextAlign.center,
                                   maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
@@ -244,16 +262,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         Container(
                           decoration: BoxDecoration(
                             border: Border(
-                              bottom: BorderSide(color: Colors.grey[900]!, width: 1),
+                              bottom: BorderSide(
+                                color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[900]!,
+                                width: 1,
+                              ),
                             ),
                           ),
-                          child: const TabBar(
-                            indicatorColor: Colors.white,
+                          child: TabBar(
+                            indicatorColor: _themeService.textPrimaryColor,
                             indicatorSize: TabBarIndicatorSize.tab,
                             indicatorWeight: 2,
-                            labelColor: Colors.white,
-                            unselectedLabelColor: Colors.grey,
-                            tabs: [
+                            labelColor: _themeService.textPrimaryColor,
+                            unselectedLabelColor: _themeService.textSecondaryColor,
+                            tabs: const [
                               Tab(icon: Icon(Icons.grid_on)),
                             ],
                           ),
@@ -277,8 +298,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       children: [
         Text(
           count,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
             fontSize: 17,
             fontWeight: FontWeight.bold,
           ),
@@ -287,7 +308,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         Text(
           label,
           style: TextStyle(
-            color: Colors.grey[500],
+            color: _themeService.textSecondaryColor,
             fontSize: 13,
           ),
         ),
@@ -299,31 +320,43 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Container(
       height: 16,
       width: 1,
-      color: Colors.grey[800],
+      color: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[800],
       margin: const EdgeInsets.symmetric(horizontal: 20),
     );
   }
 
   Widget _buildFollowButton() {
+    // In light mode: white background with border (like Edit button)
+    // In dark mode: grey background
+    // For Follow (not following): always use pink color
+    final isFollowingState = _isFollowing;
+    
     return GestureDetector(
       onTap: _isProcessing ? null : _toggleFollow,
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: _isFollowing ? Colors.grey[800] : const Color(0xFFFF2D55),
+          color: isFollowingState 
+              ? (_themeService.isLightMode ? Colors.white : Colors.grey[800])
+              : const Color(0xFFFF2D55),
           borderRadius: BorderRadius.circular(4),
+          border: isFollowingState && _themeService.isLightMode
+              ? Border.all(color: Colors.grey[300]!, width: 1)
+              : null,
         ),
         alignment: Alignment.center,
         child: _isProcessing
-            ? const SizedBox(
+            ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(strokeWidth: 2, color: _themeService.textPrimaryColor),
               )
             : Text(
-                _isMutual ? 'Bạn bè' : (_isFollowing ? 'Đang Follow' : 'Follow'),
-                style: const TextStyle(
-                  color: Colors.white,
+                _isMutual ? _localeService.get('friends') : (isFollowingState ? _localeService.get('following_status') : _localeService.get('follow')),
+                style: TextStyle(
+                  color: isFollowingState 
+                      ? _themeService.textPrimaryColor 
+                      : Colors.white,
                   fontWeight: FontWeight.w600,
                   fontSize: 15,
                 ),
@@ -352,14 +385,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.grey[800],
+          color: _themeService.isLightMode ? Colors.white : Colors.grey[800],
           borderRadius: BorderRadius.circular(4),
+          border: _themeService.isLightMode
+              ? Border.all(color: Colors.grey[300]!, width: 1)
+              : null,
         ),
         alignment: Alignment.center,
-        child: const Text(
-          'Nhắn tin',
+        child: Text(
+          _localeService.get('message'),
           style: TextStyle(
-            color: Colors.white,
+            color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.w600,
             fontSize: 15,
           ),
@@ -374,11 +410,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.video_library_outlined, size: 64, color: Colors.grey[800]),
+            Icon(Icons.video_library_outlined, size: 64, color: _themeService.textSecondaryColor),
             const SizedBox(height: 16),
             Text(
-              'Chưa có video nào',
-              style: TextStyle(color: Colors.grey[600], fontSize: 15),
+              _localeService.get('no_videos'),
+              style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
             ),
           ],
         ),
@@ -416,20 +452,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             );
           },
           child: Container(
-            color: Colors.grey[900],
+            color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
             child: thumbnailUrl != null
                 ? Image.network(
                     thumbnailUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(
+                    errorBuilder: (_, __, ___) => Icon(
                       Icons.play_arrow_rounded,
-                      color: Colors.white24,
+                      color: _themeService.textSecondaryColor,
                       size: 40,
                     ),
                   )
-                : const Icon(
+                : Icon(
                     Icons.play_arrow_rounded,
-                    color: Colors.white24,
+                    color: _themeService.textSecondaryColor,
                     size: 40,
                   ),
           ),

@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 
 // Theme colors - matching TikTok/Instagram style
@@ -39,6 +40,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
@@ -56,6 +58,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadComments();
     _textController.addListener(() {
       setState(() {});
@@ -68,12 +71,19 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     }
   }
 
+  void _onLocaleChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
     _scrollController.dispose();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -311,7 +321,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               ),
                               const SizedBox(height: 16),
                               Text(
-                                'Chưa có bình luận nào',
+                                _localeService.get('no_comments'),
                                 style: TextStyle(
                                   color: Colors.grey[500],
                                   fontSize: 16,
@@ -342,6 +352,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               authService: _authService,
                               commentService: _commentService,
                               themeService: _themeService,
+                              localeService: _localeService,
                               formatDate: _formatDate,
                               formatCount: _formatCount,
                               onReply: _startReply,
@@ -385,7 +396,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Đang trả lời @$_replyingTo',
+                        '${_localeService.get('replying_to')} @$_replyingTo',
                         style: const TextStyle(
                           color: CommentTheme.textSecondary,
                           fontSize: 13,
@@ -460,7 +471,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                   fontSize: 14,
                 ),
                 decoration: InputDecoration(
-                  hintText: 'Thêm bình luận...',
+                  hintText: _localeService.get('add_comment'),
                   hintStyle: TextStyle(
                     color: _themeService.textSecondaryColor,
                     fontSize: 14,
@@ -546,36 +557,16 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
             ),
           ),
           const SizedBox(width: 12),
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(
-                fontSize: 14,
-                height: 1.4,
+          Expanded(
+            child: GestureDetector(
+              onTap: _navigateToLogin,
+              child: Text(
+                _localeService.get('need_login_to_comment'),
+                style: TextStyle(
+                  color: Colors.grey[400],
+                  fontSize: 14,
+                ),
               ),
-              children: [
-                TextSpan(
-                  text: 'Bạn cần ',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: GestureDetector(
-                    onTap: _navigateToLogin,
-                    child: const Text(
-                      'đăng nhập',
-                      style: TextStyle(
-                        color: CommentTheme.primaryRed,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                TextSpan(
-                  text: ' để bình luận',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-              ],
             ),
           ),
         ],
@@ -590,6 +581,7 @@ class _CommentItem extends StatefulWidget {
   final AuthService authService;
   final CommentService commentService;
   final ThemeService themeService;
+  final LocaleService localeService;
   final String Function(String?) formatDate;
   final String Function(int) formatCount;
   final Function(String, String) onReply;
@@ -603,6 +595,7 @@ class _CommentItem extends StatefulWidget {
     required this.authService,
     required this.commentService,
     required this.themeService,
+    required this.localeService,
     required this.formatDate,
     required this.formatCount,
     required this.onReply,
@@ -736,7 +729,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                   ),
                   child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
                 ),
-                title: const Text('Xóa bình luận', style: TextStyle(color: Colors.red)),
+                title: Text(widget.localeService.get('delete_comment'), style: const TextStyle(color: Colors.red)),
                 onTap: () async {
                   Navigator.pop(context);
                   final userId = widget.authService.user!['id'].toString();
@@ -857,7 +850,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                                 userInfo['username'] ?? 'user',
                               ),
                               child: Text(
-                                'Trả lời',
+                                widget.localeService.get('reply'),
                                 style: TextStyle(
                                   color: Colors.grey[500],
                                   fontSize: 12,
@@ -996,6 +989,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                         authService: widget.authService,
                         commentService: widget.commentService,
                         themeService: widget.themeService,
+                        localeService: widget.localeService,
                         formatDate: widget.formatDate,
                         formatCount: widget.formatCount,
                         onReply: widget.onReply,
@@ -1034,6 +1028,7 @@ class _ReplyItem extends StatefulWidget {
   final AuthService authService;
   final CommentService commentService;
   final ThemeService themeService;
+  final LocaleService localeService;
   final String Function(String?) formatDate;
   final String Function(int) formatCount;
   final Function(String, String) onReply;
@@ -1046,6 +1041,7 @@ class _ReplyItem extends StatefulWidget {
     required this.authService,
     required this.commentService,
     required this.themeService,
+    required this.localeService,
     required this.formatDate,
     required this.formatCount,
     required this.onReply,
@@ -1150,7 +1146,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                   ),
                   child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
                 ),
-                title: const Text('Xóa bình luận', style: TextStyle(color: Colors.red)),
+                title: Text(widget.localeService.get('delete_comment'), style: const TextStyle(color: Colors.red)),
                 onTap: () async {
                   Navigator.pop(context);
                   final userId = widget.authService.user!['id'].toString();
@@ -1237,7 +1233,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                         userInfo['username'] ?? 'user',
                       ),
                       child: Text(
-                        'Trả lời',
+                        widget.localeService.get('reply'),
                         style: TextStyle(
                           color: Colors.grey[500],
                           fontSize: 11,

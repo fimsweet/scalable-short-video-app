@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'dart:ui' as ui;
 
 // Custom painter for dashed border
@@ -80,6 +81,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   XFile? _selectedVideo;
   bool _isUploading = false;
@@ -88,9 +90,16 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -116,8 +125,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         if (!isValidFormat) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Định dạng video không được hỗ trợ'),
+              SnackBar(
+                content: Text(_localeService.get('video_format_not_supported')),
                 backgroundColor: Colors.red,
               ),
             );
@@ -130,8 +139,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         if (fileSize > maxSize) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Kích thước video tối đa 500MB'),
+              SnackBar(
+                content: Text(_localeService.get('video_max_size')),
                 backgroundColor: Colors.red,
               ),
             );
@@ -147,7 +156,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       print('❌ Error picking video: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi chọn video: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${_localeService.get('error_selecting_video')}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -157,7 +166,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedVideo == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng chọn video'), backgroundColor: Colors.red),
+        SnackBar(content: Text(_localeService.get('please_select_video')), backgroundColor: Colors.red),
       );
       return;
     }
@@ -171,7 +180,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
       final user = _authService.user;
 
       if (token == null || user == null) {
-        throw Exception('Vui lòng đăng nhập lại');
+        throw Exception(_localeService.get('please_login_again'));
       }
 
       final description = _descriptionController.text.trim();
@@ -208,7 +217,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
+                        color: Colors.white.withValues(alpha: 0.2),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -218,9 +227,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    const Text(
-                      'Video đã được tải lên!',
-                      style: TextStyle(
+                    Text(
+                      _localeService.get('video_uploaded'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -228,9 +237,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Video của bạn đang được xử lý và sẽ xuất hiện sớm thôi!',
-                      style: TextStyle(
+                    Text(
+                      _localeService.get('video_processing'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 14,
                       ),
@@ -252,9 +261,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: const Text(
-                          'Đóng',
-                          style: TextStyle(
+                        child: Text(
+                          _localeService.get('close'),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
@@ -269,7 +278,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Upload thất bại: ${result['message']}'),
+              content: Text('${_localeService.get('upload_failed')}: ${result['message']}'),
               backgroundColor: Colors.red,
             ),
           );
@@ -282,7 +291,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
           _isUploading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${_localeService.get('error')}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -292,6 +301,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
   void dispose() {
     _descriptionController.dispose();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -316,7 +326,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
             TextButton(
               onPressed: _uploadVideo,
               child: Text(
-                'Đăng',
+                _localeService.get('post'),
                 style: TextStyle(
                   color: _themeService.textPrimaryColor,
                   fontSize: 16,
@@ -398,7 +408,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                               ),
                               const SizedBox(height: 32),
                               Text(
-                                'Chọn video từ thư viện',
+                                _localeService.get('select_video_from_library'),
                                 style: TextStyle(
                                   color: _themeService.textPrimaryColor,
                                   fontSize: 18,
@@ -423,7 +433,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                     ),
                                     const SizedBox(width: 6),
                                     Text(
-                                      'Tối đa 500MB • MP4, MOV, AVI',
+                                      _localeService.get('max_size_format'),
                                       style: TextStyle(
                                         color: _themeService.textSecondaryColor,
                                         fontSize: 13,
@@ -458,7 +468,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'Nhấn để chọn video',
+                                        _localeService.get('tap_to_select_video'),
                                         style: TextStyle(
                                           color: _themeService.textPrimaryColor.withOpacity(0.7),
                                           fontSize: 14,
@@ -522,7 +532,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                           ),
                                           const SizedBox(width: 8),
                                           Text(
-                                            'Video đã chọn',
+                                            _localeService.get('video_selected'),
                                             style: TextStyle(
                                               color: _themeService.textPrimaryColor.withOpacity(0.7),
                                               fontSize: 13,
@@ -552,7 +562,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                     TextButton.icon(
                                       onPressed: _pickVideo,
                                       icon: const Icon(Icons.swap_horiz, size: 18),
-                                      label: const Text('Chọn video khác'),
+                                      label: Text(_localeService.get('select_another_video')),
                                       style: TextButton.styleFrom(
                                         foregroundColor: _themeService.textPrimaryColor.withOpacity(0.7),
                                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -577,7 +587,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                                         ),
                                         const SizedBox(height: 24),
                                         Text(
-                                          'Đang upload...',
+                                          _localeService.get('uploading'),
                                           style: TextStyle(
                                             color: _themeService.textPrimaryColor,
                                             fontSize: 16,
@@ -603,9 +613,9 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                   maxLength: 2200,
                   maxLines: 6,
                   decoration: InputDecoration(
-                    labelText: 'Mô tả video',
+                    labelText: _localeService.get('video_description'),
                     labelStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 13),
-                    hintText: 'Kể về video của bạn...',
+                    hintText: _localeService.get('describe_your_video'),
                     hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
                     filled: true,
                     fillColor: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
@@ -618,7 +628,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Vui lòng nhập mô tả cho video';
+                      return _localeService.get('please_enter_description');
                     }
                     return null;
                   },
@@ -657,14 +667,14 @@ class _UploadVideoScreenState extends State<UploadVideoScreen> {
                         ),
                         elevation: 0,
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.cloud_upload_outlined, size: 22),
-                          SizedBox(width: 8),
+                          const Icon(Icons.cloud_upload_outlined, size: 22),
+                          const SizedBox(width: 8),
                           Text(
-                            'Đăng video',
-                            style: TextStyle(
+                            _localeService.get('upload_video'),
+                            style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 0.5,

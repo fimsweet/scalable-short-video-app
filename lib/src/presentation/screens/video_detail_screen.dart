@@ -9,6 +9,8 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
@@ -41,6 +43,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   final LikeService _likeService = LikeService();
   final CommentService _commentService = CommentService();
   final SavedVideoService _savedVideoService = SavedVideoService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   late PageController _pageController;
   late List<dynamic> _videos; // Make videos mutable
@@ -72,7 +76,19 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     // Listen to login events - ADD THIS
     _authService.addLoginListener(_onLogin);
     
+    // Listen to theme and locale changes
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
+    
     _initializeVideoData();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   // ADD THIS METHOD
@@ -105,6 +121,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   void dispose() {
     _authService.removeLogoutListener(_onLogout);
     _authService.removeLoginListener(_onLogin); // ADD THIS
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     _pageController.dispose();
     super.dispose();
   }
@@ -188,7 +206,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   Future<void> _handleLike(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'thích');
+      LoginRequiredDialog.show(context, 'like');
       return;
     }
 
@@ -207,7 +225,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   Future<void> _handleSave(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'lưu');
+      LoginRequiredDialog.show(context, 'save');
       return;
     }
 
@@ -228,7 +246,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   void _handleShare(String videoId) {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'chia sẻ');
+      LoginRequiredDialog.show(context, 'share');
       return;
     }
 
@@ -390,8 +408,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         itemBuilder: (context, index) {
           final video = _videos[index];
           if (video == null) {
-            return const Center(
-              child: Text('Video không hợp lệ', style: TextStyle(color: Colors.white)),
+            return Center(
+              child: Text(_localeService.get('invalid_video'), style: const TextStyle(color: Colors.white)),
             );
           }
 
@@ -413,10 +431,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               else
                 Container(
                   color: Colors.black,
-                  child: const Center(
+                  child: Center(
                     child: Text(
-                      'Video không khả dụng',
-                      style: TextStyle(color: Colors.white, fontSize: 18),
+                      _localeService.get('video_unavailable'),
+                      style: const TextStyle(color: Colors.white, fontSize: 18),
                     ),
                   ),
                 ),

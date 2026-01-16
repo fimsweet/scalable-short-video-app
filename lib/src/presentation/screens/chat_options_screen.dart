@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/blocked_users_screen.dart';
 
@@ -25,6 +27,8 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   final MessageService _messageService = MessageService();
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   bool _isMuted = false;
   bool _isPinned = false;
@@ -34,7 +38,24 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadSettings() async {
@@ -68,18 +89,18 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             const Icon(Icons.check_circle, color: Colors.green, size: 24),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18)),
+              child: Text(title, style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18)),
             ),
           ],
         ),
-        content: Text(message, style: TextStyle(color: Colors.grey[400])),
+        content: Text(message, style: TextStyle(color: _themeService.textSecondaryColor)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -94,20 +115,20 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.error, color: Colors.red, size: 24),
-            SizedBox(width: 8),
-            Text('Lỗi', style: TextStyle(color: Colors.white, fontSize: 18)),
+            const Icon(Icons.error, color: Colors.red, size: 24),
+            const SizedBox(width: 8),
+            Text(_localeService.get('error'), style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18)),
           ],
         ),
-        content: Text(message, style: TextStyle(color: Colors.grey[400])),
+        content: Text(message, style: TextStyle(color: _themeService.textSecondaryColor)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFE84C3D))),
+            child: Text(_localeService.get('ok'), style: const TextStyle(color: Color(0xFFE84C3D))),
           ),
         ],
       ),
@@ -135,7 +156,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     } catch (e) {
       // Revert on error
       setState(() => _isMuted = !value);
-      _showErrorDialog('Không thể cập nhật cài đặt');
+      _showErrorDialog(_localeService.get('settings_update_failed'));
     }
   }
 
@@ -151,7 +172,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     } catch (e) {
       // Revert on error
       setState(() => _isPinned = !value);
-      _showErrorDialog('Không thể cập nhật cài đặt');
+      _showErrorDialog(_localeService.get('settings_update_failed'));
     }
   }
 
@@ -159,24 +180,26 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Chặn người dùng', style: TextStyle(color: Colors.white)),
+        title: Text(_localeService.get('block_user'), style: TextStyle(color: _themeService.textPrimaryColor)),
         content: Text(
-          'Bạn có chắc muốn chặn ${widget.recipientUsername}?\n\nHọ sẽ không thể:\n• Gửi tin nhắn cho bạn\n• Xem trang cá nhân của bạn\n• Tìm thấy bạn trong tìm kiếm',
-          style: TextStyle(color: Colors.grey[400]),
+          _localeService.isVietnamese
+              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}?\n\nHọ sẽ không thể:\n• Gửi tin nhắn cho bạn\n• Xem trang cá nhân của bạn\n• Tìm thấy bạn trong tìm kiếm'
+              : 'Are you sure you want to block ${widget.recipientUsername}?\n\nThey will not be able to:\n• Send you messages\n• View your profile\n• Find you in search',
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[500])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context); // Close dialog
               await _performBlockUser();
             },
-            child: const Text('Chặn', style: TextStyle(color: Colors.red)),
+            child: Text(_localeService.get('block'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -199,7 +222,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog('Không thể chặn người dùng');
+        _showErrorDialog(_localeService.get('block_failed'));
       }
     }
   }
@@ -207,22 +230,22 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Tùy chọn',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          _localeService.get('chat_options'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
           : SingleChildScrollView(
               child: Column(
                 children: [
@@ -252,12 +275,12 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         // Avatar
         CircleAvatar(
           radius: 50,
-          backgroundColor: Colors.grey[800],
+          backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
           backgroundImage: widget.recipientAvatar != null
               ? NetworkImage(widget.recipientAvatar!)
               : null,
           child: widget.recipientAvatar == null
-              ? Icon(Icons.person, color: Colors.grey[500], size: 50)
+              ? Icon(Icons.person, color: _themeService.textSecondaryColor, size: 50)
               : null,
         ),
         const SizedBox(height: 16),
@@ -265,10 +288,10 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         // Username
         Text(
           widget.recipientUsername,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
-            color: Colors.white,
+            color: _themeService.textPrimaryColor,
           ),
         ),
         const SizedBox(height: 8),
@@ -279,12 +302,12 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.grey[900],
+              color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
               borderRadius: BorderRadius.circular(20),
             ),
-            child: const Text(
-              'Xem hồ sơ',
-              style: TextStyle(
+            child: Text(
+              _localeService.get('view_profile'),
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.blue,
                 fontWeight: FontWeight.w500,
@@ -300,24 +323,24 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         children: [
           _buildOptionItem(
             icon: Icons.notifications_off_outlined,
-            label: 'Tắt thông báo',
-            subtitle: _isMuted ? 'Đã tắt' : 'Đang bật',
+            label: _localeService.get('mute_notifications'),
+            subtitle: _isMuted ? _localeService.get('muted') : _localeService.get('unmuted'),
             hasSwitch: true,
             switchValue: _isMuted,
             onSwitchChanged: _toggleMuteNotification,
           ),
-          Divider(color: Colors.grey[800], height: 1, indent: 56),
+          Divider(color: _themeService.dividerColor, height: 1, indent: 56),
           _buildOptionItem(
             icon: Icons.push_pin_outlined,
-            label: 'Ghim lên đầu',
-            subtitle: _isPinned ? 'Đã ghim' : 'Chưa ghim',
+            label: _localeService.get('pin_conversation'),
+            subtitle: _isPinned ? _localeService.get('pinned') : _localeService.get('not_pinned'),
             hasSwitch: true,
             switchValue: _isPinned,
             onSwitchChanged: _togglePinConversation,
@@ -331,7 +354,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -339,8 +362,8 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           if (_isBlocked)
             _buildOptionItem(
               icon: Icons.lock_open,
-              label: 'Bỏ chặn',
-              subtitle: 'Cho phép người này liên hệ với bạn',
+              label: _localeService.get('unblock'),
+              subtitle: _localeService.get('allow_contact'),
               textColor: Colors.green,
               iconColor: Colors.green,
               onTap: _unblockUser,
@@ -348,17 +371,17 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           else
             _buildOptionItem(
               icon: Icons.block,
-              label: 'Chặn',
-              subtitle: 'Chặn người dùng này',
+              label: _localeService.get('block'),
+              subtitle: _localeService.get('block_user_desc'),
               textColor: Colors.red,
               iconColor: Colors.red,
               onTap: _blockUser,
             ),
-          Divider(color: Colors.grey[800], height: 1, indent: 56),
+          Divider(color: _themeService.dividerColor, height: 1, indent: 56),
           _buildOptionItem(
             icon: Icons.list,
-            label: 'Danh sách chặn',
-            subtitle: 'Quản lý người dùng đã chặn',
+            label: _localeService.get('blocked_list'),
+            subtitle: _localeService.get('blocked_list_subtitle'),
             onTap: () {
               Navigator.push(
                 context,
@@ -375,24 +398,26 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Bỏ chặn người dùng', style: TextStyle(color: Colors.white)),
+        title: Text(_localeService.get('unblock_user'), style: TextStyle(color: _themeService.textPrimaryColor)),
         content: Text(
-          'Bạn có chắc muốn bỏ chặn ${widget.recipientUsername}?\n\nHọ sẽ có thể gửi tin nhắn cho bạn.',
-          style: TextStyle(color: Colors.grey[400]),
+          _localeService.isVietnamese
+              ? 'Bạn có chắc muốn bỏ chặn ${widget.recipientUsername}?\n\nHọ sẽ có thể gửi tin nhắn cho bạn.'
+              : 'Are you sure you want to unblock ${widget.recipientUsername}?\n\nThey will be able to send you messages.',
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[500])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
               await _performUnblockUser();
             },
-            child: const Text('Bỏ chặn', style: TextStyle(color: Colors.green)),
+            child: Text(_localeService.get('unblock'), style: const TextStyle(color: Colors.green)),
           ),
         ],
       ),
@@ -411,13 +436,15 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         });
         
         _showSuccessDialog(
-          title: 'Đã bỏ chặn',
-          message: 'Bạn đã bỏ chặn ${widget.recipientUsername}. Họ có thể gửi tin nhắn cho bạn.',
+          title: _localeService.get('unblocked_success'),
+          message: _localeService.isVietnamese
+              ? 'Bạn đã bỏ chặn ${widget.recipientUsername}. Họ có thể gửi tin nhắn cho bạn.'
+              : 'You unblocked ${widget.recipientUsername}. They can send you messages now.',
         );
       }
     } catch (e) {
       if (mounted) {
-        _showErrorDialog('Không thể bỏ chặn người dùng');
+        _showErrorDialog(_localeService.get('unblock_failed'));
       }
     }
   }
@@ -433,6 +460,9 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     Color? textColor,
     Color? iconColor,
   }) {
+    final defaultTextColor = textColor ?? _themeService.textPrimaryColor;
+    final defaultIconColor = iconColor ?? _themeService.textPrimaryColor;
+    
     return InkWell(
       onTap: hasSwitch ? null : onTap,
       borderRadius: BorderRadius.circular(12),
@@ -444,13 +474,13 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: (iconColor ?? Colors.white).withOpacity(0.1),
+                color: (iconColor ?? _themeService.textSecondaryColor).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 icon,
                 size: 22,
-                color: iconColor ?? Colors.white,
+                color: defaultIconColor,
               ),
             ),
             const SizedBox(width: 12),
@@ -462,7 +492,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
                     label,
                     style: TextStyle(
                       fontSize: 16,
-                      color: textColor ?? Colors.white,
+                      color: defaultTextColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -471,7 +501,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
                       subtitle,
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.grey[500],
+                        color: _themeService.textSecondaryColor,
                       ),
                     ),
                 ],
@@ -481,13 +511,13 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
               Switch(
                 value: switchValue,
                 onChanged: onSwitchChanged,
-                activeColor: const Color(0xFFE84C3D),
-                activeTrackColor: const Color(0xFFE84C3D).withOpacity(0.5),
-                inactiveThumbColor: Colors.grey[400],
-                inactiveTrackColor: Colors.grey[700],
+                activeColor: Colors.blue,
+                activeTrackColor: Colors.blue.withOpacity(0.5),
+                inactiveThumbColor: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[400],
+                inactiveTrackColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[700],
               )
             else
-              Icon(Icons.chevron_right, color: Colors.grey[600]),
+              Icon(Icons.chevron_right, color: _themeService.textSecondaryColor),
           ],
         ),
       ),

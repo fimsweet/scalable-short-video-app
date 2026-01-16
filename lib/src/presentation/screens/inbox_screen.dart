@@ -5,6 +5,7 @@ import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class InboxScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class _InboxScreenState extends State<InboxScreen> {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   List<Map<String, dynamic>> _conversations = [];
   Map<String, Map<String, dynamic>> _userCache = {};
@@ -32,11 +34,18 @@ class _InboxScreenState extends State<InboxScreen> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadConversations();
     _setupListeners();
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -119,6 +128,7 @@ class _InboxScreenState extends State<InboxScreen> {
   void dispose() {
     _newMessageSubscription?.cancel();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -140,7 +150,7 @@ class _InboxScreenState extends State<InboxScreen> {
         final utcDate = DateTime.parse(dateString);
         date = DateTime.utc(utcDate.year, utcDate.month, utcDate.day, utcDate.hour, utcDate.minute, utcDate.second, utcDate.millisecond).toLocal();
       }
-      return timeago.format(date, locale: 'vi');
+      return timeago.format(date, locale: _localeService.isVietnamese ? 'vi' : 'en');
     } catch (e) {
       print('Error parsing date: $e');
       return '';
@@ -153,7 +163,9 @@ class _InboxScreenState extends State<InboxScreen> {
     }
     
     if (content.startsWith('[VIDEO_SHARE:') && content.endsWith(']')) {
-      return isMe ? 'Bạn đã chia sẻ một video' : '$otherUsername đã chia sẻ một video';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã chia sẻ một video' : 'You shared a video')
+          : (_localeService.isVietnamese ? '$otherUsername đã chia sẻ một video' : '$otherUsername shared a video');
     }
     
     // Handle stacked images (4+ images)
@@ -164,33 +176,43 @@ class _InboxScreenState extends State<InboxScreen> {
         final urlsString = content.substring(start, end);
         final imageCount = urlsString.split(',').where((url) => url.isNotEmpty).length;
         if (isMe) {
-          return 'Bạn đã gửi $imageCount ảnh';
+          return _localeService.isVietnamese ? 'Bạn đã gửi $imageCount ảnh' : 'You sent $imageCount photos';
         } else {
-          return '$otherUsername đã gửi $imageCount ảnh';
+          return _localeService.isVietnamese ? '$otherUsername đã gửi $imageCount ảnh' : '$otherUsername sent $imageCount photos';
         }
       }
-      return isMe ? 'Bạn đã gửi nhiều ảnh' : '$otherUsername đã gửi nhiều ảnh';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã gửi nhiều ảnh' : 'You sent multiple photos')
+          : (_localeService.isVietnamese ? '$otherUsername đã gửi nhiều ảnh' : '$otherUsername sent multiple photos');
     }
     
     // Handle single image
     if (content.startsWith('[IMAGE:') && content.endsWith(']')) {
-      return isMe ? 'Bạn đã gửi một ảnh' : '$otherUsername đã gửi một ảnh';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã gửi một ảnh' : 'You sent a photo')
+          : (_localeService.isVietnamese ? '$otherUsername đã gửi một ảnh' : '$otherUsername sent a photo');
     }
     
     // Handle image in text
     if (content.contains('[IMAGE:')) {
-      return isMe ? 'Bạn đã gửi một ảnh' : '$otherUsername đã gửi một ảnh';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã gửi một ảnh' : 'You sent a photo')
+          : (_localeService.isVietnamese ? '$otherUsername đã gửi một ảnh' : '$otherUsername sent a photo');
     }
     
     if (content.startsWith('[STICKER:') && content.endsWith(']')) {
-      return isMe ? 'Bạn đã gửi một sticker' : '$otherUsername đã gửi một sticker';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã gửi một sticker' : 'You sent a sticker')
+          : (_localeService.isVietnamese ? '$otherUsername đã gửi một sticker' : '$otherUsername sent a sticker');
     }
     
     if (content.startsWith('[VOICE:') && content.endsWith(']')) {
-      return isMe ? 'Bạn đã gửi tin nhắn thoại' : '$otherUsername đã gửi tin nhắn thoại';
+      return isMe 
+          ? (_localeService.isVietnamese ? 'Bạn đã gửi tin nhắn thoại' : 'You sent a voice message')
+          : (_localeService.isVietnamese ? '$otherUsername đã gửi tin nhắn thoại' : '$otherUsername sent a voice message');
     }
     
-    return isMe ? 'Bạn: $content' : content;
+    return isMe ? '${_localeService.get('you')}: $content' : content;
   }
 
   @override
@@ -205,7 +227,7 @@ class _InboxScreenState extends State<InboxScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Hộp thư',
+          _localeService.get('inbox'),
           style: TextStyle(
             color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.bold,
@@ -233,7 +255,7 @@ class _InboxScreenState extends State<InboxScreen> {
               child: TextField(
                 style: TextStyle(color: _themeService.textPrimaryColor),
                 decoration: InputDecoration(
-                  hintText: 'Tìm kiếm',
+                  hintText: _localeService.get('search'),
                   hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
                   prefixIcon: Icon(Icons.search, color: _themeService.textSecondaryColor, size: 20),
                   border: InputBorder.none,
@@ -253,12 +275,14 @@ class _InboxScreenState extends State<InboxScreen> {
                             Icon(Icons.mail_outline, size: 80, color: _themeService.textSecondaryColor),
                             const SizedBox(height: 16),
                             Text(
-                              'Chưa có tin nhắn',
+                              _localeService.get('no_messages'),
                               style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Bắt đầu nhắn tin với bạn bè',
+                              _localeService.isVietnamese 
+                                  ? 'Bắt đầu nhắn tin với bạn bè' 
+                                  : 'Start messaging with friends',
                               style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
                             ),
                           ],

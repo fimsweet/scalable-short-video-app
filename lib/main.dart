@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,11 @@ void main() async {
   final themeService = ThemeService();
   await themeService.init();
   print('✅ ThemeService initialized');
+  
+  // Initialize LocaleService
+  final localeService = LocaleService();
+  await localeService.init();
+  print('✅ LocaleService initialized');
   
   // Then try auto-login which will trigger the listeners if successful
   await AuthService().tryAutoLogin();

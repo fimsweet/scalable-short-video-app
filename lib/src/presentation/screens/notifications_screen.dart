@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/notification_service.dart'
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class NotificationsScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   List<dynamic> _notifications = [];
   bool _isLoading = true;
@@ -26,16 +28,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadNotifications();
   }
 
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -133,15 +143,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _getNotificationMessage(dynamic notification, String username) {
     switch (notification['type']) {
       case 'follow':
-        return '$username bắt đầu theo dõi bạn';
+        return _localeService.isVietnamese 
+            ? '$username bắt đầu theo dõi bạn' 
+            : '$username started following you';
       case 'comment':
         final message = notification['message']?.toString() ?? '';
         final preview = message.length > 50 ? '${message.substring(0, 50)}...' : message;
-        return '$username đã bình luận: $preview';
+        return '$username ${_localeService.get('commented')}: $preview';
       case 'like':
-        return '$username đã thích video của bạn';
+        return _localeService.isVietnamese 
+            ? '$username đã thích video của bạn' 
+            : '$username liked your video';
       default:
-        return 'Thông báo mới từ $username';
+        return _localeService.isVietnamese 
+            ? 'Thông báo mới từ $username' 
+            : 'New notification from $username';
     }
   }
 
@@ -151,15 +167,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
         backgroundColor: _themeService.appBarBackground,
-        title: Text('Thông báo', style: TextStyle(color: _themeService.textPrimaryColor)),
+        title: Text(_localeService.get('notifications'), style: TextStyle(color: _themeService.textPrimaryColor)),
         iconTheme: IconThemeData(color: _themeService.iconColor),
         actions: [
           if (_notifications.any((n) => !(n['isRead'] ?? false)))
             TextButton(
               onPressed: _markAllAsRead,
-              child: const Text(
-                'Đọc tất cả',
-                style: TextStyle(color: Colors.blue),
+              child: Text(
+                _localeService.isVietnamese ? 'Đọc tất cả' : 'Mark all read',
+                style: const TextStyle(color: Colors.blue),
               ),
             ),
         ],
@@ -174,12 +190,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       Icon(Icons.notifications_none, size: 80, color: _themeService.textSecondaryColor),
                       const SizedBox(height: 16),
                       Text(
-                        'Chưa có thông báo nào',
+                        _localeService.get('no_notifications'),
                         style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Các thông báo của bạn sẽ hiển thị ở đây',
+                        _localeService.isVietnamese 
+                            ? 'Các thông báo của bạn sẽ hiển thị ở đây' 
+                            : 'Your notifications will appear here',
                         style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
                       ),
                     ],
@@ -264,7 +282,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         Text(
                                           timeago.format(
                                             DateTime.parse(notification['createdAt']),
-                                            locale: 'vi',
+                                            locale: _localeService.isVietnamese ? 'vi' : 'en',
                                           ),
                                           style: TextStyle(
                                             color: _themeService.textSecondaryColor,

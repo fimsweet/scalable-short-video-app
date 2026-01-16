@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -19,44 +20,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final ApiService _apiService = ApiService();
   final ImagePicker _picker = ImagePicker();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   late TextEditingController _nameController;
-  late TextEditingController _usernameController;
   late TextEditingController _bioController;
-  late TextEditingController _linkController;
+  late TextEditingController _websiteController;
+  late TextEditingController _locationController;
   
+  String _selectedGender = '';
   bool _isLoading = false;
   bool _isUploading = false;
-  
-  // Privacy settings
-  bool _isPrivateAccount = false;
-  bool _commentsDisabled = false;
-  bool _allowSaveVideo = true;
-  bool _pushNotificationsEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: _authService.username ?? '');
-    _usernameController = TextEditingController(text: _authService.username ?? '');
     _bioController = TextEditingController(text: _authService.bio ?? '');
-    _linkController = TextEditingController();
+    _websiteController = TextEditingController();
+    _locationController = TextEditingController();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
   }
 
   void _onThemeChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _usernameController.dispose();
     _bioController.dispose();
-    _linkController.dispose();
+    _websiteController.dispose();
+    _locationController.dispose();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -71,15 +72,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       if (image == null) return;
 
-      setState(() {
-        _isUploading = true;
-      });
+      setState(() => _isUploading = true);
 
       final token = await _authService.getToken();
       if (token == null) {
-        if (mounted) {
-          _showSnackBar('Vui lòng đăng nhập lại', Colors.red);
-        }
+        if (mounted) _showSnackBar(_localeService.get('please_login_again'), Colors.red);
         return;
       }
 
@@ -94,23 +91,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
         if (mounted) {
           setState(() {});
-          _showSnackBar('Cập nhật ảnh đại diện thành công!', Colors.green);
+          _showSnackBar(_localeService.get('avatar_update_success'), Colors.green);
         }
       } else {
         if (mounted) {
-          _showSnackBar(result['message'] ?? 'Upload thất bại', Colors.red);
+          _showSnackBar(result['message'] ?? _localeService.get('upload_failed'), Colors.red);
         }
       }
     } catch (e) {
-      if (mounted) {
-        _showSnackBar('Lỗi: $e', Colors.red);
-      }
+      if (mounted) _showSnackBar('${_localeService.get('error')}: $e', Colors.red);
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-        });
-      }
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
@@ -124,52 +115,117 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  void _showGenderPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _themeService.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  _localeService.get('select_gender'),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.textPrimaryColor,
+                  ),
+                ),
+              ),
+              Divider(height: 1, color: _themeService.dividerColor),
+              _buildGenderOption(_localeService.get('male')),
+              _buildGenderOption(_localeService.get('female')),
+              _buildGenderOption(_localeService.get('other')),
+              _buildGenderOption(_localeService.get('prefer_not_to_say')),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenderOption(String gender) {
+    return InkWell(
+      onTap: () {
+        setState(() => _selectedGender = gender);
+        Navigator.pop(context);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                gender,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: _themeService.textPrimaryColor,
+                ),
+              ),
+            ),
+            if (_selectedGender == gender)
+              const Icon(Icons.check, color: Colors.blue, size: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _saveProfile() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final token = await _authService.getToken();
       if (token == null) {
-        _showSnackBar('Vui lòng đăng nhập lại', Colors.red);
+        _showSnackBar(_localeService.get('please_login_again'), Colors.red);
         return;
       }
 
-      // Update bio if changed
       final newBio = _bioController.text.trim();
-      if (newBio != _authService.bio) {
-        final result = await _apiService.updateProfile(
-          token: token,
-          bio: newBio,
-        );
+      final newWebsite = _websiteController.text.trim();
+      final newLocation = _locationController.text.trim();
+      final newGender = _selectedGender;
 
-        if (result['success']) {
-          await _authService.updateBio(newBio);
-          if (mounted) {
-            _showSnackBar('Cập nhật thông tin thành công!', Colors.green);
-            Navigator.pop(context, true);
-          }
-        } else {
-          if (mounted) {
-            _showSnackBar(result['message'] ?? 'Cập nhật thất bại', Colors.red);
-          }
+      final result = await _apiService.updateProfile(
+        token: token,
+        bio: newBio.isNotEmpty ? newBio : null,
+        website: newWebsite.isNotEmpty ? newWebsite : null,
+        location: newLocation.isNotEmpty ? newLocation : null,
+        gender: newGender.isNotEmpty ? newGender : null,
+      );
+
+      if (result['success']) {
+        await _authService.updateBio(newBio);
+        if (mounted) {
+          _showSnackBar(_localeService.get('update_success'), Colors.green);
+          Navigator.pop(context, true);
         }
       } else {
         if (mounted) {
-          Navigator.pop(context, true);
+          _showSnackBar(result['message'] ?? _localeService.get('update_failed'), Colors.red);
         }
       }
     } catch (e) {
-      if (mounted) {
-        _showSnackBar('Lỗi: $e', Colors.red);
-      }
+      if (mounted) _showSnackBar('${_localeService.get('error')}: $e', Colors.red);
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -185,7 +241,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Sửa hồ sơ',
+          _localeService.get('edit_profile'),
           style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
@@ -202,7 +258,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   )
                 : Text(
-                    'Lưu',
+                    _localeService.get('save'),
                     style: TextStyle(
                       color: _themeService.textPrimaryColor,
                       fontWeight: FontWeight.bold,
@@ -216,6 +272,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: Column(
           children: [
             const SizedBox(height: 24),
+            
             // Avatar section
             Center(
               child: GestureDetector(
@@ -245,163 +302,94 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(height: 8),
             TextButton(
               onPressed: _pickAndUploadAvatar,
-              child: const Text(
-                'Thay đổi ảnh',
-                style: TextStyle(
+              child: Text(
+                _localeService.get('change_photo'),
+                style: const TextStyle(
                   color: Colors.blue,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
+            
             const SizedBox(height: 24),
-            // Form fields
-            _buildSectionTitle('Thông tin cơ bản'),
+            
+            // Section: Thông tin cơ bản
+            _buildSectionTitle(_localeService.get('basic_info')),
             _buildEditField(
-              label: 'Tên',
-              hint: 'Thêm Tên',
+              label: _localeService.get('name'),
+              hint: _localeService.get('add_name'),
               controller: _nameController,
-              showArrow: true,
+              enabled: false,
             ),
             _buildEditField(
-              label: 'Tiểu sử',
-              hint: 'Thêm tiểu sử',
+              label: _localeService.get('bio'),
+              hint: _localeService.get('add_bio'),
               controller: _bioController,
               maxLines: 3,
-              showArrow: true,
             ),
+            
+            const SizedBox(height: 16),
+            
+            // Section: Thông tin liên hệ
+            _buildSectionTitle(_localeService.get('additional_info')),
+            _buildEditField(
+              label: _localeService.get('website'),
+              hint: _localeService.get('add_website'),
+              controller: _websiteController,
+            ),
+            _buildEditField(
+              label: _localeService.get('location'),
+              hint: _localeService.get('add_location'),
+              controller: _locationController,
+            ),
+            _buildTapField(
+              label: _localeService.get('gender'),
+              value: _selectedGender.isEmpty ? _localeService.get('select_gender') : _selectedGender,
+              onTap: _showGenderPicker,
+            ),
+            
             const SizedBox(height: 24),
-            _buildSectionTitle('Quyền riêng tư và bảo mật'),
-            _buildSettingSwitch(
-              title: 'Tài khoản riêng tư',
-              subtitle: 'Chỉ người theo dõi mới có thể xem video của bạn',
-              value: _isPrivateAccount,
-              onChanged: (value) {
-                setState(() {
-                  _isPrivateAccount = value;
-                });
-                _showSnackBar(
-                  value ? 'Đã bật tài khoản riêng tư' : 'Đã tắt tài khoản riêng tư',
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            _buildMenuItem(
-              title: 'Ai có thể xem video của bạn',
-              subtitle: 'Mọi người',
-              onTap: () {
-                // TODO: Navigate to video privacy settings
-              },
-            ),
-            _buildMenuItem(
-              title: 'Ai có thể gửi tin nhắn cho bạn',
-              subtitle: 'Bạn bè',
-              onTap: () {
-                // TODO: Navigate to message privacy settings
-              },
-            ),
-            _buildMenuItem(
-              title: 'Ai có thể Duet hoặc Stitch với video của bạn',
-              subtitle: 'Mọi người',
-              onTap: () {
-                // TODO: Navigate to duet/stitch settings
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Tương tác'),
-            _buildMenuItem(
-              title: 'Quản lý bình luận',
-              subtitle: 'Lọc và kiểm duyệt bình luận',
-              onTap: () {
-                // TODO: Navigate to comment management
-              },
-            ),
-            _buildSettingSwitch(
-              title: 'Tắt bình luận',
-              subtitle: 'Tắt bình luận cho tất cả video của bạn',
-              value: _commentsDisabled,
-              onChanged: (value) {
-                setState(() {
-                  _commentsDisabled = value;
-                });
-                _showSnackBar(
-                  value ? 'Đã tắt bình luận' : 'Đã bật bình luận',
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            _buildSettingSwitch(
-              title: 'Cho phép lưu video',
-              subtitle: 'Người khác có thể lưu video của bạn',
-              value: _allowSaveVideo,
-              onChanged: (value) {
-                setState(() {
-                  _allowSaveVideo = value;
-                });
-                _showSnackBar(
-                  value ? 'Đã cho phép lưu video' : 'Đã tắt lưu video',
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Thông báo'),
-            _buildMenuItem(
-              title: 'Cài đặt thông báo',
-              subtitle: 'Quản lý thông báo bạn nhận được',
-              onTap: () {
-                // TODO: Navigate to notification settings
-              },
-            ),
-            _buildSettingSwitch(
-              title: 'Thông báo đẩy',
-              subtitle: 'Nhận thông báo về hoạt động mới',
-              value: _pushNotificationsEnabled,
-              onChanged: (value) {
-                setState(() {
-                  _pushNotificationsEnabled = value;
-                });
-                _showSnackBar(
-                  value ? 'Đã bật thông báo đẩy' : 'Đã tắt thông báo đẩy',
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Nội dung và hiển thị'),
-            _buildSettingSwitch(
-              title: 'Chế độ sáng',
-              subtitle: 'Chuyển đổi giữa giao diện sáng và tối',
-              value: _themeService.isLightMode,
-              onChanged: (value) {
-                _themeService.toggleTheme(value);
-                _showSnackBar(
-                  value ? 'Đã bật chế độ sáng' : 'Đã bật chế độ tối',
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            _buildMenuItem(
-              title: 'Ngôn ngữ',
-              subtitle: 'Tiếng Việt',
-              onTap: () {
-                // TODO: Navigate to language settings
-              },
-            ),
-            _buildMenuItem(
-              title: 'Quản lý tài khoản',
-              subtitle: 'Bảo mật, mật khẩu, xóa tài khoản',
+            
+            // Link to Settings - simple blue text like Instagram
+            InkWell(
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => const AccountManagementScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
                 );
               },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  _localeService.get('account_settings'),
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
             ),
+            
             const SizedBox(height: 100),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: _themeService.sectionTitleBackground,
+      child: Text(
+        title,
+        style: TextStyle(
+          color: _themeService.textSecondaryColor,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
@@ -427,9 +415,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             },
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
+              return const Center(child: CircularProgressIndicator(strokeWidth: 2));
             },
           ),
         ),
@@ -443,28 +429,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: _themeService.sectionTitleBackground,
-      child: Text(
-        title,
-        style: TextStyle(
-          color: _themeService.textSecondaryColor,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   Widget _buildEditField({
     required String label,
     required String hint,
     required TextEditingController controller,
     int maxLines = 1,
-    bool showArrow = false,
     bool enabled = true,
   }) {
     return Column(
@@ -475,17 +444,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: Row(
             crossAxisAlignment: maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: [
-              if (label.isNotEmpty)
-                SizedBox(
-                  width: 100,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontSize: 16,
-                    ),
+              SizedBox(
+                width: 80,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 16,
                   ),
                 ),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -507,12 +475,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ),
-              if (showArrow)
-                Icon(
-                  Icons.chevron_right,
-                  color: _themeService.textSecondaryColor,
-                  size: 24,
-                ),
             ],
           ),
         ),
@@ -525,104 +487,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildMenuItem({
-    required String title,
-    required String subtitle,
+  Widget _buildTapField({
+    required String label,
+    required String value,
     required VoidCallback onTap,
   }) {
+    final isPlaceholder = value == _localeService.get('select_gender');
+    
     return Column(
       children: [
         InkWell(
           onTap: onTap,
           child: Container(
             color: _themeService.inputBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: _themeService.textPrimaryColor,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: _themeService.textSecondaryColor,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  color: _themeService.textSecondaryColor,
-                  size: 24,
+                Expanded(
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: isPlaceholder ? _themeService.textSecondaryColor : _themeService.textPrimaryColor,
+                      fontSize: 16,
+                    ),
+                  ),
                 ),
+                Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 20),
               ],
             ),
-          ),
-        ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingSwitch({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Column(
-      children: [
-        Container(
-          color: _themeService.inputBackground,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: _themeService.textPrimaryColor,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: _themeService.textSecondaryColor,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeColor: Colors.blue,
-                activeTrackColor: Colors.blue.withOpacity(0.5),
-                inactiveThumbColor: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[600],
-                inactiveTrackColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
-              ),
-            ],
           ),
         ),
         Container(

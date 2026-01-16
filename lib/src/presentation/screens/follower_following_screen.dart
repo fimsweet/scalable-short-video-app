@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 
 class FollowerFollowingScreen extends StatefulWidget {
@@ -17,11 +18,13 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
   late TabController _tabController;
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _tabController = TabController(
       length: 3,
       vsync: this,
@@ -35,10 +38,17 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
     }
   }
 
+  void _onLocaleChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -91,11 +101,11 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
                 fontWeight: FontWeight.w400,
               ),
               splashFactory: NoSplash.splashFactory,
-              overlayColor: MaterialStateProperty.all(Colors.transparent),
-              tabs: const [
-                Tab(text: 'Người theo dõi'),
-                Tab(text: 'Đang theo dõi'),
-                Tab(text: 'Bài viết'),
+              overlayColor: WidgetStateProperty.all(Colors.transparent),
+              tabs: [
+                Tab(text: _localeService.get('followers')),
+                Tab(text: _localeService.get('following')),
+                Tab(text: _localeService.get('posts')),
               ],
             ),
           ),
@@ -104,9 +114,9 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
       body: TabBarView(
         controller: _tabController,
         children: [
-          _ModernUserList(key: const PageStorageKey('followers'), type: 'follower', themeService: _themeService),
-          _ModernUserList(key: const PageStorageKey('following'), type: 'following', themeService: _themeService),
-          _ModernPostGrid(key: const PageStorageKey('posts'), themeService: _themeService),
+          _ModernUserList(key: const PageStorageKey('followers'), type: 'follower', themeService: _themeService, localeService: _localeService),
+          _ModernUserList(key: const PageStorageKey('following'), type: 'following', themeService: _themeService, localeService: _localeService),
+          _ModernPostGrid(key: const PageStorageKey('posts'), themeService: _themeService, localeService: _localeService),
         ],
       ),
     );
@@ -116,7 +126,8 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
 class _ModernUserList extends StatefulWidget {
   final String type;
   final ThemeService themeService;
-  const _ModernUserList({super.key, required this.type, required this.themeService});
+  final LocaleService localeService;
+  const _ModernUserList({super.key, required this.type, required this.themeService, required this.localeService});
 
   @override
   State<_ModernUserList> createState() => _ModernUserListState();
@@ -238,7 +249,7 @@ class _ModernUserListState extends State<_ModernUserList> {
             ),
             const SizedBox(height: 16),
             Text(
-              widget.type == 'follower' ? 'Chưa có người theo dõi' : 'Chưa theo dõi ai',
+              widget.type == 'follower' ? widget.localeService.get('no_followers') : widget.localeService.get('no_following'),
               style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
             ),
           ],
@@ -259,6 +270,7 @@ class _ModernUserListState extends State<_ModernUserList> {
           userId: userId,
           apiService: _apiService,
           themeService: widget.themeService,
+          localeService: widget.localeService,
           isFollowing: isFollowing,
           isMutual: isMutual, // NEW
           isProcessing: _isProcessing[userId] ?? false,
@@ -275,6 +287,7 @@ class _UserListItem extends StatelessWidget {
   final int userId;
   final ApiService apiService;
   final ThemeService themeService;
+  final LocaleService localeService;
   final bool isFollowing;
   final bool isMutual; // NEW
   final bool isProcessing;
@@ -286,6 +299,7 @@ class _UserListItem extends StatelessWidget {
     required this.userId,
     required this.apiService,
     required this.themeService,
+    required this.localeService,
     required this.isFollowing,
     required this.isMutual, // NEW
     required this.isProcessing,
@@ -296,11 +310,11 @@ class _UserListItem extends StatelessWidget {
 
   String _getButtonText() {
     if (isMutual) {
-      return 'Bạn bè';
+      return localeService.get('friends');
     } else if (isFollowing) {
-      return 'Đang theo dõi';
+      return localeService.get('following_status');
     } else {
-      return 'Theo dõi';
+      return localeService.get('follow');
     }
   }
 
@@ -406,7 +420,8 @@ class _UserListItem extends StatelessWidget {
 
 class _ModernPostGrid extends StatelessWidget {
   final ThemeService themeService;
-  const _ModernPostGrid({super.key, required this.themeService});
+  final LocaleService localeService;
+  const _ModernPostGrid({super.key, required this.themeService, required this.localeService});
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +432,7 @@ class _ModernPostGrid extends StatelessWidget {
           Icon(Icons.grid_on_outlined, size: 64, color: themeService.textSecondaryColor),
           const SizedBox(height: 16),
           Text(
-            'Chưa có bài viết',
+            localeService.get('no_posts'),
             style: TextStyle(color: themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
           ),
         ],
