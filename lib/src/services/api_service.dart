@@ -187,6 +187,9 @@ class ApiService {
   Future<Map<String, dynamic>> updateProfile({
     required String token,
     String? bio,
+    String? website,
+    String? location,
+    String? gender,
   }) async {
     try {
       final response = await http.put(
@@ -197,6 +200,9 @@ class ApiService {
         },
         body: json.encode({
           if (bio != null) 'bio': bio,
+          if (website != null) 'website': website,
+          if (location != null) 'location': location,
+          if (gender != null) 'gender': gender,
         }),
       );
 
@@ -219,6 +225,43 @@ class ApiService {
       return {
         'success': false,
         'message': e.toString(),
+      };
+    }
+  }
+
+  /// Change password
+  Future<Map<String, dynamic>> changePassword({
+    required String token,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/change-password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Đổi mật khẩu thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error changing password: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
       };
     }
   }

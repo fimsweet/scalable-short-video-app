@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/video_screen.d
 import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
 
 // Global key to access MainScreen state
@@ -20,6 +21,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   // Key to force rebuild screens when auth state changes
   int _rebuildKey = 0;
@@ -39,6 +41,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     
     // Listen to auth events using the same method
     _authService.addLogoutListener(_onAuthStateChanged);
@@ -49,6 +52,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     // Remove listeners using the same method reference
     _authService.removeLogoutListener(_onAuthStateChanged);
     _authService.removeLoginListener(_onAuthStateChanged);
@@ -56,6 +60,12 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -106,7 +116,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             items: <BottomNavigationBarItem>[
               BottomNavigationBarItem(
                 icon: Icon(Icons.home),
-                label: 'Trang chủ',
+                label: _localeService.get('home'),
               ),
               BottomNavigationBarItem(
                 icon: Container(
@@ -127,7 +137,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.person),
-                label: 'Hồ sơ',
+                label: _localeService.get('profile'),
               ),
             ],
             currentIndex: _selectedIndex == 0 ? 0 : 2,
@@ -162,7 +172,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   void _navigateToUpload() async {
     if (!_authService.isLoggedIn) {
-      LoginRequiredDialog.show(context, 'đăng');
+      LoginRequiredDialog.show(context, 'post');
       return;
     }
 

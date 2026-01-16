@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../services/theme_service.dart';
+import '../../services/locale_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -14,8 +16,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _apiService = ApiService();
+  final _themeService = ThemeService();
+  final _localeService = LocaleService();
   
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
@@ -34,8 +63,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (result['success']) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đăng ký thành công!'),
+            SnackBar(
+              content: Text(_localeService.get('register_success')),
               backgroundColor: Colors.green,
             ),
           );
@@ -45,7 +74,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ?? 'Đăng ký thất bại'),
+              content: Text(result['message'] ?? _localeService.get('register_failed')),
               backgroundColor: Colors.red,
             ),
           );
@@ -55,7 +84,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi: $e'),
+            content: Text('${_localeService.get('error')}: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -72,10 +101,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text('Đăng ký'),
+        backgroundColor: _themeService.appBarBackground,
+        title: Text(_localeService.get('register'), style: TextStyle(color: _themeService.textPrimaryColor)),
+        iconTheme: IconThemeData(color: _themeService.iconColor),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -87,14 +117,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _usernameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('Tên người dùng'),
+                style: TextStyle(color: _themeService.textPrimaryColor),
+                decoration: _inputDecoration(_localeService.get('username')),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập tên đăng nhập';
+                    return _localeService.get('please_enter_username');
                   }
                   if (value.length < 3) {
-                    return 'Tên đăng nhập phải có ít nhất 3 ký tự';
+                    return _localeService.get('username_min_length');
                   }
                   return null;
                 },
@@ -102,14 +132,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _emailController,
-                style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('Email'),
+                style: TextStyle(color: _themeService.textPrimaryColor),
+                decoration: _inputDecoration(_localeService.get('email')),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập email';
+                    return _localeService.get('please_enter_email');
                   }
                   if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                    return 'Email không hợp lệ';
+                    return _localeService.get('invalid_email');
                   }
                   return null;
                 },
@@ -118,14 +148,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               TextFormField(
                 controller: _passwordController,
                 obscureText: true,
-                style: const TextStyle(color: Colors.white),
-                decoration: _inputDecoration('Mật khẩu'),
+                style: TextStyle(color: _themeService.textPrimaryColor),
+                decoration: _inputDecoration(_localeService.get('password')),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Vui lòng nhập mật khẩu';
+                    return _localeService.get('please_enter_password');
                   }
                   if (value.length < 6) {
-                    return 'Mật khẩu phải có ít nhất 6 ký tự';
+                    return _localeService.get('password_min_length');
                   }
                   return null;
                 },
@@ -142,17 +172,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   child: _isLoading
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('Tạo tài khoản', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+                      : Text(_localeService.get('create_account'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
                 ),
               ),
               const SizedBox(height: 32),
               Center(
                 child: GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: const Text.rich(
+                  child: Text.rich(
                     TextSpan(children: [
-                      TextSpan(text: 'Đã có tài khoản? ', style: TextStyle(color: Colors.grey)),
-                      TextSpan(text: 'Đăng nhập', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                      TextSpan(text: _localeService.get('have_account'), style: TextStyle(color: _themeService.textSecondaryColor)),
+                      TextSpan(text: _localeService.get('login'), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                     ]),
                   ),
                 ),
@@ -166,9 +196,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   InputDecoration _inputDecoration(String hint) => InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.grey),
+        hintStyle: TextStyle(color: _themeService.textSecondaryColor),
         filled: true,
-        fillColor: Colors.grey[900],
+        fillColor: _themeService.inputBackground,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,

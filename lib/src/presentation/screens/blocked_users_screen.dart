@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class BlockedUsersScreen extends StatefulWidget {
   const BlockedUsersScreen({super.key});
@@ -12,6 +14,8 @@ class BlockedUsersScreen extends StatefulWidget {
 class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   List<Map<String, dynamic>> _blockedUsers = [];
   bool _isLoading = true;
@@ -19,7 +23,24 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadBlockedUsers();
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadBlockedUsers() async {
@@ -46,24 +67,29 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Bỏ chặn người dùng', style: TextStyle(color: Colors.white)),
+        title: Text(
+          _localeService.get('unblock_user'),
+          style: TextStyle(color: _themeService.textPrimaryColor),
+        ),
         content: Text(
-          'Bạn có chắc muốn bỏ chặn ${user['username']}?\n\nHọ sẽ có thể gửi tin nhắn cho bạn.',
-          style: TextStyle(color: Colors.grey[400]),
+          _localeService.isVietnamese
+              ? 'Bạn có chắc muốn bỏ chặn ${user['username']}?\n\nHọ sẽ có thể gửi tin nhắn cho bạn.'
+              : 'Are you sure you want to unblock ${user['username']}?\n\nThey will be able to send you messages.',
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[500])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
               await _performUnblock(user);
             },
-            child: const Text('Bỏ chặn', style: TextStyle(color: Color(0xFFE84C3D))),
+            child: Text(_localeService.get('unblock'), style: const TextStyle(color: Color(0xFFE84C3D))),
           ),
         ],
       ),
@@ -84,23 +110,26 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: Colors.grey[900],
+            backgroundColor: _themeService.cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 24),
-                SizedBox(width: 8),
-                Text('Đã bỏ chặn', style: TextStyle(color: Colors.white, fontSize: 18)),
+                const Icon(Icons.check_circle, color: Colors.green, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  _localeService.get('unblocked_success'),
+                  style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18),
+                ),
               ],
             ),
             content: Text(
-              'Bạn đã bỏ chặn ${user['username']}',
-              style: TextStyle(color: Colors.grey[400]),
+              '${_localeService.get('unblocked_user_success')} ${user['username']}',
+              style: TextStyle(color: _themeService.textSecondaryColor),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('OK', style: TextStyle(color: Color(0xFFE84C3D))),
+                child: Text(_localeService.get('ok'), style: const TextStyle(color: Color(0xFFE84C3D))),
               ),
             ],
           ),
@@ -111,23 +140,26 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            backgroundColor: Colors.grey[900],
+            backgroundColor: _themeService.cardColor,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.error, color: Colors.red, size: 24),
-                SizedBox(width: 8),
-                Text('Lỗi', style: TextStyle(color: Colors.white, fontSize: 18)),
+                const Icon(Icons.error, color: Colors.red, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  _localeService.get('error'),
+                  style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18),
+                ),
               ],
             ),
             content: Text(
-              'Không thể bỏ chặn người dùng',
-              style: TextStyle(color: Colors.grey[400]),
+              _localeService.get('unblock_failed'),
+              style: TextStyle(color: _themeService.textSecondaryColor),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('OK', style: TextStyle(color: Color(0xFFE84C3D))),
+                child: Text(_localeService.get('ok'), style: const TextStyle(color: Color(0xFFE84C3D))),
               ),
             ],
           ),
@@ -139,22 +171,22 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Danh sách chặn',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        title: Text(
+          _localeService.get('blocked_list'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.w600),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
           : _blockedUsers.isEmpty
               ? _buildEmptyState()
               : _buildBlockedList(),
@@ -166,21 +198,21 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.block, size: 80, color: Colors.grey[700]),
+          Icon(Icons.block, size: 80, color: _themeService.textSecondaryColor),
           const SizedBox(height: 16),
           Text(
-            'Không có người dùng nào bị chặn',
+            _localeService.get('no_blocked_users'),
             style: TextStyle(
               fontSize: 16,
-              color: Colors.grey[500],
+              color: _themeService.textSecondaryColor,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Khi bạn chặn ai đó, họ sẽ xuất hiện ở đây',
+            _localeService.get('blocked_users_hint'),
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey[600],
+              color: _themeService.textSecondaryColor.withOpacity(0.7),
             ),
           ),
         ],
@@ -205,46 +237,46 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
         borderRadius: BorderRadius.circular(12),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           radius: 24,
-          backgroundColor: Colors.grey[800],
+          backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
           backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
           child: avatarUrl == null
-              ? Icon(Icons.person, color: Colors.grey[500], size: 24)
+              ? Icon(Icons.person, color: _themeService.textSecondaryColor, size: 24)
               : null,
         ),
         title: Text(
           user['username'] ?? 'Unknown',
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
             fontWeight: FontWeight.w500,
             fontSize: 16,
           ),
         ),
         subtitle: Text(
-          'Đã chặn',
+          _localeService.get('blocked'),
           style: TextStyle(
-            color: Colors.grey[500],
+            color: _themeService.textSecondaryColor,
             fontSize: 13,
           ),
         ),
         trailing: TextButton(
           onPressed: () => _unblockUser(user),
           style: TextButton.styleFrom(
-            backgroundColor: Colors.grey[800],
+            backgroundColor: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
-          child: const Text(
-            'Bỏ chặn',
-            style: TextStyle(
+          child: Text(
+            _localeService.get('unblock'),
+            style: const TextStyle(
               color: Color(0xFFE84C3D),
               fontWeight: FontWeight.w500,
             ),

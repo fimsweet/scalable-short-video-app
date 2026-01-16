@@ -8,6 +8,7 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
 import 'dart:io';
@@ -37,6 +38,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final VideoService _videoService = VideoService();
   final ApiService _apiService = ApiService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   // Initialize ImagePicker as late to ensure proper initialization
   late final ImagePicker _imagePicker;
@@ -114,6 +116,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _selectedImagesList = [];
     _imagePreviewCacheMap = {};
     _imagePicker = ImagePicker();
@@ -122,6 +125,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onThemeChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
     }
@@ -438,6 +447,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageSentSubscription?.cancel();
     _typingSubscription?.cancel();
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -474,7 +484,7 @@ class _ChatScreenState extends State<ChatScreen> {
       
       // Hôm qua
       if (difference == 1) {
-        return 'Hôm qua, $timeStr';
+        return _localeService.isVietnamese ? 'Hôm qua, $timeStr' : 'Yesterday, $timeStr';
       }
       
       // Trong tuần này (2-6 ngày trước): hiển thị thứ, giờ
@@ -816,9 +826,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   if (_otherUserTyping)
-                    const Text(
-                      'Đang nhập...',
-                      style: TextStyle(
+                    Text(
+                      _localeService.isVietnamese ? 'Đang nhập...' : 'Typing...',
+                      style: const TextStyle(
                         color: Colors.blue,
                         fontSize: 12,
                         fontStyle: FontStyle.italic,
@@ -826,7 +836,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     )
                   else
                     Text(
-                      'Đang hoạt động',
+                      _localeService.get('online'),
                       style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
                     ),
                 ],
@@ -985,7 +995,7 @@ class _ChatScreenState extends State<ChatScreen> {
       color: _themeService.backgroundColor,
       child: Center(
         child: Text(
-          'Hiện tại không thể liên lạc với người này',
+          _localeService.get('cannot_contact'),
           style: TextStyle(
             color: _themeService.textSecondaryColor,
             fontSize: 13,
@@ -1005,7 +1015,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Icon(Icons.block, color: _themeService.textSecondaryColor, size: 18),
           const SizedBox(width: 8),
           Text(
-            'Bạn đã chặn người dùng này.',
+            _localeService.get('you_blocked_user'),
             style: TextStyle(
               color: _themeService.textSecondaryColor,
               fontSize: 13,
@@ -1025,9 +1035,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ).then((_) => _checkBlockedStatus());
             },
-            child: const Text(
-              'Bỏ chặn',
-              style: TextStyle(
+            child: Text(
+              _localeService.get('unblock'),
+              style: const TextStyle(
                 color: Color(0xFFE84C3D),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -1053,7 +1063,10 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 16),
           Text(widget.recipientUsername, style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Text('Bắt đầu cuộc trò chuyện', style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14)),
+          Text(
+            _localeService.isVietnamese ? 'Bắt đầu cuộc trò chuyện' : 'Start a conversation',
+            style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
+          ),
         ],
       ),
     );
@@ -1124,7 +1137,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       Icon(Icons.add_photo_alternate_outlined, color: Colors.grey[400], size: 28),
                       const SizedBox(height: 4),
                       Text(
-                        'Thêm',
+                        _localeService.isVietnamese ? 'Thêm' : 'Add',
                         style: TextStyle(color: Colors.grey[400], fontSize: 11),
                       ),
                     ],
@@ -1287,8 +1300,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 16),
                         decoration: InputDecoration(
                           hintText: _hasSelectedImages  // Use safe getter
-                              ? 'Thêm tin nhắn...' 
-                              : 'Nhắn tin...',
+                              ? (_localeService.isVietnamese ? 'Thêm tin nhắn...' : 'Add a message...')
+                              : _localeService.get('type_message'),
                           hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
@@ -1556,7 +1569,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
     // Đã gửi - Only show if showStatus is true (latest message)
     if (widget.showStatus) {
       return Text(
-        'Đã gửi',
+        LocaleService().get('sent'),
         style: TextStyle(color: Colors.grey[600], fontSize: 11),
       );
     }
@@ -1757,7 +1770,9 @@ class _VideoShareBubbleState extends State<_VideoShareBubble> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      _videoExists ? 'Nhấn để xem' : 'Không khả dụng',
+                      _videoExists 
+                          ? LocaleService().get('tap_to_view') 
+                          : (LocaleService().isVietnamese ? 'Không khả dụng' : 'Not available'),
                       style: TextStyle(
                         color: widget.isMe ? Colors.white.withOpacity(0.9) : Colors.white70,
                         fontSize: 13,
@@ -2022,14 +2037,14 @@ class _ImageMessageBubbleState extends State<_ImageMessageBubble> with SingleTic
         if (widget.isRead) ...[
           const SizedBox(width: 4),
           Text(
-            'Đã xem',
+            LocaleService().isVietnamese ? 'Đã xem' : 'Seen',
             style: TextStyle(color: Colors.grey[500], fontSize: 11),
           ),
         ],
         if (!widget.isRead) ...[
           const SizedBox(width: 4),
           Text(
-            'Đã gửi',
+            LocaleService().get('sent'),
             style: TextStyle(color: Colors.grey[600], fontSize: 11),
           ),
         ],
@@ -2666,7 +2681,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
         ] else ...[
           Icon(Icons.done, color: Colors.grey[500], size: 14),
           const SizedBox(width: 4),
-          Text('Đã gửi', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+          Text(LocaleService().get('sent'), style: TextStyle(color: Colors.grey[500], fontSize: 11)),
         ],
       ],
     );

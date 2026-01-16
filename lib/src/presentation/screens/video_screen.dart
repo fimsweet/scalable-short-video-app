@@ -11,6 +11,7 @@ import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
@@ -34,6 +35,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   final CommentService _commentService = CommentService();
   final FollowService _followService = FollowService();
   final SavedVideoService _savedVideoService = SavedVideoService();
+  final LocaleService _localeService = LocaleService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -199,7 +201,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       print('❌ Error loading videos: $e');
       if (mounted) {
         setState(() {
-          _error = 'Không thể tải video. Vui lòng thử lại.';
+          _error = _localeService.get('cannot_load_video');
           _isLoading = false;
         });
       }
@@ -390,7 +392,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
   Future<void> _handleLike(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'thích');
+      LoginRequiredDialog.show(context, 'like');
       return;
     }
 
@@ -416,7 +418,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
   Future<void> _handleFollow(int videoOwnerId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'theo dõi');
+      LoginRequiredDialog.show(context, 'follow');
       return;
     }
 
@@ -441,7 +443,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
   Future<void> _handleSave(String videoId) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'lưu');
+      LoginRequiredDialog.show(context, 'save');
       return;
     }
 
@@ -462,7 +464,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
   void _handleShare(String videoId) {
     if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'chia sẻ');
+      LoginRequiredDialog.show(context, 'share');
       return;
     }
 
@@ -562,13 +564,13 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
           children: [
             // Video feed
             _isLoading
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircularProgressIndicator(color: Colors.white),
-                        SizedBox(height: 16),
-                        Text('Đang tải video...', style: TextStyle(color: Colors.white)),
+                        const CircularProgressIndicator(color: Colors.white),
+                        const SizedBox(height: 16),
+                        Text(_localeService.get('loading_video'), style: const TextStyle(color: Colors.white)),
                       ],
                     ),
                   )
@@ -581,7 +583,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                             const SizedBox(height: 16),
                             Text(_error!, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
                             const SizedBox(height: 16),
-                            ElevatedButton(onPressed: _loadVideos, child: const Text('Thử lại')),
+                            ElevatedButton(onPressed: _loadVideos, child: Text(_localeService.get('try_again'))),
                           ],
                         ),
                       )
@@ -598,22 +600,22 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                 const SizedBox(height: 16),
                                 Text(
                                   _selectedFeedTab == 0 
-                                      ? 'Chưa có video từ người bạn theo dõi'
-                                      : 'Chưa có video nào',
+                                      ? _localeService.get('no_videos_following')
+                                      : _localeService.get('no_videos_yet'),
                                   style: const TextStyle(color: Colors.white, fontSize: 18),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   _selectedFeedTab == 0
-                                      ? 'Hãy theo dõi người khác để xem video của họ!'
-                                      : 'Hãy là người đầu tiên upload video!',
+                                      ? _localeService.get('follow_others_hint')
+                                      : _localeService.get('be_first_upload'),
                                   style: TextStyle(color: Colors.grey[400], fontSize: 14),
                                 ),
                                 const SizedBox(height: 24),
                                 ElevatedButton.icon(
                                   onPressed: _loadVideos,
                                   icon: const Icon(Icons.refresh),
-                                  label: const Text('Tải lại'),
+                                  label: Text(_localeService.get('reload')),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     foregroundColor: Colors.black,
@@ -645,8 +647,8 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                 final video = _videos[index];
                                 
                                 if (video == null) {
-                                  return const Center(
-                                    child: Text('Video không hợp lệ', style: TextStyle(color: Colors.white)),
+                                  return Center(
+                                    child: Text(_localeService.get('invalid_video'), style: const TextStyle(color: Colors.white)),
                                   );
                                 }
                                 
@@ -683,13 +685,13 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                     else
                                       Container(
                                         color: Colors.black,
-                                        child: const Center(
+                                        child: Center(
                                           child: Column(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
-                                              Icon(Icons.error_outline, size: 80, color: Colors.white),
-                                              SizedBox(height: 16),
-                                              Text('Video không khả dụng', style: TextStyle(color: Colors.white, fontSize: 18)),
+                                              const Icon(Icons.error_outline, size: 80, color: Colors.white),
+                                              const SizedBox(height: 16),
+                                              Text(_localeService.get('video_unavailable'), style: const TextStyle(color: Colors.white, fontSize: 18)),
                                             ],
                                           ),
                                         ),
@@ -773,7 +775,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                                             ] : null,
                                                           ),
                                                           child: Text(
-                                                            isFollowing ? 'Đang theo dõi' : 'Theo dõi',
+                                                            isFollowing ? _localeService.get('following_status') : _localeService.get('follow'),
                                                             style: const TextStyle(
                                                               color: Colors.white,
                                                               fontSize: 12,

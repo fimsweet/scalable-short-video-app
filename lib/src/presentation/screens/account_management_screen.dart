@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class AccountManagementScreen extends StatefulWidget {
   const AccountManagementScreen({super.key});
@@ -10,25 +13,49 @@ class AccountManagementScreen extends StatefulWidget {
 
 class _AccountManagementScreenState extends State<AccountManagementScreen> {
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   bool _twoFactorEnabled = false;
   bool _biometricEnabled = false;
   bool _loginAlertsEnabled = true;
 
   @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Quản lý tài khoản',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _localeService.get('account_management'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
       ),
@@ -38,21 +65,21 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             const SizedBox(height: 16),
             
             // Security Section
-            _buildSectionTitle('Bảo mật'),
+            _buildSectionTitle(_localeService.get('security_section')),
             _buildMenuItem(
               icon: Icons.lock_outline,
               iconColor: Colors.orange,
-              title: 'Đổi mật khẩu',
-              subtitle: 'Cập nhật mật khẩu của bạn',
+              title: _localeService.get('change_password'),
+              subtitle: _localeService.get('change_password_subtitle'),
               onTap: () => _showChangePasswordDialog(),
             ),
             _buildSettingSwitch(
               icon: Icons.security,
               iconColor: Colors.blue,
-              title: 'Xác thực hai yếu tố',
+              title: _localeService.get('two_factor_auth'),
               subtitle: _twoFactorEnabled 
-                  ? 'Đang bật - Bảo vệ tài khoản với xác thực 2 lớp'
-                  : 'Tăng cường bảo mật cho tài khoản',
+                  ? _localeService.get('two_factor_on')
+                  : _localeService.get('two_factor_off'),
               value: _twoFactorEnabled,
               onChanged: (value) {
                 setState(() {
@@ -61,35 +88,35 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 if (value) {
                   _showSetup2FADialog();
                 } else {
-                  _showSnackBar('Đã tắt xác thực hai yếu tố', Colors.grey[700]!);
+                  _showSnackBar(_localeService.get('disabled'), _themeService.snackBarBackground);
                 }
               },
             ),
             _buildSettingSwitch(
               icon: Icons.fingerprint,
               iconColor: Colors.green,
-              title: 'Sinh trắc học',
-              subtitle: 'Đăng nhập bằng vân tay hoặc FaceID',
+              title: _localeService.get('biometric_login'),
+              subtitle: _localeService.get('biometric_desc'),
               value: _biometricEnabled,
               onChanged: (value) {
                 setState(() => _biometricEnabled = value);
                 _showSnackBar(
-                  value ? 'Đã bật sinh trắc học' : 'Đã tắt sinh trắc học',
-                  Colors.grey[700]!,
+                  value ? _localeService.get('enabled') : _localeService.get('disabled'),
+                  _themeService.snackBarBackground,
                 );
               },
             ),
             _buildSettingSwitch(
               icon: Icons.notifications_active_outlined,
               iconColor: Colors.purple,
-              title: 'Cảnh báo đăng nhập',
-              subtitle: 'Thông báo khi có đăng nhập mới',
+              title: _localeService.get('login_alert'),
+              subtitle: _localeService.get('login_alert_desc'),
               value: _loginAlertsEnabled,
               onChanged: (value) {
                 setState(() => _loginAlertsEnabled = value);
                 _showSnackBar(
-                  value ? 'Đã bật cảnh báo đăng nhập' : 'Đã tắt cảnh báo đăng nhập',
-                  Colors.grey[700]!,
+                  value ? _localeService.get('enabled') : _localeService.get('disabled'),
+                  _themeService.snackBarBackground,
                 );
               },
             ),
@@ -97,80 +124,80 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             const SizedBox(height: 24),
             
             // Account Info Section
-            _buildSectionTitle('Thông tin tài khoản'),
+            _buildSectionTitle(_localeService.get('account_info')),
             _buildMenuItem(
               icon: Icons.email_outlined,
               iconColor: Colors.cyan,
-              title: 'Email',
-              subtitle: _authService.user?['email'] ?? 'Chưa cài đặt',
+              title: _localeService.get('email'),
+              subtitle: _authService.user?['email'] ?? _localeService.get('not_set'),
               onTap: () => _showChangeEmailDialog(),
             ),
             _buildMenuItem(
               icon: Icons.phone_outlined,
               iconColor: Colors.teal,
-              title: 'Số điện thoại',
-              subtitle: 'Chưa liên kết',
+              title: _localeService.get('phone_number'),
+              subtitle: _localeService.get('not_linked'),
               onTap: () => _showAddPhoneDialog(),
             ),
             _buildMenuItem(
               icon: Icons.devices_outlined,
               iconColor: Colors.indigo,
-              title: 'Thiết bị đã đăng nhập',
-              subtitle: 'Quản lý các thiết bị đã đăng nhập',
+              title: _localeService.get('devices'),
+              subtitle: _localeService.get('devices_subtitle'),
               onTap: () => _showDevicesDialog(),
             ),
             
             const SizedBox(height: 24),
             
             // Data & Privacy Section
-            _buildSectionTitle('Dữ liệu & Quyền riêng tư'),
+            _buildSectionTitle(_localeService.get('data_privacy')),
             _buildMenuItem(
               icon: Icons.download_outlined,
               iconColor: Colors.blue,
-              title: 'Tải dữ liệu của bạn',
-              subtitle: 'Yêu cầu bản sao dữ liệu tài khoản',
+              title: _localeService.get('download_data'),
+              subtitle: _localeService.get('download_data_desc'),
               onTap: () => _showDownloadDataDialog(),
             ),
             _buildMenuItem(
               icon: Icons.history,
               iconColor: Colors.amber,
-              title: 'Lịch sử hoạt động',
-              subtitle: 'Xem lịch sử đăng nhập và hoạt động',
+              title: _localeService.get('activity_history'),
+              subtitle: _localeService.get('activity_history_desc'),
               onTap: () => _showActivityHistoryDialog(),
             ),
             _buildMenuItem(
               icon: Icons.block_outlined,
               iconColor: Colors.red[300]!,
-              title: 'Tài khoản đã chặn',
-              subtitle: 'Quản lý danh sách chặn',
+              title: _localeService.get('blocked_list'),
+              subtitle: _localeService.get('blocked_list_subtitle'),
               onTap: () => _showBlockedAccountsDialog(),
             ),
             
             const SizedBox(height: 24),
             
             // Danger Zone Section
-            _buildSectionTitle('Vùng nguy hiểm'),
+            _buildSectionTitle(_localeService.get('danger_zone')),
             _buildMenuItem(
               icon: Icons.logout,
               iconColor: Colors.orange,
-              title: 'Đăng xuất',
-              subtitle: 'Đăng xuất khỏi tài khoản này',
+              title: _localeService.get('logout'),
+              subtitle: _localeService.get('logout_confirm'),
               onTap: () => _showLogoutDialog(),
               showArrow: false,
             ),
             _buildMenuItem(
               icon: Icons.pause_circle_outline,
               iconColor: Colors.deepOrange,
-              title: 'Vô hiệu hóa tài khoản',
-              subtitle: 'Tạm thời ẩn hồ sơ của bạn',
+              title: _localeService.get('deactivate_account'),
+              subtitle: _localeService.get('deactivate_account_desc'),
               onTap: () => _showDeactivateDialog(),
               showArrow: false,
             ),
             _buildMenuItem(
               icon: Icons.delete_forever_outlined,
               iconColor: Colors.red,
-              title: 'Xóa tài khoản',
-              subtitle: 'Xóa vĩnh viễn tài khoản và dữ liệu',
+              title: _localeService.get('delete_account'),
+              subtitle: _localeService.get('delete_account_desc'),
               onTap: () => _showDeleteAccountDialog(),
               showArrow: false,
             ),
@@ -186,11 +213,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.grey[900],
+      color: _themeService.sectionTitleBackground,
       child: Text(
         title,
         style: TextStyle(
-          color: Colors.grey[600],
+          color: _themeService.textSecondaryColor,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
@@ -211,7 +238,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         InkWell(
           onTap: onTap,
           child: Container(
-            color: Colors.black,
+            color: _themeService.inputBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
@@ -230,8 +257,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     children: [
                       Text(
                         title,
-                        style: const TextStyle(
-                          color: Colors.white,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
@@ -240,7 +267,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: Colors.grey[600],
+                          color: _themeService.textSecondaryColor,
                           fontSize: 13,
                         ),
                       ),
@@ -250,7 +277,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 if (showArrow)
                   Icon(
                     Icons.chevron_right,
-                    color: Colors.grey[600],
+                    color: _themeService.textSecondaryColor,
                     size: 24,
                   ),
               ],
@@ -260,7 +287,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         Container(
           margin: const EdgeInsets.only(left: 16),
           height: 0.5,
-          color: Colors.grey[900],
+          color: _themeService.dividerColor,
         ),
       ],
     );
@@ -277,7 +304,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     return Column(
       children: [
         Container(
-          color: Colors.black,
+          color: _themeService.inputBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
@@ -296,8 +323,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
@@ -306,7 +333,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.grey[600],
+                        color: _themeService.textSecondaryColor,
                         fontSize: 13,
                       ),
                     ),
@@ -324,7 +351,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         Container(
           margin: const EdgeInsets.only(left: 16),
           height: 0.5,
-          color: Colors.grey[900],
+          color: _themeService.dividerColor,
         ),
       ],
     );
@@ -349,16 +376,17 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     bool obscureCurrent = true;
     bool obscureNew = true;
     bool obscureConfirm = true;
+    bool isLoading = false;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: Colors.grey[900],
+          backgroundColor: _themeService.cardColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text(
-            'Đổi mật khẩu',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          title: Text(
+            _localeService.get('change_password'),
+            style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -367,12 +395,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 TextField(
                   controller: currentPasswordController,
                   obscureText: obscureCurrent,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: _themeService.textPrimaryColor),
                   decoration: InputDecoration(
-                    labelText: 'Mật khẩu hiện tại',
-                    labelStyle: TextStyle(color: Colors.grey[500]),
+                    labelText: _localeService.get('current_password'),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[700]!),
+                      borderSide: BorderSide(color: _themeService.dividerColor),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -382,7 +410,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscureCurrent ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.grey[500],
+                        color: _themeService.textSecondaryColor,
                       ),
                       onPressed: () => setDialogState(() => obscureCurrent = !obscureCurrent),
                     ),
@@ -392,12 +420,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 TextField(
                   controller: newPasswordController,
                   obscureText: obscureNew,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: _themeService.textPrimaryColor),
                   decoration: InputDecoration(
-                    labelText: 'Mật khẩu mới',
-                    labelStyle: TextStyle(color: Colors.grey[500]),
+                    labelText: _localeService.get('new_password'),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[700]!),
+                      borderSide: BorderSide(color: _themeService.dividerColor),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -407,7 +435,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscureNew ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.grey[500],
+                        color: _themeService.textSecondaryColor,
                       ),
                       onPressed: () => setDialogState(() => obscureNew = !obscureNew),
                     ),
@@ -417,12 +445,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 TextField(
                   controller: confirmPasswordController,
                   obscureText: obscureConfirm,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: _themeService.textPrimaryColor),
                   decoration: InputDecoration(
-                    labelText: 'Xác nhận mật khẩu mới',
-                    labelStyle: TextStyle(color: Colors.grey[500]),
+                    labelText: _localeService.get('confirm_new_password'),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor),
                     enabledBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.grey[700]!),
+                      borderSide: BorderSide(color: _themeService.dividerColor),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -432,7 +460,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                     suffixIcon: IconButton(
                       icon: Icon(
                         obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                        color: Colors.grey[500],
+                        color: _themeService.textSecondaryColor,
                       ),
                       onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
                     ),
@@ -440,28 +468,72 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                  _localeService.get('password_requirements'),
+                  style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
                 ),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
             ),
             ElevatedButton(
-              onPressed: () {
-                // TODO: Implement password change
-                Navigator.pop(context);
-                _showSnackBar('Đổi mật khẩu thành công', Colors.green);
+              onPressed: isLoading ? null : () async {
+                // Validate
+                if (currentPasswordController.text.isEmpty ||
+                    newPasswordController.text.isEmpty ||
+                    confirmPasswordController.text.isEmpty) {
+                  _showSnackBar(_localeService.get('fill_all_fields'), Colors.orange);
+                  return;
+                }
+
+                if (newPasswordController.text.length < 8) {
+                  _showSnackBar(_localeService.get('password_too_short'), Colors.orange);
+                  return;
+                }
+
+                if (newPasswordController.text != confirmPasswordController.text) {
+                  _showSnackBar(_localeService.get('password_mismatch'), Colors.orange);
+                  return;
+                }
+
+                setDialogState(() => isLoading = true);
+
+                try {
+                  final token = await _authService.getToken();
+                  if (token == null) {
+                    Navigator.pop(context);
+                    _showSnackBar(_localeService.get('session_expired'), Colors.red);
+                    return;
+                  }
+
+                  final result = await ApiService().changePassword(
+                    token: token,
+                    currentPassword: currentPasswordController.text,
+                    newPassword: newPasswordController.text,
+                  );
+
+                  Navigator.pop(context);
+                  
+                  if (result['success'] == true) {
+                    _showSnackBar(_localeService.get('password_change_success'), Colors.green);
+                  } else {
+                    _showSnackBar(result['message'] ?? _localeService.get('password_change_failed'), Colors.red);
+                  }
+                } catch (e) {
+                  Navigator.pop(context);
+                  _showSnackBar('${_localeService.get('error')}: $e', Colors.red);
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Xác nhận'),
+              child: isLoading 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(_localeService.get('confirm'), style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -474,7 +546,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
@@ -498,37 +570,37 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Chọn phương thức xác thực:',
+              _localeService.get('select_2fa_method'),
               style: TextStyle(color: Colors.grey[400], fontSize: 14),
             ),
             const SizedBox(height: 16),
             _build2FAOption(
               icon: Icons.sms_outlined,
               title: 'SMS',
-              subtitle: 'Nhận mã qua tin nhắn',
+              subtitle: _localeService.get('sms_subtitle'),
               onTap: () {
                 Navigator.pop(context);
-                _showSnackBar('Đã bật xác thực qua SMS', Colors.green);
+                _showSnackBar(_localeService.get('2fa_sms_enabled'), Colors.green);
               },
             ),
             const SizedBox(height: 12),
             _build2FAOption(
               icon: Icons.email_outlined,
               title: 'Email',
-              subtitle: 'Nhận mã qua email',
+              subtitle: _localeService.get('email_subtitle'),
               onTap: () {
                 Navigator.pop(context);
-                _showSnackBar('Đã bật xác thực qua Email', Colors.green);
+                _showSnackBar(_localeService.get('2fa_email_enabled'), Colors.green);
               },
             ),
             const SizedBox(height: 12),
             _build2FAOption(
               icon: Icons.apps,
-              title: 'Ứng dụng xác thực',
+              title: _localeService.get('authenticator_app'),
               subtitle: 'Google Authenticator, Authy',
               onTap: () {
                 Navigator.pop(context);
-                _showSnackBar('Đã bật xác thực qua ứng dụng', Colors.green);
+                _showSnackBar(_localeService.get('2fa_app_enabled'), Colors.green);
               },
             ),
           ],
@@ -597,46 +669,46 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
 
   // Other dialogs
   void _showChangeEmailDialog() {
-    _showSnackBar('Tính năng đang phát triển', Colors.grey[700]!);
+    _showSnackBar(_localeService.get('feature_developing'), _themeService.snackBarBackground);
   }
 
   void _showAddPhoneDialog() {
-    _showSnackBar('Tính năng đang phát triển', Colors.grey[700]!);
+    _showSnackBar(_localeService.get('feature_developing'), _themeService.snackBarBackground);
   }
 
   void _showDevicesDialog() {
-    _showSnackBar('Tính năng đang phát triển', Colors.grey[700]!);
+    _showSnackBar(_localeService.get('feature_developing'), _themeService.snackBarBackground);
   }
 
   void _showDownloadDataDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Tải dữ liệu của bạn',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _localeService.get('download_data'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         content: Text(
-          'Chúng tôi sẽ chuẩn bị một bản sao dữ liệu tài khoản của bạn. Quá trình này có thể mất vài phút đến vài giờ tùy thuộc vào lượng dữ liệu.',
-          style: TextStyle(color: Colors.grey[400]),
+          _localeService.get('download_data_desc'),
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _showSnackBar('Yêu cầu đã được gửi. Bạn sẽ nhận được email khi dữ liệu sẵn sàng.', Colors.green);
+              _showSnackBar(_localeService.get('success'), Colors.green);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.blue,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Yêu cầu'),
+            child: Text(_localeService.get('request')),
           ),
         ],
       ),
@@ -644,43 +716,43 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   }
 
   void _showActivityHistoryDialog() {
-    _showSnackBar('Tính năng đang phát triển', Colors.grey[700]!);
+    _showSnackBar(_localeService.get('feature_developing'), _themeService.snackBarBackground);
   }
 
   void _showBlockedAccountsDialog() {
-    _showSnackBar('Tính năng đang phát triển', Colors.grey[700]!);
+    _showSnackBar(_localeService.get('feature_developing'), _themeService.snackBarBackground);
   }
 
   void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Đăng xuất',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _localeService.get('logout'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
-        content: const Text(
-          'Bạn có chắc chắn muốn đăng xuất?',
-          style: TextStyle(color: Colors.white70),
+        content: Text(
+          _localeService.get('logout_confirm'),
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               // TODO: Implement logout
-              _showSnackBar('Đã đăng xuất', Colors.grey[700]!);
+              _showSnackBar(_localeService.get('success'), _themeService.snackBarBackground);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.orange,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Đăng xuất'),
+            child: Text(_localeService.get('logout')),
           ),
         ],
       ),
@@ -691,31 +763,31 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Vô hiệu hóa tài khoản',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _localeService.get('deactivate_account'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
-        content: const Text(
-          'Hồ sơ của bạn sẽ bị ẩn và bạn có thể kích hoạt lại bất cứ lúc nào bằng cách đăng nhập.',
-          style: TextStyle(color: Colors.white70),
+        content: Text(
+          _localeService.get('deactivate_account_desc'),
+          style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _showSnackBar('Tài khoản đã được vô hiệu hóa', Colors.deepOrange);
+              _showSnackBar(_localeService.get('success'), Colors.deepOrange);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.deepOrange,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Vô hiệu hóa'),
+            child: Text(_localeService.get('deactivate_account')),
           ),
         ],
       ),
@@ -726,15 +798,15 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
             const SizedBox(width: 12),
-            const Text(
-              'Xóa tài khoản',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            Text(
+              _localeService.get('delete_account'),
+              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -742,21 +814,21 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Hành động này không thể hoàn tác!',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            Text(
+              _localeService.get('action_cannot_undo'),
+              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             Text(
-              'Tất cả dữ liệu của bạn sẽ bị xóa vĩnh viễn, bao gồm:\n\n• Video và ảnh\n• Bình luận và thích\n• Tin nhắn\n• Danh sách theo dõi\n• Tất cả hoạt động',
-              style: TextStyle(color: Colors.grey[400]),
+              _localeService.get('delete_account_warning'),
+              style: TextStyle(color: _themeService.textSecondaryColor),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -767,7 +839,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Xóa tài khoản'),
+            child: Text(_localeService.get('delete_account')),
           ),
         ],
       ),
@@ -780,29 +852,29 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
+        backgroundColor: _themeService.cardColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Xác nhận xóa tài khoản',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _localeService.get('confirm'),
+          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Nhập mật khẩu của bạn để xác nhận:',
-              style: TextStyle(color: Colors.grey[400]),
+              _localeService.get('please_enter_password'),
+              style: TextStyle(color: _themeService.textSecondaryColor),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: passwordController,
               obscureText: true,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: _themeService.textPrimaryColor),
               decoration: InputDecoration(
-                labelText: 'Mật khẩu',
-                labelStyle: TextStyle(color: Colors.grey[500]),
+                labelText: _localeService.get('password'),
+                labelStyle: TextStyle(color: _themeService.textSecondaryColor),
                 enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey[700]!),
+                  borderSide: BorderSide(color: _themeService.dividerColor),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -816,19 +888,19 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: Colors.grey[400])),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               // TODO: Implement account deletion
-              _showSnackBar('Tài khoản đã được xóa', Colors.red);
+              _showSnackBar(_localeService.get('success'), Colors.red);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Xóa vĩnh viễn'),
+            child: Text(_localeService.get('delete_permanently')),
           ),
         ],
       ),

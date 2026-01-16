@@ -1,30 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class LoginRequiredDialog extends StatelessWidget {
-  final String action; // "thích", "lưu", "chia sẻ", "bình luận"
+  final String actionKey; // "like", "save", "share", "comment", "follow", "post"
   
   const LoginRequiredDialog({
     super.key,
-    required this.action,
+    required this.actionKey,
   });
 
-  static Future<bool?> show(BuildContext context, String action) {
+  static Future<bool?> show(BuildContext context, String actionKey) {
     return showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      builder: (context) => LoginRequiredDialog(action: action),
+      builder: (context) => LoginRequiredDialog(actionKey: actionKey),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeService = ThemeService();
+    final localeService = LocaleService();
+    
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF2C2C2E),
+          color: themeService.isLightMode ? Colors.white : const Color(0xFF2C2C2E),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -49,10 +54,10 @@ class LoginRequiredDialog extends StatelessWidget {
             const SizedBox(height: 20),
             
             // Title
-            const Text(
-              'Yêu cầu đăng nhập',
+            Text(
+              localeService.get('login_required'),
               style: TextStyle(
-                color: Colors.white,
+                color: themeService.textPrimaryColor,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -63,9 +68,9 @@ class LoginRequiredDialog extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Text(
-                'Bạn cần đăng nhập để có thể $action video',
+                localeService.get('login_to_$actionKey'),
                 style: TextStyle(
-                  color: Colors.grey[400],
+                  color: themeService.textSecondaryColor,
                   fontSize: 15,
                   height: 1.4,
                 ),
@@ -107,9 +112,9 @@ class LoginRequiredDialog extends StatelessWidget {
                         ),
                         elevation: 0,
                       ),
-                      child: const Text(
-                        'Đăng nhập',
-                        style: TextStyle(
+                      child: Text(
+                        localeService.get('login'),
+                        style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -125,15 +130,15 @@ class LoginRequiredDialog extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context, false),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: BorderSide(color: Colors.grey[600]!),
+                        foregroundColor: themeService.textPrimaryColor,
+                        side: BorderSide(color: themeService.dividerColor),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      child: const Text(
-                        'Tiếp tục xem với chế độ khách',
-                        style: TextStyle(
+                      child: Text(
+                        localeService.get('continue_as_guest'),
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),

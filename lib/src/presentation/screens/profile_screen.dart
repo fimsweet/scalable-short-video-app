@@ -14,8 +14,10 @@ import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart'; // Import InboxScreen
+import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -35,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   final NotificationService _notificationService = NotificationService();
   final LikeService _likeService = LikeService();
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   // Animation controller for message icon - Changed from late to nullable to fix Hot Reload error
   AnimationController? _messageIconController;
@@ -52,6 +55,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     
     _initAnimations();
 
@@ -79,6 +83,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     }
   }
 
+  void _onLocaleChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   void _initAnimations() {
     if (_messageIconController != null) return;
     
@@ -97,6 +107,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     _notificationService.stopPolling();
     _messageIconController?.dispose(); // Safe dispose
     _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
@@ -132,12 +143,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _themeService.cardColor,
-        title: Text('Đăng xuất', style: TextStyle(color: _themeService.textPrimaryColor)),
-        content: Text('Bạn chắc chắn muốn đăng xuất?', style: TextStyle(color: _themeService.textSecondaryColor)),
+        title: Text(_localeService.get('logout'), style: TextStyle(color: _themeService.textPrimaryColor)),
+        content: Text(_localeService.get('logout_confirm'), style: TextStyle(color: _themeService.textSecondaryColor)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Hủy', style: TextStyle(color: _themeService.textSecondaryColor)),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
           ),
           TextButton(
             onPressed: () async {
@@ -156,7 +167,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 print('🔄 Logout successful - rebuilding UI');
               }
             },
-            child: const Text('Đăng xuất', style: TextStyle(color: Colors.red)),
+            child: Text(_localeService.get('logout'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -363,7 +374,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       appBar: AppBar(
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
-        title: Text('Hồ sơ', style: TextStyle(color: _themeService.textPrimaryColor)),
+        title: Text(_localeService.get('profile'), style: TextStyle(color: _themeService.textPrimaryColor)),
         actions: [
           PopupMenuButton<String>(
             icon: Icon(Icons.menu, color: _themeService.iconColor),
@@ -373,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             itemBuilder: (_) => [
               PopupMenuItem(
                 value: 'login',
-                child: Row(children: [Icon(Icons.login, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Đăng nhập', style: TextStyle(color: _themeService.textPrimaryColor))]),
+                child: Row(children: [Icon(Icons.login, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('login'), style: TextStyle(color: _themeService.textPrimaryColor))]),
               ),
             ],
           ),
@@ -387,10 +398,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             children: [
               Icon(Icons.person_outline, size: 80, color: _themeService.textSecondaryColor),
               const SizedBox(height: 24),
-              Text('Đăng nhập để xem hồ sơ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
+              Text(_localeService.get('login_to_view_profile'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
               const SizedBox(height: 12),
               Text(
-                'Theo dõi người khác, thích video và tạo nội dung của riêng bạn.',
+                _localeService.get('follow_others_like_videos'),
                 style: TextStyle(color: _themeService.textSecondaryColor),
                 textAlign: TextAlign.center,
               ),
@@ -405,7 +416,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   onPressed: _navigateToLogin, // Dẫn tới màn hình đăng nhập
-                  child: const Text('Đăng nhập', style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(_localeService.get('login'), style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -434,7 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             backgroundColor: _themeService.appBarBackground,
             elevation: 0,
             title: Text(
-              'Hồ sơ cá nhân',
+              _localeService.get('my_profile'),
               style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor),
             ),
             actions: [
@@ -524,20 +535,26 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 splashRadius: 0.1,
                 onSelected: (v) {
                   if (v == 'logout') _showLogoutDialog();
+                  if (v == 'settings') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
+                    );
+                  }
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'settings',
-                    child: Row(children: [Icon(Icons.settings, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Cài đặt', style: TextStyle(color: _themeService.textPrimaryColor))]),
+                    child: Row(children: [Icon(Icons.settings, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('settings'), style: TextStyle(color: _themeService.textPrimaryColor))]),
                   ),
                   PopupMenuItem(
                     value: 'help',
-                    child: Row(children: [Icon(Icons.help, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text('Trợ giúp', style: TextStyle(color: _themeService.textPrimaryColor))]),
+                    child: Row(children: [Icon(Icons.help, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('help'), style: TextStyle(color: _themeService.textPrimaryColor))]),
                   ),
                   const PopupMenuDivider(),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'logout',
-                    child: Row(children: [Icon(Icons.logout, color: Colors.red), SizedBox(width: 12), Text('Đăng xuất', style: TextStyle(color: Colors.red))]),
+                    child: Row(children: [const Icon(Icons.logout, color: Colors.red), const SizedBox(width: 12), Text(_localeService.get('logout'), style: const TextStyle(color: Colors.red))]),
                   ),
                 ],
               ),
@@ -592,9 +609,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                _ProfileStat(count: _likedCount.toString(), label: 'đã thích', onTap: null),
-                                _ProfileStat(count: _followerCount.toString(), label: 'người theo dõi', onTap: () => _navigateToFollowerFollowing(0)),
-                                _ProfileStat(count: _followingCount.toString(), label: 'đang theo dõi', onTap: () => _navigateToFollowerFollowing(1)),
+                                _ProfileStat(count: _likedCount.toString(), label: _localeService.get('likes'), onTap: null),
+                                _ProfileStat(count: _followerCount.toString(), label: _localeService.get('followers'), onTap: () => _navigateToFollowerFollowing(0)),
+                                _ProfileStat(count: _followingCount.toString(), label: _localeService.get('following'), onTap: () => _navigateToFollowerFollowing(1)),
                               ],
                             ),
                           ),
@@ -622,9 +639,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Expanded(child: _ActionButton(text: 'Chỉnh sửa', onTap: _navigateToEditProfile)),
+                        Expanded(child: _ActionButton(text: _localeService.get('edit'), onTap: _navigateToEditProfile)),
                           const SizedBox(width: 8),
-                          const Expanded(child: _ActionButton(text: 'Chia sẻ trang cá nhân')),
+                          Expanded(child: _ActionButton(text: _localeService.get('share_profile'))),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -732,11 +749,37 @@ class _ProfileStat extends StatelessWidget {
 class _ActionButton extends StatelessWidget {
   final String text;
   final VoidCallback? onTap;
-  const _ActionButton({required this.text, this.onTap});
+  final bool isFilled;
+  const _ActionButton({required this.text, this.onTap, this.isFilled = false});
 
   @override
   Widget build(BuildContext context) {
     final themeService = ThemeService();
+    
+    // Filled variant for "Chia sẻ trang cá nhân" button
+    if (isFilled) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: themeService.isLightMode ? const Color(0xFFF1F1F2) : Colors.grey[700],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Center(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: themeService.textPrimaryColor,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // Default outline variant
     return GestureDetector(
         onTap: onTap,
         child: Container(
@@ -751,3 +794,4 @@ class _ActionButton extends StatelessWidget {
       );
   }
 }
+
