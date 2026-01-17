@@ -390,32 +390,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
             ),
           ),
         
-        // Mute button (top-right)
-        Positioned(
-          top: 12,
-          right: 12,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: GestureDetector(
-                onTap: _toggleMute,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        
         // Fullscreen button (just below video, in black bar) - TikTok style
         if (_needsFullscreenButton)
           Positioned(

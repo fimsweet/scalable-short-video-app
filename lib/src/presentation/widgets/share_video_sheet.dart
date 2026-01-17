@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/share_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class ShareVideoSheet extends StatefulWidget {
   final String videoId;
@@ -23,6 +24,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
   final ShareService _shareService = ShareService();
+  final LocaleService _localeService = LocaleService();
   final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _followers = [];
@@ -126,8 +128,8 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
   Future<void> _showConfirmDialog() async {
     if (_selectedUserIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng chọn ít nhất một người'),
+        SnackBar(
+          content: Text(_localeService.get('please_select_at_least_one')),
           backgroundColor: Colors.orange,
         ),
       );
@@ -200,7 +202,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
         late OverlayEntry overlayEntry;
         overlayEntry = OverlayEntry(
           builder: (context) => _AnimatedShareToast(
-            message: 'Đã chia sẻ cho $successCount người',
+            message: '${LocaleService().get('shared_to_x_people')} $successCount ${LocaleService().get('people')}',
             onDismiss: () {
               overlayEntry.remove();
             },
@@ -212,8 +214,8 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
       print('❌ Error sharing video: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể chia sẻ video'),
+          SnackBar(
+            content: Text(_localeService.get('cannot_share_video')),
             backgroundColor: Colors.red,
           ),
         );
@@ -262,8 +264,8 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
                 const SizedBox(width: 50), // Balance the row
                 Text(
                   hasSelection 
-                      ? 'Đã chọn ${_selectedUserIds.length} người'
-                      : 'Chia sẻ đến',
+                      ? '${_localeService.get('selected_x_people')} ${_selectedUserIds.length} ${_localeService.get('people')}'
+                      : _localeService.get('share_to'),
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -281,7 +283,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: Text(
-                        'Xóa',
+                        _localeService.get('clear'),
                         style: TextStyle(
                           color: Colors.grey[400],
                           fontSize: 14,
@@ -303,7 +305,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
               controller: _searchController,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'Tìm kiếm',
+                hintText: _localeService.get('search'),
                 hintStyle: TextStyle(color: Colors.grey[500]),
                 prefixIcon: Icon(Icons.search, color: Colors.grey[500]),
                 filled: true,
@@ -331,8 +333,8 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
                             const SizedBox(height: 12),
                             Text(
                               _searchController.text.isEmpty
-                                  ? 'Chưa có người theo dõi'
-                                  : 'Không tìm thấy kết quả',
+                                  ? _localeService.get('no_followers_yet')
+                                  : _localeService.get('no_results_found'),
                               style: TextStyle(color: Colors.grey[500]),
                             ),
                           ],
@@ -397,7 +399,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
                             ),
                           )
                         : Text(
-                            'Gửi (${_selectedUserIds.length})',
+                            '${_localeService.get('send')} (${_selectedUserIds.length})',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -520,7 +522,7 @@ class _ConfirmShareDialog extends StatelessWidget {
     if (userNames.length <= 3) {
       displayNames = userNames.join(', ');
     } else {
-      displayNames = '${userNames.take(3).join(', ')} và ${userNames.length - 3} người khác';
+      displayNames = '${userNames.take(3).join(', ')} ${LocaleService().get('and_x_others')} ${userNames.length - 3} ${LocaleService().get('others')}';
     }
 
     return Container(
@@ -565,9 +567,9 @@ class _ConfirmShareDialog extends StatelessWidget {
             const SizedBox(height: 16),
             
             // Title
-            const Text(
-              'Xác nhận chia sẻ',
-              style: TextStyle(
+            Text(
+              LocaleService().get('confirm_share'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -579,7 +581,7 @@ class _ConfirmShareDialog extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Text(
-                'Chia sẻ video này đến $displayNames?',
+                '${LocaleService().get('share_video_to')} $displayNames?',
                 style: TextStyle(
                   color: Colors.grey[400],
                   fontSize: 14,
@@ -608,9 +610,9 @@ class _ConfirmShareDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
-                        child: const Text(
-                          'Hủy',
-                          style: TextStyle(
+                        child: Text(
+                          LocaleService().get('cancel'),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -634,9 +636,9 @@ class _ConfirmShareDialog extends StatelessWidget {
                           ),
                           elevation: 0,
                         ),
-                        child: const Text(
-                          'Gửi',
-                          style: TextStyle(
+                        child: Text(
+                          LocaleService().get('send'),
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),

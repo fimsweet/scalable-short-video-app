@@ -89,12 +89,35 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
         ..style.objectFit = 'cover' // TikTok-style: cover entire screen
         ..style.cursor = 'pointer';
       
-      // Add click handler to video
+      // Add click handler to video - but ignore clicks in the top 100px where Flutter tab bar is
       video.onClick.listen((event) {
-        _togglePlayPause();
+        // Get click Y position relative to video
+        final clickY = event.client.y;
+        // Only toggle play if click is not in the top 100px (tab bar area)
+        if (clickY > 100) {
+          _togglePlayPause();
+        } else {
+          // Prevent default and stop propagation for tab bar area clicks
+          event.preventDefault();
+          event.stopPropagation();
+        }
       });
       
       container.append(video);
+      
+      // Add a transparent overlay at top to block HTML video from receiving clicks there
+      // This overlay has pointer-events: none so Flutter widgets can receive the events
+      final topOverlay = html.DivElement()
+        ..style.position = 'absolute'
+        ..style.top = '0'
+        ..style.left = '0'
+        ..style.right = '0'
+        ..style.width = '100%'
+        ..style.height = '100px' // Height for tab bar area
+        ..style.pointerEvents = 'none' // Allow events to pass through to Flutter
+        ..style.zIndex = '999';
+      
+      container.append(topOverlay);
 
       script.onLoad.listen((_) {
         // Use HLS.js
@@ -135,6 +158,25 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
     return Stack(
       children: [
         HtmlElementView(viewType: _viewId),
+        
+        // IMPORTANT: Add a transparent hit area at top to capture events for Flutter widgets above
+        // This blocks HTML video from capturing clicks in the tab bar area
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: GestureDetector(
+            onTap: () {
+              // Do nothing - just block video from receiving tap
+              // The Flutter widgets on top (FeedTabBar) will handle their own taps
+            },
+            behavior: HitTestBehavior.translucent,
+            child: Container(
+              height: 100, // Height for tab bar area
+              color: Colors.transparent,
+            ),
+          ),
+        ),
         
         // Top gradient overlay
         Positioned(
@@ -196,32 +238,6 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
               ),
             ),
           ),
-        
-        // Mute button
-        Positioned(
-          top: 12,
-          right: 12,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 40), // Giảm từ 90 xuống 40
-              child: GestureDetector(
-                onTap: _toggleMute,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

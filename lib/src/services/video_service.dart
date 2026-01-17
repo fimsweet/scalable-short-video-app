@@ -318,6 +318,36 @@ class VideoService {
     }
   }
 
+  /// Search videos by title or description
+  Future<List<dynamic>> searchVideos(String query) async {
+    if (query.trim().isEmpty) return [];
+    
+    try {
+      print('🔍 Searching videos for: "$query"');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/search?q=${Uri.encodeComponent(query)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['videos'] != null) {
+          final List<dynamic> videos = data['videos'];
+          print('✅ Found ${videos.length} videos for query: "$query"');
+          return videos;
+        }
+        return [];
+      } else {
+        print('❌ Search failed: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error searching videos: $e');
+      return [];
+    }
+  }
+
   /// Toggle hide status of a video
   Future<Map<String, dynamic>> toggleHideVideo(String videoId, String userId) async {
     try {

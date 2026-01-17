@@ -116,7 +116,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Vui lòng đăng nhập để bình luận'),
+            content: Text(_localeService.get('please_login_to_comment')),
             backgroundColor: CommentTheme.cardBackground,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -156,7 +156,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lỗi gửi bình luận: $e'),
+            content: Text('${_localeService.get('comment_error')}: $e'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -272,7 +272,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${_comments.length} bình luận',
+                    '${_comments.length} ${_localeService.get('x_comments')}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -330,7 +330,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Hãy là người đầu tiên bình luận!',
+                                _localeService.get('be_first_comment'),
                                 style: TextStyle(
                                   color: Colors.grey[600],
                                   fontSize: 14,
@@ -661,7 +661,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
   Future<void> _toggleLike() async {
     if (!widget.authService.isLoggedIn) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập')),
+        SnackBar(content: Text(widget.localeService.get('please_login'))),
       );
       return;
     }
@@ -749,7 +749,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                 ),
                 child: const Icon(Icons.flag_outlined, color: Colors.orange),
               ),
-              title: const Text('Báo cáo', style: TextStyle(color: Colors.white)),
+              title: Text(widget.localeService.get('report'), style: const TextStyle(color: Colors.white)),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -782,7 +782,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                       Icon(Icons.push_pin_rounded, size: 12, color: CommentTheme.primaryRed),
                       const SizedBox(width: 4),
                       Text(
-                        'Ghim bởi tác giả',
+                        widget.localeService.get('pinned_by_author'),
                         style: TextStyle(
                           color: CommentTheme.primaryRed,
                           fontSize: 11,
