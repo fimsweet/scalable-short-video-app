@@ -14,17 +14,41 @@ class ApiService {
     required String username,
     required String email,
     required String password,
+    String? fullName,
+    String? phoneNumber,
+    String? dateOfBirth,
+    String? gender,
+    String? language,
   }) async {
     final url = Uri.parse('$_baseUrl/auth/register');
     try {
+      final body = <String, dynamic>{
+        'username': username,
+        'email': email,
+        'password': password,
+      };
+      
+      // Add optional fields if provided
+      if (fullName != null && fullName.isNotEmpty) {
+        body['fullName'] = fullName;
+      }
+      if (phoneNumber != null && phoneNumber.isNotEmpty) {
+        body['phoneNumber'] = phoneNumber;
+      }
+      if (dateOfBirth != null && dateOfBirth.isNotEmpty) {
+        body['dateOfBirth'] = dateOfBirth;
+      }
+      if (gender != null && gender.isNotEmpty) {
+        body['gender'] = gender;
+      }
+      if (language != null && language.isNotEmpty) {
+        body['language'] = language;
+      }
+      
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'username': username,
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode(body),
       );
 
       final responseBody = jsonDecode(response.body);

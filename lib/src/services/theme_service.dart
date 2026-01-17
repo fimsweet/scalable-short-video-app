@@ -62,6 +62,13 @@ class ThemeService extends ChangeNotifier {
   static const Color lightTextSecondary = Color(0xFF757575);
   static const Color lightIcon = Color(0xFF212121);
 
+  // App accent colors (TikTok-style)
+  static const Color accentColor = Color(0xFFFF2D55); // TikTok red/pink
+  static const Color accentColorLight = Color(0xFFFF6B81);
+  static const Color successColor = Color(0xFF4CAF50);
+  static const Color errorColor = Color(0xFFE53935);
+  static const Color warningColor = Color(0xFFFF9800);
+
   // Getters for current theme colors
   Color get backgroundColor => _isLightMode ? lightBackground : darkBackground;
   Color get surfaceColor => _isLightMode ? lightSurface : darkSurface;
@@ -70,6 +77,10 @@ class ThemeService extends ChangeNotifier {
   Color get textPrimaryColor => _isLightMode ? lightTextPrimary : darkTextPrimary;
   Color get textSecondaryColor => _isLightMode ? lightTextSecondary : darkTextSecondary;
   Color get iconColor => _isLightMode ? lightIcon : darkIcon;
+  
+  // Accent color getter
+  Color get primaryAccentColor => accentColor;
+  Color get radioActiveColor => accentColor;
   
   // Additional helper colors
   Color get sectionTitleBackground => _isLightMode ? Colors.white : Colors.grey[900]!;

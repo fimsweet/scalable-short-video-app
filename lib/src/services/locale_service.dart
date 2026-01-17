@@ -178,6 +178,48 @@ class LocaleService extends ChangeNotifier {
     'forgot_password': 'Quên mật khẩu?',
     'login_success': 'Đăng nhập thành công',
     'please_login': 'Vui lòng đăng nhập',
+    
+    // Forgot Password
+    'forgot_password_description': 'Nhập địa chỉ email của bạn và chúng tôi sẽ gửi mã xác nhận để đặt lại mật khẩu.',
+    'send_code': 'Gửi mã xác nhận',
+    'reset_code_sent': 'Mã xác nhận đã được gửi đến email của bạn',
+    'enter_verification_code_desc': 'Nhập mã 6 chữ số đã được gửi đến email của bạn.',
+    'invalid_code': 'Mã xác nhận không hợp lệ',
+    'verify': 'Xác nhận',
+    'resend_code': 'Gửi lại mã',
+    'create_new_password_desc': 'Tạo mật khẩu mới cho tài khoản của bạn.',
+    'reset_password': 'Đặt lại mật khẩu',
+    'password_reset_success': 'Mật khẩu đã được đặt lại thành công',
+    'change': 'Thay đổi',
+    
+    // Registration
+    'full_name': 'Họ và tên',
+    'phone_number': 'Số điện thoại',
+    'date_of_birth': 'Ngày sinh',
+    'confirm_password': 'Xác nhận mật khẩu',
+    'please_enter_full_name': 'Vui lòng nhập họ và tên',
+    'please_enter_phone': 'Vui lòng nhập số điện thoại',
+    'invalid_phone': 'Số điện thoại không hợp lệ',
+    'please_select_dob': 'Vui lòng chọn ngày sinh',
+    'must_be_13_years': 'Bạn phải đủ 13 tuổi để đăng ký',
+    'passwords_not_match': 'Mật khẩu không khớp',
+    'password_requirements': 'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số',
+    'username_requirements': 'Tên người dùng chỉ chứa chữ cái, số và dấu gạch dưới',
+    'optional': '(Tùy chọn)',
+    'required_fields': 'Các trường bắt buộc',
+    'select_date': 'Chọn ngày',
+    'whats_your_birthday': 'Ngày sinh của bạn là?',
+    'birthday_description': 'Chúng tôi sẽ không hiển thị thông tin này công khai. Bạn cần ít nhất 13 tuổi để đăng ký.',
+    'create_username': 'Tạo tên người dùng',
+    'username_description': 'Bạn có thể thay đổi tên người dùng sau. Chọn tên dễ nhớ nhé!',
+    'email_hint': 'email@example.com',
+    'select_birthday': 'Chọn ngày sinh',
+    'sign_up': 'Đăng ký',
+    'terms_agree_prefix': 'Khi tiếp tục, bạn đồng ý với ',
+    'terms_of_service': 'Điều khoản dịch vụ',
+    'and': ' và ',
+    'privacy_policy': 'Chính sách bảo mật',
+    'additional_info': 'Thông tin bổ sung',
 
     // Profile
     'edit_profile': 'Sửa hồ sơ',
@@ -192,7 +234,6 @@ class LocaleService extends ChangeNotifier {
     'prefer_not_to_say': 'Không muốn tiết lộ',
     'select_gender': 'Chọn giới tính',
     'basic_info': 'Thông tin cơ bản',
-    'additional_info': 'Thông tin thêm',
     'change_photo': 'Thay đổi ảnh',
     'following': 'Đang follow',
     'followers': 'Follower',
@@ -254,7 +295,6 @@ class LocaleService extends ChangeNotifier {
     'current_password': 'Mật khẩu hiện tại',
     'new_password': 'Mật khẩu mới',
     'confirm_new_password': 'Xác nhận mật khẩu mới',
-    'password_requirements': 'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và số',
     'password_change_success': 'Đổi mật khẩu thành công',
     'password_change_failed': 'Đổi mật khẩu thất bại',
     'password_mismatch': 'Mật khẩu xác nhận không khớp',
@@ -271,7 +311,6 @@ class LocaleService extends ChangeNotifier {
 
     // Account Info
     'account_info': 'Thông tin tài khoản',
-    'phone_number': 'Số điện thoại',
     'not_linked': 'Chưa liên kết',
 
     // Delete Account
@@ -539,6 +578,47 @@ class LocaleService extends ChangeNotifier {
     'forgot_password': 'Forgot password?',
     'login_success': 'Login successful',
     'please_login': 'Please login',
+    
+    // Forgot Password
+    'forgot_password_description': 'Enter your email address and we will send you a verification code to reset your password.',
+    'send_code': 'Send Code',
+    'reset_code_sent': 'Verification code has been sent to your email',
+    'enter_verification_code_desc': 'Enter the 6-digit code sent to your email.',
+    'invalid_code': 'Invalid verification code',
+    'verify': 'Verify',
+    'resend_code': 'Resend Code',
+    'create_new_password_desc': 'Create a new password for your account.',
+    'reset_password': 'Reset Password',
+    'password_reset_success': 'Password has been reset successfully',
+    'change': 'Change',
+    
+    // Registration
+    'full_name': 'Full Name',
+    'phone_number': 'Phone Number',
+    'date_of_birth': 'Date of Birth',
+    'confirm_password': 'Confirm Password',
+    'please_enter_full_name': 'Please enter your full name',
+    'please_enter_phone': 'Please enter your phone number',
+    'invalid_phone': 'Invalid phone number',
+    'please_select_dob': 'Please select your date of birth',
+    'must_be_13_years': 'You must be at least 13 years old to register',
+    'passwords_not_match': 'Passwords do not match',
+    'password_requirements': 'Password must be at least 8 characters with uppercase, lowercase and number',
+    'username_requirements': 'Username can only contain letters, numbers and underscores',
+    'optional': '(Optional)',
+    'required_fields': 'Required fields',
+    'select_date': 'Select date',
+    'whats_your_birthday': 'When\'s your birthday?',
+    'birthday_description': 'Your birthday won\'t be shown publicly. You need to be at least 13 to sign up.',
+    'create_username': 'Create username',
+    'username_description': 'You can always change this later. Pick something memorable!',
+    'email_hint': 'email@example.com',
+    'select_birthday': 'Select your birthday',
+    'sign_up': 'Sign up',
+    'terms_agree_prefix': 'By continuing, you agree to our ',
+    'terms_of_service': 'Terms of Service',
+    'and': ' and ',
+    'privacy_policy': 'Privacy Policy',
 
     // Profile
     'edit_profile': 'Edit Profile',
@@ -615,7 +695,6 @@ class LocaleService extends ChangeNotifier {
     'current_password': 'Current Password',
     'new_password': 'New Password',
     'confirm_new_password': 'Confirm New Password',
-    'password_requirements': 'Password must be at least 8 characters with uppercase, lowercase and numbers',
     'password_change_success': 'Password changed successfully',
     'password_change_failed': 'Password change failed',
     'password_mismatch': 'Passwords do not match',
@@ -632,7 +711,6 @@ class LocaleService extends ChangeNotifier {
 
     // Account Info
     'account_info': 'Account Information',
-    'phone_number': 'Phone Number',
     'not_linked': 'Not linked',
 
     // Delete Account
