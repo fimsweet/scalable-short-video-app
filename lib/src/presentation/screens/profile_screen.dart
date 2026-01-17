@@ -180,6 +180,117 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     // setState(() {});
   }
 
+  void _showLanguageDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _themeService.backgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12),
+              decoration: BoxDecoration(
+                color: _themeService.textSecondaryColor.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Text(
+                _localeService.get('language'),
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            _buildLanguageOption(
+              title: 'Tiếng Việt',
+              value: 'vi',
+              isSelected: _localeService.currentLocale == 'vi',
+            ),
+            _buildLanguageOption(
+              title: 'English',
+              value: 'en',
+              isSelected: _localeService.currentLocale == 'en',
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageOption({
+    required String title,
+    required String value,
+    required bool isSelected,
+  }) {
+    return InkWell(
+      onTap: () {
+        _localeService.setLocale(value);
+        Navigator.pop(context);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isSelected 
+                      ? ThemeService.accentColor 
+                      : _themeService.textSecondaryColor,
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? Center(
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: ThemeService.accentColor,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 16,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ),
+            if (isSelected)
+              const Icon(
+                Icons.check,
+                color: ThemeService.accentColor,
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _navigateToLogin() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -376,47 +487,92 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         elevation: 0,
         title: Text(_localeService.get('profile'), style: TextStyle(color: _themeService.textPrimaryColor)),
         actions: [
-          PopupMenuButton<String>(
-            icon: Icon(Icons.menu, color: _themeService.iconColor),
-            onSelected: (v) {
-              if (v == 'login') _mockLogin();
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'login',
-                child: Row(children: [Icon(Icons.login, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('login'), style: TextStyle(color: _themeService.textPrimaryColor))]),
-              ),
-            ],
+          IconButton(
+            icon: Icon(Icons.login, color: _themeService.iconColor),
+            onPressed: _navigateToLogin,
+            tooltip: _localeService.get('login'),
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.person_outline, size: 80, color: _themeService.textSecondaryColor),
-              const SizedBox(height: 24),
-              Text(_localeService.get('login_to_view_profile'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
-              const SizedBox(height: 12),
-              Text(
-                _localeService.get('follow_others_like_videos'),
-                style: TextStyle(color: _themeService.textSecondaryColor),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 28),
-              SizedBox(
-                width: 200,
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _themeService.isLightMode ? Colors.black : Colors.white,
-                    foregroundColor: _themeService.isLightMode ? Colors.white : Colors.black,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      body: Stack(
+        children: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.person_outline, size: 80, color: _themeService.textSecondaryColor),
+                  const SizedBox(height: 24),
+                  Text(_localeService.get('login_to_view_profile'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
+                  const SizedBox(height: 12),
+                  Text(
+                    _localeService.get('follow_others_like_videos'),
+                    style: TextStyle(color: _themeService.textSecondaryColor),
+                    textAlign: TextAlign.center,
                   ),
-                  onPressed: _navigateToLogin, // Dẫn tới màn hình đăng nhập
-                  child: Text(_localeService.get('login'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    width: 200,
+                    height: 44,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _themeService.isLightMode ? Colors.black : Colors.white,
+                        foregroundColor: _themeService.isLightMode ? Colors.white : Colors.black,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: _navigateToLogin,
+                      child: Text(_localeService.get('login'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Language toggle button at bottom left
+          Positioned(
+            left: 16,
+            bottom: 16,
+            child: _buildLanguageToggleButton(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLanguageToggleButton() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _showLanguageDialog,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _themeService.isLightMode 
+                  ? Colors.grey[400]! 
+                  : Colors.grey[600]!,
+              width: 1.2,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.language,
+                size: 16,
+                color: _themeService.textSecondaryColor,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _localeService.isVietnamese ? 'VI' : 'EN',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
                 ),
               ),
             ],
