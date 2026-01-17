@@ -332,6 +332,36 @@ class ApiService {
     }
   }
 
+  /// Search users by username or fullName
+  Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+    if (query.trim().isEmpty) return [];
+    
+    try {
+      print('🔍 Searching users for: "$query"');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/search?q=${Uri.encodeComponent(query)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['users'] != null) {
+          final List<dynamic> users = data['users'];
+          print('✅ Found ${users.length} users for query: "$query"');
+          return users.map((u) => Map<String, dynamic>.from(u)).toList();
+        }
+        return [];
+      } else {
+        print('❌ User search failed: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error searching users: $e');
+      return [];
+    }
+  }
+
   /// Block a user
   Future<bool> blockUser(String targetUserId, {String? currentUserId}) async {
     try {

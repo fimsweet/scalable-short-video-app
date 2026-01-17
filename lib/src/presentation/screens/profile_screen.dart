@@ -232,7 +232,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       if (token == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Vui lòng đăng nhập lại')),
+            SnackBar(content: Text(_localeService.get('please_login_again'))),
           );
         }
         return;

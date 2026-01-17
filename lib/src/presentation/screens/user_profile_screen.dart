@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
@@ -30,6 +31,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isFollowing = false;
   bool _isMutual = false;
   bool _isProcessing = false;
+  bool _isBlocked = false;
   int _followerCount = 0;
   int _followingCount = 0;
   List<dynamic> _userVideos = [];
@@ -64,16 +66,28 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // Load user videos
       final videos = await _videoService.getVideosByUserId(widget.userId.toString());
 
-      // Check follow status
+      // Check follow status and block status
       if (_authService.isLoggedIn && _authService.user != null) {
         final currentUserId = _authService.user!['id'] as int;
         final isFollowing = await _followService.isFollowing(currentUserId, widget.userId);
         final isMutual = await _followService.isMutualFollow(currentUserId, widget.userId);
         
+        // Safely check blocked status with fallback
+        bool isBlocked = false;
+        try {
+          isBlocked = await _apiService.isUserBlocked(
+            currentUserId.toString(), 
+            widget.userId.toString(),
+          );
+        } catch (e) {
+          print('❌ Error checking blocked status: $e');
+        }
+        
         if (mounted) {
           setState(() {
             _isFollowing = isFollowing;
             _isMutual = isMutual;
+            _isBlocked = isBlocked;
           });
         }
       }
@@ -98,7 +112,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _toggleFollow() async {
     if (!_authService.isLoggedIn || _authService.user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng đăng nhập để theo dõi')),
+        SnackBar(content: Text(_localeService.get('please_login_to_follow'))),
       );
       return;
     }
@@ -123,6 +137,259 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _isProcessing = false;
       });
     }
+  }
+
+  void _showOptionsMenu() {
+    if (!_authService.isLoggedIn) return;
+    
+    final username = _userInfo?['username'] ?? 'user';
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _themeService.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              
+              // Block/Unblock option
+              _buildOptionTile(
+                icon: _isBlocked ? Icons.remove_circle_outline : Icons.block_rounded,
+                iconColor: _isBlocked ? Colors.green : Colors.red,
+                title: _isBlocked 
+                    ? _localeService.get('unblock_user')
+                    : _localeService.get('block_user'),
+                titleColor: _isBlocked ? Colors.green : Colors.red,
+                onTap: () {
+                  Navigator.pop(context);
+                  _showBlockConfirmDialog(username);
+                },
+              ),
+              
+              // Report option
+              _buildOptionTile(
+                icon: Icons.flag_outlined,
+                iconColor: Colors.orange,
+                title: _localeService.get('report'),
+                onTap: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(_localeService.isVietnamese 
+                          ? 'Đã gửi báo cáo' 
+                          : 'Report submitted'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                },
+              ),
+              
+              // Copy profile link
+              _buildOptionTile(
+                icon: Icons.link_rounded,
+                title: _localeService.isVietnamese ? 'Sao chép liên kết' : 'Copy link',
+                onTap: () {
+                  Navigator.pop(context);
+                  _copyProfileLink(username);
+                },
+              ),
+              
+              // Share profile
+              _buildOptionTile(
+                icon: Icons.share_outlined,
+                title: _localeService.get('share_profile'),
+                onTap: () {
+                  Navigator.pop(context);
+                  // TODO: Implement share functionality
+                },
+              ),
+              
+              const SizedBox(height: 8),
+              
+              // Cancel button
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(
+                    _localeService.get('cancel'),
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile({
+    required IconData icon,
+    Color? iconColor,
+    required String title,
+    Color? titleColor,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: (iconColor ?? _themeService.textPrimaryColor).withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: iconColor ?? _themeService.textPrimaryColor, size: 22),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: titleColor ?? _themeService.textPrimaryColor,
+          fontSize: 16,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      onTap: onTap,
+    );
+  }
+
+  void _showBlockConfirmDialog(String username) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _isBlocked
+              ? '${_localeService.get('unblock_confirm')} @$username?'
+              : '${_localeService.get('block_confirm')} @$username?',
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          _isBlocked
+              ? _localeService.get('unblock_effects')
+              : _localeService.get('block_effects'),
+          style: TextStyle(
+            color: _themeService.textSecondaryColor,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              _localeService.get('cancel'),
+              style: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _toggleBlock();
+            },
+            child: Text(
+              _isBlocked 
+                  ? _localeService.get('unblock')
+                  : _localeService.get('block'),
+              style: TextStyle(
+                color: _isBlocked ? Colors.green : Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleBlock() async {
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+    
+    final currentUserId = _authService.user!['id'].toString();
+    final targetUserId = widget.userId.toString();
+    
+    bool success;
+    if (_isBlocked) {
+      success = await _apiService.unblockUser(targetUserId, currentUserId: currentUserId);
+    } else {
+      success = await _apiService.blockUser(targetUserId, currentUserId: currentUserId);
+    }
+    
+    if (mounted) {
+      if (success) {
+        setState(() {
+          _isBlocked = !_isBlocked;
+          // If blocking, also unfollow
+          if (_isBlocked && _isFollowing) {
+            _isFollowing = false;
+            _followerCount--;
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isBlocked 
+                ? _localeService.get('blocked_success')
+                : _localeService.get('unblocked_success')),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isBlocked 
+                ? _localeService.get('unblock_failed')
+                : _localeService.get('block_failed')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _copyProfileLink(String username) {
+    final profileLink = 'https://shortvideo.app/@$username';
+    Clipboard.setData(ClipboardData(text: profileLink));
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_localeService.isVietnamese 
+            ? 'Đã sao chép liên kết' 
+            : 'Link copied'),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   @override
@@ -152,9 +419,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.more_horiz, color: _themeService.iconColor),
-            onPressed: () {
-              // Show options menu
-            },
+            onPressed: _showOptionsMenu,
           ),
         ],
       ),

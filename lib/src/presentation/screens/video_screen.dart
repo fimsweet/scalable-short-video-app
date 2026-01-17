@@ -18,6 +18,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/main_screen.da
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_management_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/search_screen.dart';
 
 class VideoScreen extends StatefulWidget {
   const VideoScreen({super.key});
@@ -70,11 +71,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   PageController? _pageController;
   int _currentPage = 0;
 
-  int _selectedFeedTab = 1; // 0 = Following, 1 = For You (default)
+  int _selectedFeedTab = 2; // 0 = Following, 1 = Friends, 2 = For You (default)
   
   // Separate video lists for each tab
   List<dynamic> _forYouVideos = [];
   List<dynamic> _followingVideos = [];
+  List<dynamic> _friendsVideos = [];
 
   bool _lastLoginState = false;
   int? _lastUserId;
@@ -184,9 +186,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         });
       }
 
-      if (_selectedFeedTab == 1) {
-        
+      if (_selectedFeedTab == 2) {
+        // For You feed
         await _loadForYouVideos();
+      } else if (_selectedFeedTab == 1) {
+        // Friends feed - videos from mutual friends
+        await _loadFriendsVideos();
       } else {
         // Following feed - videos from followed users
         await _loadFollowingVideos();
@@ -250,6 +255,33 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       setState(() {
         _followingVideos = readyVideos;
         _videos = _followingVideos;
+      });
+    }
+  }
+
+  Future<void> _loadFriendsVideos() async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      if (mounted) {
+        setState(() {
+          _friendsVideos = [];
+          _videos = _friendsVideos;
+        });
+      }
+      return;
+    }
+
+    final userId = _authService.user!['id'].toString();
+    // For now, friends videos = mutual follows (same as following)
+    // Can be extended to use a separate friends API
+    final videos = await _videoService.getFollowingVideos(userId);
+    final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
+
+    await _processVideos(readyVideos);
+    
+    if (mounted) {
+      setState(() {
+        _friendsVideos = readyVideos;
+        _videos = _friendsVideos;
       });
     }
   }
@@ -902,6 +934,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                 child: FeedTabBar(
                   selectedIndex: _selectedFeedTab,
                   onTabChanged: _onTabChanged,
+                  onSearchTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SearchScreen(),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
