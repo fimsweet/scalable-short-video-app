@@ -1,5 +1,7 @@
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 
@@ -18,23 +20,73 @@ class CommentService {
     }
   }
 
-  Future<Map<String, dynamic>?> createComment(String videoId, String userId, String content, {String? parentId}) async {
+  Future<Map<String, dynamic>?> createComment(
+    String videoId, 
+    String userId, 
+    String content, 
+    {String? parentId, File? imageFile}
+  ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/comments'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'videoId': videoId,
-          'userId': userId,
-          'content': content,
-          if (parentId != null) 'parentId': parentId,
-        }),
-      );
+      if (imageFile != null) {
+        // Use multipart request for image upload
+        final request = http.MultipartRequest(
+          'POST',
+          Uri.parse('$_baseUrl/comments'),
+        );
+        
+        request.fields['videoId'] = videoId;
+        request.fields['userId'] = userId;
+        request.fields['content'] = content;
+        if (parentId != null) {
+          request.fields['parentId'] = parentId;
+        }
+        
+        // Determine content type from file extension
+        final extension = imageFile.path.split('.').last.toLowerCase();
+        String mimeType = 'image/jpeg';
+        if (extension == 'png') mimeType = 'image/png';
+        else if (extension == 'gif') mimeType = 'image/gif';
+        else if (extension == 'webp') mimeType = 'image/webp';
+        
+        request.files.add(await http.MultipartFile.fromPath(
+          'image',
+          imageFile.path,
+          contentType: MediaType.parse(mimeType),
+        ));
+        
+        print('📤 Sending multipart request to ${request.url}');
+        print('📤 Fields: ${request.fields}');
+        print('📤 Files: ${request.files.map((f) => '${f.field}: ${f.filename} (${f.contentType})').toList()}');
+        
+        final streamedResponse = await request.send();
+        final response = await http.Response.fromStream(streamedResponse);
+        
+        print('📥 Response status: ${response.statusCode}');
+        print('📥 Response body: ${response.body}');
+        
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          return json.decode(response.body);
+        }
+        print('❌ Failed to create comment with image: ${response.statusCode}');
+        return null;
+      } else {
+        // Regular JSON request without image
+        final response = await http.post(
+          Uri.parse('$_baseUrl/comments'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'videoId': videoId,
+            'userId': userId,
+            'content': content,
+            if (parentId != null) 'parentId': parentId,
+          }),
+        );
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        return json.decode(response.body);
+        if (response.statusCode == 201 || response.statusCode == 200) {
+          return json.decode(response.body);
+        }
+        return null;
       }
-      return null;
     } catch (e) {
       print('❌ Error creating comment: $e');
       return null;

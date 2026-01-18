@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/register_screen.dart';
+import 'package:scalable_short_video_app/src/features/auth/presentation/screens/registration_method_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/forgot_password_screen.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -22,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _themeService = ThemeService();
   final _localeService = LocaleService();
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
 
   @override
   void initState() {
@@ -100,10 +101,301 @@ class _LoginScreenState extends State<LoginScreen> {
   void _navigateToRegister() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+      MaterialPageRoute(builder: (_) => const RegistrationMethodScreen()),
     );
     if (result == true) {
       Navigator.pop(context, true); // Đăng ký thành công -> tự động đăng nhập và quay lại
+    }
+  }
+
+  /// Show modern dialog when Google account is not registered
+  Future<bool?> _showRegistrationConfirmDialog({
+    String? email,
+    String? displayName,
+    String? photoUrl,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.white : const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Avatar
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.3),
+                    width: 3,
+                  ),
+                ),
+                child: ClipOval(
+                  child: photoUrl != null && photoUrl.isNotEmpty
+                      ? Image.network(
+                          photoUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            color: Colors.grey[300],
+                            child: Icon(
+                              Icons.person,
+                              size: 40,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        )
+                      : Container(
+                          color: Colors.grey[300],
+                          child: Icon(
+                            Icons.person,
+                            size: 40,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Title with icon
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: Colors.orange,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _localeService.get('account_not_found'),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: _themeService.textPrimaryColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Email info
+              if (email != null && email.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _themeService.isLightMode 
+                        ? Colors.grey[100] 
+                        : Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.email_outlined,
+                        size: 16,
+                        color: _themeService.textSecondaryColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        email,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: _themeService.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 16),
+              
+              // Description
+              Text(
+                _localeService.get('account_not_registered_description'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _themeService.textSecondaryColor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Buttons
+              Row(
+                children: [
+                  // Cancel button
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: _themeService.isLightMode 
+                                ? Colors.grey[300]! 
+                                : Colors.grey[700]!,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        _localeService.get('cancel'),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: _themeService.textSecondaryColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Register button
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        _localeService.get('register_now'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleGoogleLogin() async {
+    if (_isGoogleLoading) return;
+    
+    setState(() => _isGoogleLoading = true);
+    
+    try {
+      // Step 1: Sign in with Google to get ID token
+      final googleResult = await _auth.signInWithGoogle();
+      
+      if (googleResult.cancelled) {
+        setState(() => _isGoogleLoading = false);
+        return;
+      }
+      
+      if (!googleResult.success) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(googleResult.error ?? _localeService.get('google_signin_failed')),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isGoogleLoading = false);
+        return;
+      }
+      
+      // Step 2: Send ID token to backend
+      final backendResult = await _auth.googleAuthWithBackend(googleResult.idToken!);
+      
+      if (!mounted) return;
+      
+      // Step 3: Check if user needs to complete registration
+      if (backendResult['isNewUser'] == true) {
+        // User not found - need to register first
+        // Show confirmation dialog
+        final googleUser = backendResult['googleUser'] as Map<String, dynamic>?;
+        
+        final shouldRegister = await _showRegistrationConfirmDialog(
+          email: googleUser?['email'] ?? googleResult.email,
+          displayName: googleUser?['fullName'] ?? googleResult.displayName,
+          photoUrl: googleUser?['avatar'] ?? googleResult.photoUrl,
+        );
+        
+        if (shouldRegister != true) {
+          // User cancelled, stay on login screen
+          setState(() => _isGoogleLoading = false);
+          return;
+        }
+        
+        // Navigate to registration screen with Google user data pre-filled
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => RegistrationMethodScreen(
+              prefilledOAuthData: {
+                'provider': 'google',
+                'providerId': googleUser?['providerId'] ?? googleResult.providerId,
+                'email': googleUser?['email'] ?? googleResult.email,
+                'displayName': googleUser?['fullName'] ?? googleResult.displayName,
+                'photoUrl': googleUser?['avatar'] ?? googleResult.photoUrl,
+              },
+            ),
+          ),
+        );
+        
+        if (result == true && mounted) {
+          Navigator.pop(context, true); // Registration successful
+        }
+      } else {
+        // User exists - login directly
+        final userData = backendResult['user'];
+        final token = backendResult['access_token'];
+        
+        await _auth.login(userData, token);
+        
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_localeService.get('login_successful')),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Pop back to previous screen with success
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${_localeService.get('error')}: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+      }
     }
   }
 
@@ -187,7 +479,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     runSpacing: 12.0,
                     children: [
                       _SocialButton(icon: Icons.facebook, label: _localeService.get('facebook'), onTap: () {}, themeService: _themeService),
-                      _SocialButton(icon: Icons.g_mobiledata, label: _localeService.get('google'), onTap: () {}, themeService: _themeService),
+                      _SocialButton(
+                        icon: Icons.g_mobiledata, 
+                        label: _localeService.get('google'), 
+                        onTap: _isGoogleLoading ? () {} : _handleGoogleLogin, 
+                        themeService: _themeService,
+                        isLoading: _isGoogleLoading,
+                      ),
                       _SocialButton(icon: Icons.phone, label: _localeService.get('phone'), onTap: () {}, themeService: _themeService),
                     ],
                   ),
@@ -387,12 +685,19 @@ class _SocialButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final ThemeService themeService;
-  const _SocialButton({required this.icon, required this.label, required this.onTap, required this.themeService});
+  final bool isLoading;
+  const _SocialButton({
+    required this.icon, 
+    required this.label, 
+    required this.onTap, 
+    required this.themeService,
+    this.isLoading = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       child: Container(
         width: 90,
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -403,7 +708,17 @@ class _SocialButton extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: themeService.textPrimaryColor),
+            if (isLoading)
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: themeService.textPrimaryColor,
+                ),
+              )
+            else
+              Icon(icon, color: themeService.textPrimaryColor),
             const SizedBox(height: 4),
             Text(label, style: TextStyle(color: themeService.textPrimaryColor, fontSize: 12)),
           ],

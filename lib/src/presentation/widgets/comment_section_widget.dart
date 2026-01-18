@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -44,6 +46,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   final TextEditingController _textController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  final ImagePicker _imagePicker = ImagePicker();
   
   List<dynamic> _comments = [];
   bool _isLoading = true;
@@ -51,6 +54,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   String? _replyingTo;
   String? _replyingToUsername;
   String? _replyingToCommentId;
+  File? _selectedImage;
   
   final Set<String> _expandedCommentIds = {};
 
@@ -110,7 +114,8 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   }
 
   Future<void> _sendComment() async {
-    if (_textController.text.trim().isEmpty) return;
+    // Allow sending if there's text OR image
+    if (_textController.text.trim().isEmpty && _selectedImage == null) return;
     
     if (!_authService.isLoggedIn || _authService.user == null) {
       if (mounted) {
@@ -136,12 +141,14 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       final newComment = await _commentService.createComment(
         widget.videoId,
         userId,
-        content,
+        content, // Empty string is OK if image is attached
         parentId: replyToCommentId,
+        imageFile: _selectedImage,
       );
 
       if (newComment != null && mounted) {
         _textController.clear();
+        _selectedImage = null;
         
         if (replyToCommentId != null) {
           _expandedCommentIds.add(replyToCommentId);
@@ -167,6 +174,31 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         setState(() => _isSending = false);
       }
     }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null && mounted) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+      }
+    } catch (e) {
+      print('❌ Error picking image: $e');
+    }
+  }
+
+  void _removeSelectedImage() {
+    setState(() {
+      _selectedImage = null;
+    });
   }
 
   void _startReply(String commentId, String username) {
@@ -426,6 +458,8 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   }
 
   Widget _buildLoggedInInput(double bottomPadding) {
+    final hasContent = _textController.text.trim().isNotEmpty || _selectedImage != null;
+    
     return Container(
       padding: EdgeInsets.only(
         left: 12,
@@ -439,88 +473,154 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
           top: BorderSide(color: _themeService.dividerColor, width: 0.5),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: _themeService.inputBackground,
-            backgroundImage: _authService.avatarUrl != null
-                ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
-                : null,
-            child: _authService.avatarUrl == null
-                ? Icon(Icons.person, size: 16, color: _themeService.textSecondaryColor)
-                : null,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              constraints: const BoxConstraints(
-                minHeight: 36,
-                maxHeight: 100,
-              ),
-              decoration: BoxDecoration(
-                color: _themeService.inputBackground,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: TextField(
-                controller: _textController,
-                focusNode: _focusNode,
-                style: TextStyle(
-                  color: _themeService.textPrimaryColor,
-                  fontSize: 14,
+          // Image preview - TikTok style with constrained size
+          if (_selectedImage != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                constraints: const BoxConstraints(
+                  maxWidth: 150,
+                  maxHeight: 150,
                 ),
-                decoration: InputDecoration(
-                  hintText: _localeService.get('add_comment'),
-                  hintStyle: TextStyle(
-                    color: _themeService.textSecondaryColor,
-                    fontSize: 14,
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  isDense: true,
-                ),
-                enabled: !_isSending,
-                maxLines: null,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendComment(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _isSending ? null : _sendComment,
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: _textController.text.trim().isNotEmpty
-                    ? CommentTheme.accent
-                    : Colors.transparent,
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: _isSending
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        Icons.send_rounded,
-                        color: _textController.text.trim().isNotEmpty
-                            ? Colors.white
-                            : CommentTheme.accent,
-                        size: 18,
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.file(
+                        _selectedImage!,
+                        fit: BoxFit.cover,
                       ),
+                    ),
+                    Positioned(
+                      top: 4,
+                      right: 4,
+                      child: GestureDetector(
+                        onTap: _removeSelectedImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+          // Input row
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: _themeService.inputBackground,
+                backgroundImage: _authService.avatarUrl != null
+                    ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
+                    : null,
+                child: _authService.avatarUrl == null
+                    ? Icon(Icons.person, size: 16, color: _themeService.textSecondaryColor)
+                    : null,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 36,
+                    maxHeight: 100,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _themeService.inputBackground,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _textController,
+                          focusNode: _focusNode,
+                          style: TextStyle(
+                            color: _themeService.textPrimaryColor,
+                            fontSize: 14,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: _localeService.get('add_comment'),
+                            hintStyle: TextStyle(
+                              color: _themeService.textSecondaryColor,
+                              fontSize: 14,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            isDense: true,
+                          ),
+                          enabled: !_isSending,
+                          maxLines: null,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendComment(),
+                        ),
+                      ),
+                      // Image picker button
+                      GestureDetector(
+                        onTap: _isSending ? null : _pickImage,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: _themeService.textSecondaryColor,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _isSending ? null : _sendComment,
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: hasContent
+                        ? CommentTheme.accent
+                        : Colors.transparent,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: _isSending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Icon(
+                            Icons.send_rounded,
+                            color: hasContent
+                                ? Colors.white
+                                : CommentTheme.accent,
+                            size: 18,
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -643,6 +743,45 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
   void dispose() {
     _likeAnimController?.dispose();
     super.dispose();
+  }
+
+  void _showFullImage(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Center(
+                child: InteractiveViewer(
+                  child: Image.network(
+                    widget.apiService.getCommentImageUrl(imageUrl),
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _checkLikeStatus() async {
@@ -833,14 +972,60 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text(
-                          widget.comment['content'] ?? '',
-                          style: TextStyle(
-                            color: widget.themeService.textPrimaryColor,
-                            fontSize: 14,
-                            height: 1.4,
+                        // Only show content text if not empty and not just camera emoji
+                        if ((widget.comment['content'] ?? '').toString().trim().isNotEmpty && 
+                            widget.comment['content'] != '📷') ...[  
+                          Text(
+                            widget.comment['content'] ?? '',
+                            style: TextStyle(
+                              color: widget.themeService.textPrimaryColor,
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
                           ),
-                        ),
+                        ],
+                        // Display comment image if exists - TikTok style
+                        if (widget.comment['imageUrl'] != null) ...[
+                          const SizedBox(height: 8),
+                          // TikTok style - constrained image size
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(
+                              maxWidth: 200,
+                              maxHeight: 200,
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: GestureDetector(
+                                onTap: () => _showFullImage(context, widget.comment['imageUrl']),
+                                child: Image.network(
+                                  widget.apiService.getCommentImageUrl(widget.comment['imageUrl']),
+                                  fit: BoxFit.cover,
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return Container(
+                                      width: 150,
+                                      height: 150,
+                                      color: Colors.grey[800],
+                                      child: const Center(
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      width: 100,
+                                      height: 100,
+                                      color: Colors.grey[800],
+                                      child: const Center(
+                                        child: Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 8),
                         Row(
                           children: <Widget>[

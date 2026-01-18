@@ -131,6 +131,12 @@ class LocaleService extends ChangeNotifier {
     return translations[key] ?? key;
   }
 
+  /// Alias for get() method - for convenience
+  String translate(String key) => get(key);
+
+  /// Get current locale as Locale object
+  Locale get currentLocaleObject => Locale(_currentLocale);
+
   // Vietnamese translations
   static const Map<String, String> _viTranslations = {
     // Common
@@ -190,12 +196,19 @@ class LocaleService extends ChangeNotifier {
     'create_new_password_desc': 'Tạo mật khẩu mới cho tài khoản của bạn.',
     'reset_password': 'Đặt lại mật khẩu',
     'password_reset_success': 'Mật khẩu đã được đặt lại thành công',
+    'set_password': 'Thêm mật khẩu',
+    'set_password_subtitle': 'Tạo mật khẩu để đăng nhập bằng email',
+    'set_password_description': 'Tài khoản của bạn đang sử dụng đăng nhập mạng xã hội. Thêm mật khẩu để có thể đăng nhập bằng email.',
+    'password_set_success': 'Đặt mật khẩu thành công',
+    'password_too_short': 'Mật khẩu phải có ít nhất 8 ký tự',
+    'fill_all_fields': 'Vui lòng điền đầy đủ thông tin',
     'change': 'Thay đổi',
     
     // Registration
     'full_name': 'Họ và tên',
     'phone_number': 'Số điện thoại',
     'date_of_birth': 'Ngày sinh',
+    'select_date_of_birth': 'Chọn ngày sinh',
     'confirm_password': 'Xác nhận mật khẩu',
     'please_enter_full_name': 'Vui lòng nhập họ và tên',
     'please_enter_phone': 'Vui lòng nhập số điện thoại',
@@ -298,8 +311,6 @@ class LocaleService extends ChangeNotifier {
     'password_change_success': 'Đổi mật khẩu thành công',
     'password_change_failed': 'Đổi mật khẩu thất bại',
     'password_mismatch': 'Mật khẩu xác nhận không khớp',
-    'password_too_short': 'Mật khẩu mới phải có ít nhất 8 ký tự',
-    'fill_all_fields': 'Vui lòng điền đầy đủ thông tin',
     'session_expired': 'Phiên đăng nhập hết hạn',
 
     // Security
@@ -345,6 +356,10 @@ class LocaleService extends ChangeNotifier {
     'type_message': 'Nhắn tin...',
     'send': 'Gửi',
     'inbox': 'Hộp thư',
+    'new_message': 'Tin nhắn mới',
+    'search_username': 'Tìm tên người dùng',
+    'search_users_to_chat': 'Tìm kiếm người dùng để nhắn tin',
+    'no_users_found': 'Không tìm thấy người dùng nào',
     'online': 'Đang hoạt động',
     'offline': 'Ngoại tuyến',
     'tap_to_view': 'Nhấn để xem',
@@ -500,6 +515,12 @@ class LocaleService extends ChangeNotifier {
     'please_enter_password': 'Vui lòng nhập mật khẩu',
     'login_failed': 'Đăng nhập thất bại',
     'or_login_with': 'Hoặc đăng nhập bằng',
+    'account_not_registered': 'Tài khoản chưa được đăng ký. Vui lòng đăng ký để tiếp tục.',
+    'account_not_found': 'Tài khoản không tồn tại',
+    'account_not_registered_description': 'Tài khoản Google này chưa được đăng ký trong hệ thống. Bạn có muốn tạo tài khoản mới không?',
+    'register_now': 'Đăng ký ngay',
+    'google_signin_failed': 'Đăng nhập Google thất bại',
+    'google_signin_cancelled': 'Đăng nhập Google đã bị hủy',
     'facebook': 'Facebook',
     'google': 'Google',
     'phone': 'Số ĐT',
@@ -529,6 +550,42 @@ class LocaleService extends ChangeNotifier {
     'login_to_view_profile': 'Đăng nhập để xem hồ sơ',
     'follow_others_like_videos': 'Theo dõi người khác, thích video và tạo nội dung của riêng bạn.',
     'continue_as_guest': 'Tiếp tục xem với chế độ khách',
+    
+    // TikTok-style registration (multi-step)
+    'use_phone': 'Sử dụng số điện thoại',
+    'use_email': 'Sử dụng email',
+    'or_continue_with': 'hoặc tiếp tục với',
+    'continue_with_facebook': 'Tiếp tục với Facebook',
+    'continue_with_apple': 'Tiếp tục với Apple',
+    'continue_with_google': 'Tiếp tục với Google',
+    'terms_agreement': 'Bằng việc tiếp tục, bạn đồng ý với Điều khoản dịch vụ và xác nhận rằng bạn đã đọc Chính sách bảo mật của chúng tôi.',
+    'already_have_account': 'Đã có tài khoản?',
+    'your_birthday_wont_be_shown': 'Ngày sinh của bạn sẽ không được hiển thị công khai.',
+    'age_requirement': 'Bạn phải đủ 13 tuổi để sử dụng ứng dụng này.',
+    'next': 'Tiếp theo',
+    'username_can_change_later': 'Bạn có thể thay đổi tên người dùng sau này.',
+    'username_required': 'Vui lòng nhập tên người dùng',
+    'username_too_short': 'Tên người dùng phải có ít nhất {min} ký tự',
+    'username_too_long': 'Tên người dùng không được quá {max} ký tự',
+    'username_invalid_chars': 'Tên người dùng chỉ chứa chữ cái, số, dấu gạch dưới và dấu chấm',
+    'username_cannot_start_with_number': 'Tên người dùng không được bắt đầu bằng số',
+    'username_taken': 'Tên người dùng đã được sử dụng',
+    'error_checking_username': 'Không thể kiểm tra tên người dùng',
+    'username_hint': 'Chỉ chứa chữ cái, số, dấu gạch dưới và dấu chấm',
+    'check_availability': 'Kiểm tra khả dụng',
+    'enter_email_password': 'Nhập email và mật khẩu',
+    'enter_password': 'Nhập mật khẩu',
+    'enter_confirm_password': 'Nhập lại mật khẩu',
+    'password_too_weak': 'Mật khẩu quá yếu',
+    'passwords_dont_match': 'Mật khẩu không khớp',
+    'password_min_chars': 'Ít nhất 8 ký tự',
+    'password_uppercase': 'Có chữ in hoa',
+    'password_lowercase': 'Có chữ thường',
+    'password_number': 'Có số',
+    'password_special_char': 'Có ký tự đặc biệt (!@#\$%^&*)',
+    'registration_successful': 'Đăng ký thành công!',
+    'registration_failed': 'Đăng ký thất bại',
+    'login_successful': 'Đăng nhập thành công!',
   };
 
   // English translations
@@ -590,12 +647,19 @@ class LocaleService extends ChangeNotifier {
     'create_new_password_desc': 'Create a new password for your account.',
     'reset_password': 'Reset Password',
     'password_reset_success': 'Password has been reset successfully',
+    'set_password': 'Set Password',
+    'set_password_subtitle': 'Create a password to login with email',
+    'set_password_description': 'Your account uses social login. Add a password to be able to login with email.',
+    'password_set_success': 'Password set successfully',
+    'password_too_short': 'Password must be at least 8 characters',
+    'fill_all_fields': 'Please fill in all fields',
     'change': 'Change',
     
     // Registration
     'full_name': 'Full Name',
     'phone_number': 'Phone Number',
     'date_of_birth': 'Date of Birth',
+    'select_date_of_birth': 'Select date of birth',
     'confirm_password': 'Confirm Password',
     'please_enter_full_name': 'Please enter your full name',
     'please_enter_phone': 'Please enter your phone number',
@@ -698,8 +762,6 @@ class LocaleService extends ChangeNotifier {
     'password_change_success': 'Password changed successfully',
     'password_change_failed': 'Password change failed',
     'password_mismatch': 'Passwords do not match',
-    'password_too_short': 'New password must be at least 8 characters',
-    'fill_all_fields': 'Please fill in all fields',
     'session_expired': 'Session expired',
 
     // Security
@@ -745,6 +807,10 @@ class LocaleService extends ChangeNotifier {
     'type_message': 'Message...',
     'send': 'Send',
     'inbox': 'Inbox',
+    'new_message': 'New Message',
+    'search_username': 'Search username',
+    'search_users_to_chat': 'Search users to chat',
+    'no_users_found': 'No users found',
     'online': 'Online',
     'offline': 'Offline',
     'tap_to_view': 'Tap to view',
@@ -900,6 +966,12 @@ class LocaleService extends ChangeNotifier {
     'please_enter_password': 'Please enter your password',
     'login_failed': 'Login failed',
     'or_login_with': 'Or login with',
+    'account_not_registered': 'Account not registered. Please register to continue.',
+    'account_not_found': 'Account not found',
+    'account_not_registered_description': 'This Google account is not registered in the system. Would you like to create a new account?',
+    'register_now': 'Register now',
+    'google_signin_failed': 'Google sign-in failed',
+    'google_signin_cancelled': 'Google sign-in cancelled',
     'facebook': 'Facebook',
     'google': 'Google',
     'phone': 'Phone',
@@ -929,6 +1001,42 @@ class LocaleService extends ChangeNotifier {
     'login_to_view_profile': 'Login to view profile',
     'follow_others_like_videos': 'Follow others, like videos and create your own content.',
     'continue_as_guest': 'Continue as guest',
+    
+    // TikTok-style registration (multi-step)
+    'use_phone': 'Use phone number',
+    'use_email': 'Use email',
+    'or_continue_with': 'or continue with',
+    'continue_with_facebook': 'Continue with Facebook',
+    'continue_with_apple': 'Continue with Apple',
+    'continue_with_google': 'Continue with Google',
+    'terms_agreement': 'By continuing, you agree to our Terms of Service and confirm that you have read our Privacy Policy.',
+    'already_have_account': 'Already have an account?',
+    'your_birthday_wont_be_shown': 'Your birthday won\'t be shown publicly.',
+    'age_requirement': 'You must be at least 13 years old to use this app.',
+    'next': 'Next',
+    'username_can_change_later': 'You can change your username later.',
+    'username_required': 'Please enter a username',
+    'username_too_short': 'Username must be at least {min} characters',
+    'username_too_long': 'Username cannot exceed {max} characters',
+    'username_invalid_chars': 'Username can only contain letters, numbers, underscores and dots',
+    'username_cannot_start_with_number': 'Username cannot start with a number',
+    'username_taken': 'Username is already taken',
+    'error_checking_username': 'Unable to check username',
+    'username_hint': 'Only letters, numbers, underscores and dots',
+    'check_availability': 'Check availability',
+    'enter_email_password': 'Enter email and password',
+    'enter_password': 'Enter password',
+    'enter_confirm_password': 'Re-enter password',
+    'password_too_weak': 'Password is too weak',
+    'passwords_dont_match': 'Passwords don\'t match',
+    'password_min_chars': 'At least 8 characters',
+    'password_uppercase': 'Contains uppercase letter',
+    'password_lowercase': 'Contains lowercase letter',
+    'password_number': 'Contains number',
+    'password_special_char': 'Contains special character (!@#\$%^&*)',
+    'registration_successful': 'Registration successful!',
+    'registration_failed': 'Registration failed',
+    'login_successful': 'Login successful!',
   };
 }
 

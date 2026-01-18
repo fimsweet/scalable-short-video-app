@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "570664601135",
+    "project_id": "short-videos-484701",
+    "storage_bucket": "short-videos-484701.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:570664601135:android:b7d9bcb70ee3e4fbdae8da",
+        "android_client_info": {
+          "package_name": "com.example.scalable_short_video_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "570664601135-g6o757ht1ecqqvg2i6grhlmcj1qcd78d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.scalable_short_video_app",
+            "certificate_hash": "ed025f8f84673389e973705a8058c1a0d491f258"
+          }
+        },
+        {
+          "client_id": "570664601135-d5fbs6bod47djhv1e5o048ik90jtorgv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnQyz-HU5vt07gMsAZ7xHvDy0N4Oi-PJA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "570664601135-d5fbs6bod47djhv1e5o048ik90jtorgv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

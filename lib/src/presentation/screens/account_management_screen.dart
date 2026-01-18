@@ -15,16 +15,36 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final ApiService _apiService = ApiService();
   
   bool _twoFactorEnabled = false;
   bool _biometricEnabled = false;
   bool _loginAlertsEnabled = true;
+  bool _hasPassword = true; // Default to true, will be updated from API
+  bool _isLoadingPassword = true;
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+    _checkHasPassword();
+  }
+
+  Future<void> _checkHasPassword() async {
+    final token = await _authService.getToken();
+    if (token == null) {
+      setState(() => _isLoadingPassword = false);
+      return;
+    }
+    
+    final result = await _apiService.hasPassword(token);
+    if (mounted) {
+      setState(() {
+        _hasPassword = result['hasPassword'] ?? true;
+        _isLoadingPassword = false;
+      });
+    }
   }
 
   @override
@@ -66,13 +86,29 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
             
             // Security Section
             _buildSectionTitle(_localeService.get('security_section')),
-            _buildMenuItem(
-              icon: Icons.lock_outline,
-              iconColor: Colors.orange,
-              title: _localeService.get('change_password'),
-              subtitle: _localeService.get('change_password_subtitle'),
-              onTap: () => _showChangePasswordDialog(),
-            ),
+            _isLoadingPassword 
+                ? _buildMenuItem(
+                    icon: Icons.lock_outline,
+                    iconColor: Colors.orange,
+                    title: '...',
+                    subtitle: '',
+                    onTap: () {},
+                  )
+                : _hasPassword
+                    ? _buildMenuItem(
+                        icon: Icons.lock_outline,
+                        iconColor: Colors.orange,
+                        title: _localeService.get('change_password'),
+                        subtitle: _localeService.get('change_password_subtitle'),
+                        onTap: () => _showChangePasswordDialog(),
+                      )
+                    : _buildMenuItem(
+                        icon: Icons.lock_open,
+                        iconColor: Colors.green,
+                        title: _localeService.get('set_password'),
+                        subtitle: _localeService.get('set_password_subtitle'),
+                        onTap: () => _showSetPasswordDialog(),
+                      ),
             _buildSettingSwitch(
               icon: Icons.security,
               iconColor: Colors.blue,
@@ -364,6 +400,155 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  // Set Password Dialog (for OAuth users who don't have password)
+  void _showSetPasswordDialog() {
+    final newPasswordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: _themeService.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            _localeService.get('set_password'),
+            style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _localeService.get('set_password_description'),
+                  style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: newPasswordController,
+                  obscureText: obscureNew,
+                  style: TextStyle(color: _themeService.textPrimaryColor),
+                  decoration: InputDecoration(
+                    labelText: _localeService.get('new_password'),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: _themeService.dividerColor),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: const BorderSide(color: Colors.blue),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscureNew ? Icons.visibility_off : Icons.visibility,
+                        color: _themeService.textSecondaryColor,
+                      ),
+                      onPressed: () => setDialogState(() => obscureNew = !obscureNew),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: confirmPasswordController,
+                  obscureText: obscureConfirm,
+                  style: TextStyle(color: _themeService.textPrimaryColor),
+                  decoration: InputDecoration(
+                    labelText: _localeService.get('confirm_new_password'),
+                    labelStyle: TextStyle(color: _themeService.textSecondaryColor),
+                    enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: _themeService.dividerColor),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderSide: const BorderSide(color: Colors.blue),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                        color: _themeService.textSecondaryColor,
+                      ),
+                      onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _localeService.get('password_requirements'),
+                  style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
+            ),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                final newPass = newPasswordController.text;
+                final confirmPass = confirmPasswordController.text;
+
+                if (newPass.isEmpty || confirmPass.isEmpty) {
+                  _showSnackBar(_localeService.get('fill_all_fields'), Colors.red);
+                  return;
+                }
+
+                if (newPass != confirmPass) {
+                  _showSnackBar(_localeService.get('passwords_not_match'), Colors.red);
+                  return;
+                }
+
+                if (newPass.length < 8) {
+                  _showSnackBar(_localeService.get('password_too_short'), Colors.red);
+                  return;
+                }
+
+                setDialogState(() => isLoading = true);
+
+                final token = await _authService.getToken();
+                if (token == null) {
+                  _showSnackBar(_localeService.get('please_login_again'), Colors.red);
+                  setDialogState(() => isLoading = false);
+                  return;
+                }
+
+                final result = await _apiService.setPassword(
+                  token: token,
+                  newPassword: newPass,
+                );
+
+                setDialogState(() => isLoading = false);
+
+                if (result['success'] == true) {
+                  Navigator.pop(context);
+                  _showSnackBar(_localeService.get('password_set_success'), Colors.green);
+                  // Refresh password status
+                  _checkHasPassword();
+                } else {
+                  _showSnackBar(result['message'] ?? _localeService.get('error'), Colors.red);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: isLoading 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Text(_localeService.get('confirm')),
+            ),
+          ],
+        ),
       ),
     );
   }

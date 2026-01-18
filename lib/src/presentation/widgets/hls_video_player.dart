@@ -8,12 +8,14 @@ import 'web_video_player_stub.dart'
 class HLSVideoPlayer extends StatefulWidget {
   final String videoUrl;
   final bool autoPlay;
+  final bool isTabVisible; // Whether the parent tab is currently visible
   final ValueChanged<HLSVideoPlayerState?>? onPlayerCreated;
 
   const HLSVideoPlayer({
     super.key,
     required this.videoUrl,
     this.autoPlay = true,
+    this.isTabVisible = true,
     this.onPlayerCreated,
   });
 
@@ -71,6 +73,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   
   void resumeVideo() {
     if (_isInitialized && !(_controller?.value.isPlaying ?? false)) {
+      // Ensure volume is restored when resuming
+      _controller?.setVolume(_isMuted ? 0.0 : 1.0);
       _controller?.play();
     }
   }
@@ -85,7 +89,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl),
         videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: false,
+          mixWithOthers: true, // Allow audio mixing to prevent audio conflicts
           allowBackgroundPlayback: false,
         ),
       );
@@ -96,11 +100,16 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       await _controller?.initialize();
       
       if (!_isDisposed && mounted) {
+        // Ensure volume is set to 1.0 (not muted) after initialization
+        await _controller?.setVolume(1.0);
+        _isMuted = false;
+        
         setState(() {
           _isInitialized = true;
         });
 
-        if (widget.autoPlay) {
+        // Only auto-play if autoPlay is true AND tab is visible
+        if (widget.autoPlay && widget.isTabVisible) {
           await _controller?.play();
           await _controller?.setLooping(true);
         }
@@ -157,8 +166,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       // Pause video when app goes to background
       _controller?.pause();
     } else if (state == AppLifecycleState.resumed) {
-      // Resume video when app comes back if it was playing
-      if (widget.autoPlay && mounted) {
+      // Resume video ONLY if autoPlay is true AND tab is visible
+      if (widget.autoPlay && widget.isTabVisible && mounted) {
         _controller?.play();
       }
     }
@@ -168,16 +177,32 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   void didUpdateWidget(HLSVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     
-    // Handle autoPlay changes (when swiping between videos or switching tabs)
+    // Handle isTabVisible changes (when switching tabs)
+    if (widget.isTabVisible != oldWidget.isTabVisible) {
+      if (!widget.isTabVisible) {
+        // Tab became invisible - pause immediately
+        _controller?.pause();
+        print('⏸️ Video paused (tab became invisible)');
+      } else if (widget.autoPlay) {
+        // Tab became visible and this is current video - resume with volume
+        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
+        _controller?.play();
+        print('▶️ Video resumed (tab became visible)');
+      }
+    }
+    
+    // Handle autoPlay changes (when swiping between videos)
     if (widget.autoPlay != oldWidget.autoPlay) {
-      if (widget.autoPlay) {
+      if (widget.autoPlay && widget.isTabVisible) {
+        // Only play if tab is visible - ensure volume is set
+        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
         _controller?.play();
         _controller?.setLooping(true);
         print('▶️ Video resumed (now active)');
       } else {
-        // Pause IMMEDIATELY when scrolling away
+        // Pause IMMEDIATELY when scrolling away or tab invisible
         _controller?.pause();
-        print('⏸️ Video paused immediately (scrolled away)');
+        print('⏸️ Video paused immediately (scrolled away or tab invisible)');
       }
     }
   }

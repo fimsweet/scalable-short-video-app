@@ -24,10 +24,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   
   late TextEditingController _nameController;
   late TextEditingController _bioController;
-  late TextEditingController _websiteController;
-  late TextEditingController _locationController;
   
   String _selectedGender = '';
+  DateTime? _selectedDateOfBirth;
   bool _isLoading = false;
   bool _isUploading = false;
 
@@ -36,10 +35,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _nameController = TextEditingController(text: _authService.username ?? '');
     _bioController = TextEditingController(text: _authService.bio ?? '');
-    _websiteController = TextEditingController();
-    _locationController = TextEditingController();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final token = await _authService.getToken();
+    if (token == null) return;
+    
+    final userData = await _apiService.getUserById((_authService.userId ?? 0).toString());
+    if (userData != null && mounted) {
+      setState(() {
+        _selectedGender = userData['gender'] ?? '';
+        if (userData['dateOfBirth'] != null) {
+          try {
+            _selectedDateOfBirth = DateTime.parse(userData['dateOfBirth']);
+          } catch (e) {
+            print('Error parsing date: $e');
+          }
+        }
+      });
+    }
   }
 
   void _onThemeChanged() {
@@ -54,8 +71,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _bioController.dispose();
-    _websiteController.dispose();
-    _locationController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -188,6 +203,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Future<void> _showDatePicker() async {
+    final now = DateTime.now();
+    final initialDate = _selectedDateOfBirth ?? DateTime(now.year - 18, now.month, now.day);
+    
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: now,
+      builder: (context, child) {
+        return Theme(
+          data: _themeService.isLightMode
+              ? ThemeData.light().copyWith(
+                  colorScheme: const ColorScheme.light(
+                    primary: Colors.red,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                    onSurface: Colors.black,
+                  ),
+                )
+              : ThemeData.dark().copyWith(
+                  colorScheme: ColorScheme.dark(
+                    primary: Colors.red,
+                    onPrimary: Colors.white,
+                    surface: const Color(0xFF1E1E1E),
+                    onSurface: Colors.white,
+                  ),
+                ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null && pickedDate != _selectedDateOfBirth) {
+      setState(() {
+        _selectedDateOfBirth = pickedDate;
+      });
+    }
+  }
+
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
 
@@ -199,16 +254,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
 
       final newBio = _bioController.text.trim();
-      final newWebsite = _websiteController.text.trim();
-      final newLocation = _locationController.text.trim();
       final newGender = _selectedGender;
+      final newDateOfBirth = _selectedDateOfBirth != null 
+          ? '${_selectedDateOfBirth!.year}-${_selectedDateOfBirth!.month.toString().padLeft(2, '0')}-${_selectedDateOfBirth!.day.toString().padLeft(2, '0')}'
+          : null;
 
       final result = await _apiService.updateProfile(
         token: token,
         bio: newBio.isNotEmpty ? newBio : null,
-        website: newWebsite.isNotEmpty ? newWebsite : null,
-        location: newLocation.isNotEmpty ? newLocation : null,
         gender: newGender.isNotEmpty ? newGender : null,
+        dateOfBirth: newDateOfBirth,
       );
 
       if (result['success']) {
@@ -331,17 +386,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             
             const SizedBox(height: 16),
             
-            // Section: Thông tin liên hệ
+            // Section: Thông tin bổ sung
             _buildSectionTitle(_localeService.get('additional_info')),
-            _buildEditField(
-              label: _localeService.get('website'),
-              hint: _localeService.get('add_website'),
-              controller: _websiteController,
-            ),
-            _buildEditField(
-              label: _localeService.get('location'),
-              hint: _localeService.get('add_location'),
-              controller: _locationController,
+            _buildTapField(
+              label: _localeService.get('date_of_birth'),
+              value: _selectedDateOfBirth != null 
+                  ? '${_selectedDateOfBirth!.day.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.month.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.year}'
+                  : _localeService.get('select_date_of_birth'),
+              onTap: _showDatePicker,
             ),
             _buildTapField(
               label: _localeService.get('gender'),
