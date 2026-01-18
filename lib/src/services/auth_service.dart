@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal(ApiService());
@@ -12,6 +13,11 @@ class AuthService {
   AuthService._internal(this._apiService);
 
   final _storage = const FlutterSecureStorage();
+  
+  // Google Sign-In instance
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+  );
 
   bool _isLoggedIn = false;
   Map<String, dynamic>? _user;
@@ -221,5 +227,218 @@ class AuthService {
     }
     
     print('✅ Bio updated in AuthService: $bio');
+  }
+
+  // ============= Google OAuth Methods =============
+
+  /// Sign in with Google and get ID token
+  /// Returns GoogleSignInAuthentication containing idToken
+  Future<GoogleSignInResult> signInWithGoogle() async {
+    try {
+      // Sign out first to ensure user can choose account
+      await _googleSignIn.signOut();
+      
+      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      if (account == null) {
+        return GoogleSignInResult.cancelled();
+      }
+
+      final GoogleSignInAuthentication auth = await account.authentication;
+      final String? idToken = auth.idToken;
+
+      if (idToken == null) {
+        return GoogleSignInResult.error('Failed to get Google ID token');
+      }
+
+      return GoogleSignInResult.success(
+        idToken: idToken,
+        email: account.email,
+        displayName: account.displayName,
+        photoUrl: account.photoUrl,
+        providerId: account.id,
+      );
+    } catch (e) {
+      print('❌ Google Sign-In error: $e');
+      return GoogleSignInResult.error(e.toString());
+    }
+  }
+
+  /// Authenticate with backend using Google ID token
+  /// Returns: {needsRegistration: bool, user?: userData, token?: jwt}
+  Future<Map<String, dynamic>> googleAuthWithBackend(String idToken) async {
+    try {
+      final response = await _apiService.post(
+        '/auth/oauth/google',
+        body: {
+          'provider': 'google',
+          'idToken': idToken,
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Google auth failed');
+      }
+    } catch (e) {
+      print('❌ Backend Google auth error: $e');
+      rethrow;
+    }
+  }
+
+  /// Complete OAuth registration with additional user data
+  Future<Map<String, dynamic>> completeOAuthRegistration({
+    required String provider,
+    required String providerId,
+    required String email,
+    required String username,
+    required DateTime dateOfBirth,
+    String? fullName,
+    String? avatar,
+  }) async {
+    try {
+      final response = await _apiService.post(
+        '/auth/register/oauth',
+        body: {
+          'provider': provider,
+          'providerId': providerId,
+          'email': email,
+          'username': username,
+          'dateOfBirth': dateOfBirth.toIso8601String(),
+          if (fullName != null) 'fullName': fullName,
+          if (avatar != null) 'avatar': avatar,
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Registration failed');
+      }
+    } catch (e) {
+      print('❌ OAuth registration error: $e');
+      rethrow;
+    }
+  }
+
+  /// Register with email and password (TikTok-style)
+  Future<Map<String, dynamic>> emailRegister({
+    required String email,
+    required String password,
+    required String username,
+    required DateTime dateOfBirth,
+    String? fullName,
+  }) async {
+    try {
+      final response = await _apiService.post(
+        '/auth/register/email',
+        body: {
+          'email': email,
+          'password': password,
+          'username': username,
+          'dateOfBirth': dateOfBirth.toIso8601String(),
+          if (fullName != null) 'fullName': fullName,
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final error = json.decode(response.body);
+        throw Exception(error['message'] ?? 'Registration failed');
+      }
+    } catch (e) {
+      print('❌ Email registration error: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if username is available
+  Future<bool> checkUsernameAvailable(String username) async {
+    try {
+      final response = await _apiService.get('/auth/check-username?username=$username');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['available'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Check username error: $e');
+      return false;
+    }
+  }
+
+  /// Check if email is available
+  Future<bool> checkEmailAvailable(String email) async {
+    try {
+      final response = await _apiService.get('/auth/check-email?email=$email');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['available'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Check email error: $e');
+      return false;
+    }
+  }
+
+  /// Sign out from Google
+  Future<void> signOutGoogle() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      print('❌ Google sign out error: $e');
+    }
+  }
+}
+
+/// Result class for Google Sign-In
+class GoogleSignInResult {
+  final bool success;
+  final bool cancelled;
+  final String? error;
+  final String? idToken;
+  final String? email;
+  final String? displayName;
+  final String? photoUrl;
+  final String? providerId;
+
+  GoogleSignInResult._({
+    required this.success,
+    this.cancelled = false,
+    this.error,
+    this.idToken,
+    this.email,
+    this.displayName,
+    this.photoUrl,
+    this.providerId,
+  });
+
+  factory GoogleSignInResult.success({
+    required String idToken,
+    required String email,
+    String? displayName,
+    String? photoUrl,
+    required String providerId,
+  }) {
+    return GoogleSignInResult._(
+      success: true,
+      idToken: idToken,
+      email: email,
+      displayName: displayName,
+      photoUrl: photoUrl,
+      providerId: providerId,
+    );
+  }
+
+  factory GoogleSignInResult.cancelled() {
+    return GoogleSignInResult._(success: false, cancelled: true);
+  }
+
+  factory GoogleSignInResult.error(String message) {
+    return GoogleSignInResult._(success: false, error: message);
   }
 }

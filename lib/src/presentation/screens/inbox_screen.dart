@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/search_user_screen.dart';
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -237,8 +238,13 @@ class _InboxScreenState extends State<InboxScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: Icon(Icons.edit_square, color: _themeService.iconColor, size: 24),
-            onPressed: () {},
+            icon: Icon(Icons.person_add_alt_1_outlined, color: _themeService.iconColor, size: 24),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SearchUserScreen()),
+              );
+            },
           ),
         ],
       ),

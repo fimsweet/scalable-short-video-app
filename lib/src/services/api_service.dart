@@ -10,6 +10,36 @@ class ApiService {
       ? 'http://localhost:3000'
       : 'http://10.0.2.2:3000';
 
+  // Video service base URL (port 3002)
+  static final String _videoServiceBaseUrl = (kIsWeb || !Platform.isAndroid)
+      ? 'http://localhost:3002'
+      : 'http://10.0.2.2:3002';
+
+  /// Generic GET request
+  Future<http.Response> get(String path, {Map<String, String>? headers}) async {
+    final url = Uri.parse('$_baseUrl$path');
+    return await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        ...?headers,
+      },
+    );
+  }
+
+  /// Generic POST request
+  Future<http.Response> post(String path, {Map<String, dynamic>? body, Map<String, String>? headers}) async {
+    final url = Uri.parse('$_baseUrl$path');
+    return await http.post(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        ...?headers,
+      },
+      body: body != null ? jsonEncode(body) : null,
+    );
+  }
+
   Future<Map<String, dynamic>> register({
     required String username,
     required String email,
@@ -189,7 +219,22 @@ class ApiService {
     if (avatarPath == null || avatarPath.isEmpty) {
       return '';
     }
+    // If avatarPath is already a full URL (starts with http:// or https://), return as is
+    if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+      return avatarPath;
+    }
     return '$_baseUrl$avatarPath';
+  }
+
+  /// Get full URL for comment image
+  String getCommentImageUrl(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty) {
+      return '';
+    }
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      return imagePath;
+    }
+    return '$_videoServiceBaseUrl$imagePath';
   }
 
   Future<Map<String, dynamic>?> getUserById(String userId) async {
@@ -211,9 +256,8 @@ class ApiService {
   Future<Map<String, dynamic>> updateProfile({
     required String token,
     String? bio,
-    String? website,
-    String? location,
     String? gender,
+    String? dateOfBirth,
   }) async {
     try {
       final response = await http.put(
@@ -224,9 +268,8 @@ class ApiService {
         },
         body: json.encode({
           if (bio != null) 'bio': bio,
-          if (website != null) 'website': website,
-          if (location != null) 'location': location,
           if (gender != null) 'gender': gender,
+          if (dateOfBirth != null) 'dateOfBirth': dateOfBirth,
         }),
       );
 
@@ -283,6 +326,158 @@ class ApiService {
       }
     } catch (e) {
       print('❌ Error changing password: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Check if user has password (for OAuth users)
+  Future<Map<String, dynamic>> hasPassword(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/has-password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {'success': false, 'hasPassword': false};
+      }
+    } catch (e) {
+      print('❌ Error checking password: $e');
+      return {'success': false, 'hasPassword': false};
+    }
+  }
+
+  /// Set password for OAuth users (who don't have password yet)
+  Future<Map<String, dynamic>> setPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/set-password'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Đặt mật khẩu thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error setting password: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Request password reset OTP
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'email': email}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Gửi mã xác nhận thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error requesting password reset: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Verify OTP only (without resetting password)
+  Future<Map<String, dynamic>> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'otp': otp,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Xác minh mã thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error verifying OTP: $e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Verify OTP and reset password
+  Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'otp': otp,
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Đặt lại mật khẩu thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error resetting password: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -353,6 +548,40 @@ class ApiService {
     } catch (e) {
       print('❌ Error getting following: $e');
       return [];
+    }
+  }
+
+  /// Check if username is available
+  Future<Map<String, dynamic>> checkUsernameAvailability(String username) async {
+    try {
+      print('🔍 Checking username availability: "$username"');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/check-username/${Uri.encodeComponent(username)}'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('✅ Username check result: ${data['available'] ? 'available' : 'taken'}');
+        return {
+          'success': true,
+          'available': data['available'] ?? false,
+        };
+      } else {
+        print('❌ Username check failed: ${response.statusCode}');
+        return {
+          'success': false,
+          'available': false,
+        };
+      }
+    } catch (e) {
+      print('❌ Error checking username: $e');
+      return {
+        'success': false,
+        'available': false,
+        'error': e.toString(),
+      };
     }
   }
 

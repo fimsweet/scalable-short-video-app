@@ -5,7 +5,8 @@ import 'package:scalable_short_video_app/src/presentation/screens/upload_video_s
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart'; // ADD THIS
+import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
 
 // Global key to access MainScreen state
 final GlobalKey<_MainScreenState> mainScreenKey = GlobalKey<_MainScreenState>();
@@ -22,15 +23,14 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final VideoPlaybackService _videoPlaybackService = VideoPlaybackService();
   
   // Key to force rebuild screens when auth state changes
   int _rebuildKey = 0;
-  
-  // Key to access VideoScreen state for pausing/resuming videos
-  final GlobalKey<VideoScreenState> _videoScreenKey = GlobalKey<VideoScreenState>();
 
   // Public method to switch to profile tab
   void switchToProfileTab() {
+    _videoPlaybackService.setVideoTabInvisible();
     setState(() {
       _selectedIndex = 1; // Profile tab index
     });
@@ -92,10 +92,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
-        key: ValueKey('main_stack_$_rebuildKey'), // Force rebuild when key changes
         index: _selectedIndex,
         children: [
-          VideoScreen(key: _videoScreenKey),
+          // VideoScreen uses ValueKey to handle auth rebuilds
+          VideoScreen(key: ValueKey('video_screen_$_rebuildKey')),
+          // ProfileScreen can be rebuilt when auth changes
           ProfileScreen(key: ValueKey('profile_screen_$_rebuildKey')),
         ],
       ),
@@ -147,16 +148,13 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               if (index == 1) {
                 _navigateToUpload();
               } else if (index == 2) {
-                // Switching to Profile tab - pause video
-                _videoScreenKey.currentState?.onTabInvisible();
+                // Switching to Profile tab - pause video via service
+                _videoPlaybackService.setVideoTabInvisible();
                 setState(() => _selectedIndex = 1);
               } else {
-                // Switching to Feed tab - resume video
-                final wasOnProfile = _selectedIndex == 1;
+                // Switching to Feed tab - resume video via service
+                _videoPlaybackService.setVideoTabVisible();
                 setState(() => _selectedIndex = 0);
-                if (wasOnProfile) {
-                  _videoScreenKey.currentState?.onTabVisible();
-                }
               }
             },
             backgroundColor: _selectedIndex == 0 ? Colors.black : (_themeService.isLightMode ? Colors.white : Colors.black),
@@ -176,6 +174,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       return;
     }
 
+    // Pause video when navigating to upload
+    _videoPlaybackService.setVideoTabInvisible();
+
     final result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
     );
@@ -185,6 +186,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         _rebuildKey++;
         _selectedIndex = 1;
       });
+    } else if (_selectedIndex == 0) {
+      // Resume video if we're back on video tab
+      _videoPlaybackService.setVideoTabVisible();
     }
   }
 }

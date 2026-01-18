@@ -27,6 +27,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   int _resendCountdown = 0;
+  
+  // Error messages for inline display
+  String? _emailError;
+  String? _otpError;
 
   @override
   void initState() {
@@ -74,76 +78,84 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _sendCode() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _emailError = null; // Clear previous error
+    });
 
     try {
-      // TODO: Implement API call to send reset code
-      // final result = await _apiService.sendPasswordResetCode(_emailController.text.trim());
-      
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
+      final result = await _apiService.forgotPassword(_emailController.text.trim());
       
       if (mounted) {
-        setState(() {
-          _codeSent = true;
-          _isLoading = false;
-        });
-        _startResendCountdown();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('reset_code_sent')),
-            backgroundColor: ThemeService.successColor,
-          ),
-        );
+        if (result['success'] == true) {
+          setState(() {
+            _codeSent = true;
+            _isLoading = false;
+            _emailError = null;
+          });
+          _startResendCountdown();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_localeService.get('reset_code_sent')),
+              backgroundColor: ThemeService.successColor,
+            ),
+          );
+        } else {
+          setState(() {
+            _isLoading = false;
+            _emailError = result['message'] ?? _localeService.get('error');
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('error')}: $e'),
-            backgroundColor: ThemeService.errorColor,
-          ),
-        );
+        setState(() {
+          _isLoading = false;
+          _emailError = '${_localeService.get('error')}: $e';
+        });
       }
     }
   }
 
   Future<void> _verifyCode() async {
     if (_codeController.text.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_localeService.get('invalid_code')),
-          backgroundColor: ThemeService.errorColor,
-        ),
-      );
+      setState(() {
+        _otpError = _localeService.get('invalid_code');
+      });
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _otpError = null;
+    });
 
     try {
-      // TODO: Implement API call to verify code
-      // final result = await _apiService.verifyResetCode(_emailController.text.trim(), _codeController.text);
-      
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
-      
+      final result = await _apiService.verifyOtp(
+        email: _emailController.text.trim(),
+        otp: _codeController.text,
+      );
+
       if (mounted) {
-        setState(() {
-          _codeVerified = true;
-          _isLoading = false;
-        });
+        if (result['success'] == true) {
+          setState(() {
+            _codeVerified = true;
+            _isLoading = false;
+            _otpError = null;
+          });
+        } else {
+          setState(() {
+            _isLoading = false;
+            _otpError = result['message'] ?? _localeService.get('invalid_code');
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('error')}: $e'),
-            backgroundColor: ThemeService.errorColor,
-          ),
-        );
+        setState(() {
+          _isLoading = false;
+          _otpError = '${_localeService.get('error')}: $e';
+        });
       }
     }
   }
@@ -161,27 +173,43 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
+    if (!_isPasswordStrong(_newPasswordController.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_localeService.get('password_requirements')),
+          backgroundColor: ThemeService.errorColor,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      // TODO: Implement API call to reset password
-      // final result = await _apiService.resetPassword(
-      //   email: _emailController.text.trim(),
-      //   code: _codeController.text,
-      //   newPassword: _newPasswordController.text,
-      // );
-      
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
+      final result = await _apiService.resetPassword(
+        email: _emailController.text.trim(),
+        otp: _codeController.text,
+        newPassword: _newPasswordController.text,
+      );
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('password_reset_success')),
-            backgroundColor: ThemeService.successColor,
-          ),
-        );
-        Navigator.pop(context);
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_localeService.get('password_reset_success')),
+              backgroundColor: ThemeService.successColor,
+            ),
+          );
+          Navigator.pop(context);
+        } else {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? _localeService.get('error')),
+              backgroundColor: ThemeService.errorColor,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -297,7 +325,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           decoration: _buildInputDecoration(
             hint: _localeService.get('email'),
             prefixIcon: Icons.email_outlined,
+          ).copyWith(
+            errorText: _emailError,
+            errorStyle: const TextStyle(color: ThemeService.errorColor),
           ),
+          onChanged: (_) {
+            // Clear error when user starts typing
+            if (_emailError != null) {
+              setState(() => _emailError = null);
+            }
+          },
           validator: (value) {
             if (value == null || value.isEmpty) {
               return _localeService.get('please_enter_email');
@@ -365,7 +402,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             hint: '------',
           ).copyWith(
             counterText: '',
+            errorText: _otpError,
+            errorStyle: const TextStyle(color: ThemeService.errorColor),
           ),
+          onChanged: (_) {
+            // Clear error when user starts typing
+            if (_otpError != null) {
+              setState(() => _otpError = null);
+            }
+          },
         ),
         const SizedBox(height: 16),
         
@@ -420,14 +465,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             }
             return null;
           },
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _localeService.get('password_requirements'),
-          style: TextStyle(
-            color: _themeService.textSecondaryColor,
-            fontSize: 12,
-          ),
         ),
         const SizedBox(height: 16),
         
@@ -504,6 +541,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         borderSide: const BorderSide(color: ThemeService.errorColor, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      errorMaxLines: 3,
     );
   }
 

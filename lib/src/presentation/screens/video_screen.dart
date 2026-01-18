@@ -12,6 +12,7 @@ import 'package:scalable_short_video_app/src/services/comment_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
@@ -37,13 +38,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   final FollowService _followService = FollowService();
   final SavedVideoService _savedVideoService = SavedVideoService();
   final LocaleService _localeService = LocaleService();
+  final VideoPlaybackService _videoPlaybackService = VideoPlaybackService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
   String? _error;
-  
-  // Track if this tab is currently visible
-  bool _isTabVisible = true;
   
   // Store reference to current video player state
   HLSVideoPlayerState? _currentVideoPlayerState;
@@ -102,13 +101,39 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     _lastLoginState = _authService.isLoggedIn;
     _lastUserId = _authService.user?['id'] as int?;
     
-    // Remove listeners - MainScreen handles rebuild now
-    // _authService.addLogoutListener(_onLogout);
-    // _authService.addLoginListener(_onLogin);
+    // Add listeners to reload videos when auth state changes
+    _authService.addLogoutListener(_onAuthChanged);
+    _authService.addLoginListener(_onAuthChanged);
+    
+    // Listen to video playback service for tab visibility changes
+    _videoPlaybackService.addListener(_onPlaybackServiceChanged);
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideos();
     });
+  }
+  
+  void _onAuthChanged() {
+    print('🔔 VideoScreen: Auth state changed - reloading videos');
+    // Clear caches and reload
+    _likeStatus.clear();
+    _saveStatus.clear();
+    _followStatus.clear();
+    _forYouVideos.clear();
+    _followingVideos.clear();
+    _friendsVideos.clear();
+    _loadVideos();
+  }
+  
+  void _onPlaybackServiceChanged() {
+    if (mounted) {
+      setState(() {});
+      if (_videoPlaybackService.isVideoTabVisible) {
+        _resumeCurrentVideo();
+      } else {
+        _pauseCurrentVideo();
+      }
+    }
   }
   
   @override
@@ -120,24 +145,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       _pauseCurrentVideo();
     } else if (state == AppLifecycleState.resumed) {
       // Resume video when app comes back if tab is visible
-      if (_isTabVisible) {
+      if (_videoPlaybackService.isVideoTabVisible) {
         _resumeCurrentVideo();
       }
     }
-  }
-  
-  // Call this when tab becomes visible
-  void onTabVisible() {
-    print('🎬 VideoScreen: Tab became visible');
-    _isTabVisible = true;
-    _resumeCurrentVideo();
-  }
-  
-  // Call this when tab becomes invisible
-  void onTabInvisible() {
-    print('⏸️ VideoScreen: Tab became invisible');
-    _isTabVisible = false;
-    _pauseCurrentVideo();
   }
   
   void _pauseCurrentVideo() {
@@ -164,9 +175,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Remove listener cleanup
-    // _authService.removeLogoutListener(_onLogout);
-    // _authService.removeLoginListener(_onLogin);
+    // Remove auth listeners
+    _authService.removeLogoutListener(_onAuthChanged);
+    _authService.removeLoginListener(_onAuthChanged);
+    // Remove playback service listener
+    _videoPlaybackService.removeListener(_onPlaybackServiceChanged);
     _pageController?.dispose();
     _userCache.clear();
     _likeStatus.clear();
@@ -700,7 +713,8 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                       HLSVideoPlayer(
                                         key: ValueKey('video_${_selectedFeedTab}_$videoId'), // Unique key per tab
                                         videoUrl: hlsUrl,
-                                        autoPlay: index == _currentPage, // Only play current video
+                                        autoPlay: index == _currentPage && _videoPlaybackService.isVideoTabVisible, // Only play if current AND tab visible
+                                        isTabVisible: _videoPlaybackService.isVideoTabVisible, // Pass tab visibility state
                                         onPlayerCreated: (playerState) {
                                           if (index == _currentPage) {
                                             _currentVideoPlayerState = playerState;
