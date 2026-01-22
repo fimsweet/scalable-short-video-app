@@ -12,12 +12,14 @@ import 'package:scalable_short_video_app/src/presentation/screens/video_detail_s
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
+import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notifications_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/help_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -35,6 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   final ImagePicker _picker = ImagePicker();
   final FollowService _followService = FollowService();
   final NotificationService _notificationService = NotificationService();
+  final MessageService _messageService = MessageService();
   final LikeService _likeService = LikeService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
@@ -47,6 +50,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   int _followerCount = 0;
   int _followingCount = 0;
   int _unreadCount = 0;
+  int _unreadMessageCount = 0;
   int _likedCount = 0;
   int _videoGridKey = 0; // Key to force rebuild video grid
 
@@ -74,6 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           });
         }
       });
+      
+      // Load unread message count
+      _loadUnreadMessageCount(userId);
     }
   }
 
@@ -86,6 +93,19 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _loadUnreadMessageCount(String userId) async {
+    try {
+      final count = await _messageService.getUnreadCount(userId);
+      if (mounted) {
+        setState(() {
+          _unreadMessageCount = count;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading unread message count: $e');
     }
   }
 
@@ -465,10 +485,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
     // Always navigate
     if (mounted) {
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const InboxScreen()),
       );
+      
+      // Refresh unread message count after returning from inbox
+      if (_authService.isLoggedIn && _authService.user != null) {
+        final userId = _authService.user!['id'].toString();
+        _loadUnreadMessageCount(userId);
+      }
     }
   }
 
@@ -486,13 +512,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         title: Text(_localeService.get('profile'), style: TextStyle(color: _themeService.textPrimaryColor)),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.login, color: _themeService.iconColor),
-            onPressed: _navigateToLogin,
-            tooltip: _localeService.get('login'),
-          ),
-        ],
+        // No actions - login button is in the body
       ),
       body: Stack(
         children: [
@@ -664,7 +684,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
               ),
-              // Inbox/Messages icon - UPDATED
+              // Inbox/Messages icon - UPDATED with badge
               GestureDetector(
                 onTap: _onMessageIconTap,
                 child: _messageIconScale != null ? AnimatedBuilder(
@@ -675,15 +695,75 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         color: Colors.transparent, // Hit test area
-                        child: Icon(
-                          Icons.mail_outline, // Changed to mail icon
-                          size: 30,
-                          color: _themeService.iconColor,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Icon(
+                              Icons.mail_outline,
+                              size: 30,
+                              color: _themeService.iconColor,
+                            ),
+                            if (_unreadMessageCount > 0)
+                              Positioned(
+                                right: -6,
+                                top: -4,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 16,
+                                    minHeight: 16,
+                                  ),
+                                  child: Text(
+                                    _unreadMessageCount > 99 ? '99+' : _unreadMessageCount.toString(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     );
                   },
-                ) : Icon(Icons.mail_outline, color: _themeService.iconColor, size: 30),
+                ) : Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(Icons.mail_outline, color: _themeService.iconColor, size: 30),
+                    if (_unreadMessageCount > 0)
+                      Positioned(
+                        right: -6,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            _unreadMessageCount > 99 ? '99+' : _unreadMessageCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               
               PopupMenuButton<String>(
@@ -695,6 +775,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
+                    );
+                  }
+                  if (v == 'help') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HelpScreen()),
                     );
                   }
                 },

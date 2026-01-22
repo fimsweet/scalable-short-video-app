@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/api_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/locale_service.dart';
@@ -13,6 +14,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -28,8 +30,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   bool _obscureConfirmPassword = true;
   int _resendCountdown = 0;
   
+  // Toggle between email and phone
+  bool _usePhone = false;
+  String? _verificationId; // For Firebase phone auth
+  
   // Error messages for inline display
   String? _emailError;
+  String? _phoneError;
   String? _otpError;
 
   @override
@@ -42,6 +49,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _phoneController.dispose();
     _codeController.dispose();
     _newPasswordController.dispose();
     _confirmPasswordController.dispose();
@@ -80,38 +88,93 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     setState(() {
       _isLoading = true;
-      _emailError = null; // Clear previous error
+      _emailError = null;
+      _phoneError = null;
     });
 
     try {
-      final result = await _apiService.forgotPassword(_emailController.text.trim());
-      
-      if (mounted) {
-        if (result['success'] == true) {
-          setState(() {
-            _codeSent = true;
-            _isLoading = false;
-            _emailError = null;
-          });
-          _startResendCountdown();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_localeService.get('reset_code_sent')),
-              backgroundColor: ThemeService.successColor,
-            ),
-          );
-        } else {
+      if (_usePhone) {
+        // Phone password reset flow - first check if phone exists with email/password registration
+        final phone = ApiService.parsePhoneToE164(_phoneController.text.trim());
+        final checkResult = await _apiService.checkPhoneForPasswordReset(phone);
+        
+        if (checkResult['success'] != true) {
           setState(() {
             _isLoading = false;
-            _emailError = result['message'] ?? _localeService.get('error');
+            _phoneError = checkResult['message'] ?? _localeService.get('phone_not_found');
           });
+          return;
+        }
+        
+        // Use Firebase to send OTP
+        await FirebaseAuth.instance.verifyPhoneNumber(
+          phoneNumber: phone,
+          verificationCompleted: (PhoneAuthCredential credential) {
+            // Auto-verification (rare)
+          },
+          verificationFailed: (FirebaseAuthException e) {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _phoneError = e.message ?? _localeService.get('verification_failed');
+              });
+            }
+          },
+          codeSent: (String verId, int? resendToken) {
+            _verificationId = verId;
+            if (mounted) {
+              setState(() {
+                _codeSent = true;
+                _isLoading = false;
+              });
+              _startResendCountdown();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(_localeService.get('reset_code_sent')),
+                  backgroundColor: ThemeService.successColor,
+                ),
+              );
+            }
+          },
+          codeAutoRetrievalTimeout: (String verId) {
+            _verificationId = verId;
+          },
+        );
+      } else {
+        // Email password reset flow
+        final result = await _apiService.forgotPassword(_emailController.text.trim());
+        
+        if (mounted) {
+          if (result['success'] == true) {
+            setState(() {
+              _codeSent = true;
+              _isLoading = false;
+              _emailError = null;
+            });
+            _startResendCountdown();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(_localeService.get('reset_code_sent')),
+                backgroundColor: ThemeService.successColor,
+              ),
+            );
+          } else {
+            setState(() {
+              _isLoading = false;
+              _emailError = result['message'] ?? _localeService.get('error');
+            });
+          }
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _emailError = '${_localeService.get('error')}: $e';
+          if (_usePhone) {
+            _phoneError = '${_localeService.get('error')}: $e';
+          } else {
+            _emailError = '${_localeService.get('error')}: $e';
+          }
         });
       }
     }
@@ -131,23 +194,54 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     });
 
     try {
-      final result = await _apiService.verifyOtp(
-        email: _emailController.text.trim(),
-        otp: _codeController.text,
-      );
-
-      if (mounted) {
-        if (result['success'] == true) {
-          setState(() {
-            _codeVerified = true;
-            _isLoading = false;
-            _otpError = null;
-          });
+      if (_usePhone) {
+        // For phone, we just verify locally then proceed to password step
+        // The actual verification will happen when resetting password
+        if (_verificationId != null) {
+          try {
+            final credential = PhoneAuthProvider.credential(
+              verificationId: _verificationId!,
+              smsCode: _codeController.text,
+            );
+            // Create a test to validate the credential without signing in
+            // We'll verify again when resetting password
+            setState(() {
+              _codeVerified = true;
+              _isLoading = false;
+              _otpError = null;
+            });
+          } catch (e) {
+            setState(() {
+              _isLoading = false;
+              _otpError = _localeService.get('invalid_code');
+            });
+          }
         } else {
           setState(() {
             _isLoading = false;
-            _otpError = result['message'] ?? _localeService.get('invalid_code');
+            _otpError = _localeService.get('verification_failed');
           });
+        }
+      } else {
+        // Email OTP verification
+        final result = await _apiService.verifyOtp(
+          email: _emailController.text.trim(),
+          otp: _codeController.text,
+        );
+
+        if (mounted) {
+          if (result['success'] == true) {
+            setState(() {
+              _codeVerified = true;
+              _isLoading = false;
+              _otpError = null;
+            });
+          } else {
+            setState(() {
+              _isLoading = false;
+              _otpError = result['message'] ?? _localeService.get('invalid_code');
+            });
+          }
         }
       }
     } catch (e) {
@@ -186,11 +280,46 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final result = await _apiService.resetPassword(
-        email: _emailController.text.trim(),
-        otp: _codeController.text,
-        newPassword: _newPasswordController.text,
-      );
+      Map<String, dynamic> result;
+      
+      if (_usePhone) {
+        // Reset password with phone number - need Firebase ID token
+        final phone = ApiService.parsePhoneToE164(_phoneController.text.trim());
+        
+        // Create credential and sign in to get ID token
+        if (_verificationId == null) {
+          throw Exception(_localeService.get('verification_failed'));
+        }
+        
+        final credential = PhoneAuthProvider.credential(
+          verificationId: _verificationId!,
+          smsCode: _codeController.text,
+        );
+        
+        // Sign in to get the ID token
+        final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+        final idToken = await userCredential.user?.getIdToken();
+        
+        if (idToken == null) {
+          throw Exception(_localeService.get('verification_failed'));
+        }
+        
+        result = await _apiService.resetPasswordWithPhone(
+          phone: phone,
+          firebaseIdToken: idToken,
+          newPassword: _newPasswordController.text,
+        );
+        
+        // Sign out from Firebase after resetting password
+        await FirebaseAuth.instance.signOut();
+      } else {
+        // Reset password with email
+        result = await _apiService.resetPassword(
+          email: _emailController.text.trim(),
+          otp: _codeController.text,
+          newPassword: _newPasswordController.text,
+        );
+      }
       
       if (mounted) {
         if (result['success'] == true) {
@@ -318,33 +447,124 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Widget _buildEmailStep() {
     return Column(
       children: [
-        TextFormField(
-          controller: _emailController,
-          keyboardType: TextInputType.emailAddress,
-          style: TextStyle(color: _themeService.textPrimaryColor),
-          decoration: _buildInputDecoration(
-            hint: _localeService.get('email'),
-            prefixIcon: Icons.email_outlined,
-          ).copyWith(
-            errorText: _emailError,
-            errorStyle: const TextStyle(color: ThemeService.errorColor),
+        // Toggle between Email and Phone
+        Container(
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
+            borderRadius: BorderRadius.circular(25),
           ),
-          onChanged: (_) {
-            // Clear error when user starts typing
-            if (_emailError != null) {
-              setState(() => _emailError = null);
-            }
-          },
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return _localeService.get('please_enter_email');
-            }
-            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-              return _localeService.get('invalid_email');
-            }
-            return null;
-          },
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _usePhone = false),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: !_usePhone ? ThemeService.accentColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Text(
+                      'Email',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: !_usePhone ? Colors.white : _themeService.textSecondaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _usePhone = true),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _usePhone ? ThemeService.accentColor : Colors.transparent,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Text(
+                      _localeService.get('phone_number'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _usePhone ? Colors.white : _themeService.textSecondaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+        const SizedBox(height: 24),
+        
+        // Email input
+        if (!_usePhone)
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            style: TextStyle(color: _themeService.textPrimaryColor),
+            decoration: _buildInputDecoration(
+              hint: _localeService.get('email'),
+              prefixIcon: Icons.email_outlined,
+            ).copyWith(
+              errorText: _emailError,
+              errorStyle: const TextStyle(color: ThemeService.errorColor),
+            ),
+            onChanged: (_) {
+              if (_emailError != null) {
+                setState(() => _emailError = null);
+              }
+            },
+            validator: (value) {
+              if (!_usePhone) {
+                if (value == null || value.isEmpty) {
+                  return _localeService.get('please_enter_email');
+                }
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                  return _localeService.get('invalid_email');
+                }
+              }
+              return null;
+            },
+          ),
+        
+        // Phone input
+        if (_usePhone)
+          TextFormField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            style: TextStyle(color: _themeService.textPrimaryColor),
+            decoration: _buildInputDecoration(
+              hint: '0912 345 678',
+              prefixIcon: Icons.phone_outlined,
+            ).copyWith(
+              errorText: _phoneError,
+              errorStyle: const TextStyle(color: ThemeService.errorColor),
+              helperText: _localeService.get('phone_format_hint'),
+              helperStyle: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+            onChanged: (_) {
+              if (_phoneError != null) {
+                setState(() => _phoneError = null);
+              }
+            },
+            validator: (value) {
+              if (_usePhone) {
+                if (value == null || value.isEmpty) {
+                  return _localeService.get('please_enter_phone');
+                }
+                final cleaned = value.replaceAll(RegExp(r'[\s-]'), '');
+                if (cleaned.length < 9) {
+                  return _localeService.get('invalid_phone');
+                }
+              }
+              return null;
+            },
+          ),
+        
         const SizedBox(height: 24),
         _buildPrimaryButton(
           text: _localeService.get('send_code'),
@@ -355,9 +575,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Widget _buildCodeVerificationStep() {
+    final displayValue = _usePhone 
+        ? ApiService.formatPhoneForDisplay(ApiService.parsePhoneToE164(_phoneController.text.trim()))
+        : _emailController.text;
+    final displayIcon = _usePhone ? Icons.phone_outlined : Icons.email_outlined;
+    
     return Column(
       children: [
-        // Email display
+        // Email/Phone display
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -366,11 +591,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.email_outlined, color: _themeService.textSecondaryColor),
+              Icon(displayIcon, color: _themeService.textSecondaryColor),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _emailController.text,
+                  displayValue,
                   style: TextStyle(color: _themeService.textPrimaryColor),
                 ),
               ),

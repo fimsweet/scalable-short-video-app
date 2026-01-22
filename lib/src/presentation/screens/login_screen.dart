@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/features/auth/presentation/screens/registration_method_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/forgot_password_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/phone_register_screen.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
@@ -64,6 +65,19 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result['success']) {
         // Lấy dữ liệu người dùng từ API response
         final responseData = result['data'];
+        
+        // Check if 2FA is required
+        if (responseData['requires2FA'] == true) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _show2FAVerificationDialog(
+              userId: responseData['userId'],
+              methods: List<String>.from(responseData['twoFactorMethods'] ?? []),
+            );
+          }
+          return;
+        }
+        
         final userData = responseData['user'];
         final token = responseData['access_token'];
         await _auth.login(userData, token);
@@ -96,6 +110,31 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  /// Show 2FA verification dialog
+  void _show2FAVerificationDialog({required int userId, required List<String> methods}) {
+    String selectedMethod = methods.isNotEmpty ? methods.first : 'email';
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      builder: (context) => _TwoFactorVerificationSheet(
+        userId: userId,
+        methods: methods,
+        selectedMethod: selectedMethod,
+        themeService: _themeService,
+        localeService: _localeService,
+        apiService: _apiService,
+        authService: _auth,
+        onSuccess: () {
+          Navigator.pop(context); // Close bottom sheet
+          Navigator.pop(context, true); // Return success to previous screen
+        },
+      ),
+    );
   }
 
   void _navigateToRegister() async {
@@ -328,7 +367,17 @@ class _LoginScreenState extends State<LoginScreen> {
       
       if (!mounted) return;
       
-      // Step 3: Check if user needs to complete registration
+      // Step 3: Check if 2FA is required
+      if (backendResult['requires2FA'] == true) {
+        setState(() => _isGoogleLoading = false);
+        _show2FAVerificationDialog(
+          userId: backendResult['userId'],
+          methods: List<String>.from(backendResult['twoFactorMethods'] ?? []),
+        );
+        return;
+      }
+      
+      // Step 4: Check if user needs to complete registration
       if (backendResult['isNewUser'] == true) {
         // User not found - need to register first
         // Show confirmation dialog
@@ -486,7 +535,20 @@ class _LoginScreenState extends State<LoginScreen> {
                         themeService: _themeService,
                         isLoading: _isGoogleLoading,
                       ),
-                      _SocialButton(icon: Icons.phone, label: _localeService.get('phone'), onTap: () {}, themeService: _themeService),
+                      _SocialButton(
+                        icon: Icons.phone, 
+                        label: _localeService.get('use_phone'), 
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PhoneRegisterScreen()),
+                          );
+                          if (result == true && mounted) {
+                            Navigator.pop(context, true);
+                          }
+                        }, 
+                        themeService: _themeService,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 40),
@@ -700,28 +762,413 @@ class _SocialButton extends StatelessWidget {
       onTap: isLoading ? null : onTap,
       child: Container(
         width: 90,
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        height: 80,
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
         decoration: BoxDecoration(
           border: Border.all(color: themeService.dividerColor),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             if (isLoading)
               SizedBox(
-                width: 24,
-                height: 24,
+                width: 22,
+                height: 22,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   color: themeService.textPrimaryColor,
                 ),
               )
             else
-              Icon(icon, color: themeService.textPrimaryColor),
+              Icon(icon, color: themeService.textPrimaryColor, size: 22),
             const SizedBox(height: 4),
-            Text(label, style: TextStyle(color: themeService.textPrimaryColor, fontSize: 12)),
+            Text(
+              label, 
+              style: TextStyle(color: themeService.textPrimaryColor, fontSize: 10),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+/// Two-Factor Authentication Verification Sheet
+class _TwoFactorVerificationSheet extends StatefulWidget {
+  final int userId;
+  final List<String> methods;
+  final String selectedMethod;
+  final ThemeService themeService;
+  final LocaleService localeService;
+  final ApiService apiService;
+  final AuthService authService;
+  final VoidCallback onSuccess;
+
+  const _TwoFactorVerificationSheet({
+    required this.userId,
+    required this.methods,
+    required this.selectedMethod,
+    required this.themeService,
+    required this.localeService,
+    required this.apiService,
+    required this.authService,
+    required this.onSuccess,
+  });
+
+  @override
+  State<_TwoFactorVerificationSheet> createState() => _TwoFactorVerificationSheetState();
+}
+
+class _TwoFactorVerificationSheetState extends State<_TwoFactorVerificationSheet> {
+  late String _selectedMethod;
+  final _otpController = TextEditingController();
+  bool _isLoading = false;
+  bool _isSendingOtp = false;
+  bool _otpSent = false;
+  String? _errorMessage;
+  String? _successMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMethod = widget.selectedMethod;
+  }
+
+  @override
+  void dispose() {
+    _otpController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendOtp() async {
+    setState(() {
+      _isSendingOtp = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.apiService.send2FAOtp(widget.userId, _selectedMethod);
+    
+    if (mounted) {
+      setState(() {
+        _isSendingOtp = false;
+        if (result['success'] == true) {
+          _otpSent = true;
+          _successMessage = result['message'];
+        } else {
+          _errorMessage = result['message'];
+        }
+      });
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    if (_otpController.text.trim().isEmpty) {
+      setState(() => _errorMessage = widget.localeService.get('enter_otp'));
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final result = await widget.apiService.verify2FAOtp(
+      widget.userId,
+      _otpController.text.trim(),
+      _selectedMethod,
+    );
+
+    if (mounted) {
+      if (result['success'] == true) {
+        // Login successful
+        final userData = result['user'];
+        final token = result['access_token'];
+        await widget.authService.login(userData, token);
+        widget.onSuccess();
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = result['message'];
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: widget.themeService.cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[600],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Title with icon
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.security, color: Colors.blue, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.localeService.get('two_factor_verification'),
+                          style: TextStyle(
+                            color: widget.themeService.textPrimaryColor,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          widget.localeService.get('verify_identity'),
+                          style: TextStyle(
+                            color: widget.themeService.textSecondaryColor,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // Method selection (if multiple methods)
+              if (widget.methods.length > 1) ...[
+                Text(
+                  widget.localeService.get('select_verification_method'),
+                  style: TextStyle(
+                    color: widget.themeService.textSecondaryColor,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: widget.methods.map((method) {
+                    final isSelected = method == _selectedMethod;
+                    return Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedMethod = method;
+                            _otpSent = false;
+                            _errorMessage = null;
+                            _successMessage = null;
+                            _otpController.clear();
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.blue.withOpacity(0.2) : widget.themeService.inputBackground,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? Colors.blue : Colors.grey[700]!,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Icon(
+                                method == 'email' ? Icons.email_outlined : Icons.sms_outlined,
+                                color: isSelected ? Colors.blue : widget.themeService.textSecondaryColor,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                method == 'email' ? 'Email' : 'SMS',
+                                style: TextStyle(
+                                  color: isSelected ? Colors.blue : widget.themeService.textSecondaryColor,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+              ],
+              
+              // Success message
+              if (_successMessage != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _successMessage!,
+                          style: const TextStyle(color: Colors.green, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // OTP input
+              if (_otpSent) ...[
+                TextField(
+                  controller: _otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: widget.themeService.textPrimaryColor,
+                    fontSize: 24,
+                    letterSpacing: 8,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '------',
+                    hintStyle: TextStyle(color: widget.themeService.textSecondaryColor),
+                    counterText: '',
+                    filled: true,
+                    fillColor: widget.themeService.inputBackground,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[700]!),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[700]!),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.blue, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              
+              // Error message
+              if (_errorMessage != null)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              // Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text(
+                        widget.localeService.get('cancel'),
+                        style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: (_isSendingOtp || _isLoading)
+                          ? null
+                          : (_otpSent ? _verifyOtp : _sendOtp),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                      child: (_isSendingOtp || _isLoading)
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : Text(
+                              _otpSent
+                                  ? widget.localeService.get('verify')
+                                  : widget.localeService.get('send_otp'),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              
+              // Resend OTP
+              if (_otpSent)
+                Center(
+                  child: TextButton(
+                    onPressed: _isSendingOtp ? null : _sendOtp,
+                    child: Text(
+                      widget.localeService.get('resend_otp'),
+                      style: TextStyle(color: Colors.blue.withOpacity(_isSendingOtp ? 0.5 : 1)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
