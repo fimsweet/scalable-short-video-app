@@ -511,10 +511,10 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
               Switch(
                 value: switchValue,
                 onChanged: onSwitchChanged,
-                activeColor: Colors.blue,
-                activeTrackColor: Colors.blue.withOpacity(0.5),
-                inactiveThumbColor: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[400],
-                inactiveTrackColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[700],
+                activeColor: _themeService.switchActiveColor,
+                activeTrackColor: _themeService.switchActiveTrackColor,
+                inactiveThumbColor: _themeService.switchInactiveThumbColor,
+                inactiveTrackColor: _themeService.switchInactiveTrackColor,
               )
             else
               Icon(Icons.chevron_right, color: _themeService.textSecondaryColor),

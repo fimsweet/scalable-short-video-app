@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:scalable_short_video_app/firebase_options.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
@@ -8,6 +10,12 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   print('🚀 App starting - initializing services...');
+  
+  // Initialize Firebase first
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  print('🔥 Firebase initialized');
   
   // Initialize ThemeService first to register login/logout listeners
   // This ensures the singleton is created and listeners are registered

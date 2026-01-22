@@ -94,6 +94,82 @@ class ApiService {
     }
   }
 
+  // Phone registration with Firebase token
+  Future<Map<String, dynamic>> registerWithPhone({
+    required String firebaseIdToken,
+    required String username,
+    String? fullName,
+    String? dateOfBirth,
+  }) async {
+    final url = Uri.parse('$_baseUrl/auth/register/phone');
+    try {
+      final body = <String, dynamic>{
+        'firebaseIdToken': firebaseIdToken,
+        'username': username,
+      };
+      
+      if (fullName != null && fullName.isNotEmpty) {
+        body['fullName'] = fullName;
+      }
+      if (dateOfBirth != null && dateOfBirth.isNotEmpty) {
+        body['dateOfBirth'] = dateOfBirth;
+      }
+      
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      final responseBody = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'data': responseBody};
+      } else {
+        return {'success': false, 'message': responseBody['message'] ?? 'Registration failed'};
+      }
+    } catch (e) {
+      print('API Error: $e');
+      return {'success': false, 'message': 'Could not connect to server. Please try again.'};
+    }
+  }
+
+  // Phone login with Firebase token
+  Future<Map<String, dynamic>> loginWithPhone(String firebaseIdToken) async {
+    final url = Uri.parse('$_baseUrl/auth/login/phone');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'firebaseIdToken': firebaseIdToken}),
+      );
+
+      final responseBody = jsonDecode(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return {'success': true, 'data': responseBody};
+      } else {
+        return {'success': false, 'message': responseBody['message'] ?? 'Login failed'};
+      }
+    } catch (e) {
+      print('API Error: $e');
+      return {'success': false, 'message': 'Could not connect to server. Please try again.'};
+    }
+  }
+
+  // Check phone availability
+  Future<Map<String, dynamic>> checkPhone(String phone) async {
+    final url = Uri.parse('$_baseUrl/auth/check-phone?phone=${Uri.encodeComponent(phone)}');
+    try {
+      final response = await http.get(url);
+      final responseBody = jsonDecode(response.body);
+      return responseBody;
+    } catch (e) {
+      print('API Error: $e');
+      return {'available': false, 'error': e.toString()};
+    }
+  }
+
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
@@ -750,5 +826,371 @@ class ApiService {
       print('❌ Error updating user settings: $e');
       return {'success': false};
     }
+  }
+
+  // ============= ACCOUNT LINKING (TikTok-style) =============
+
+  /// Get full account info with linked accounts
+  Future<Map<String, dynamic>> getAccountInfo(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/account-info'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Không thể lấy thông tin tài khoản',
+        };
+      }
+    } catch (e) {
+      print('❌ Error getting account info: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Send OTP to link email to account
+  Future<Map<String, dynamic>> sendLinkEmailOtp(String token, String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/link/email/send-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'email': email}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Không thể gửi mã xác nhận',
+        };
+      }
+    } catch (e) {
+      print('❌ Error sending link email OTP: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Verify OTP and link email to account (password optional - for phone users who want email login)
+  Future<Map<String, dynamic>> verifyAndLinkEmail(String token, String email, String otp, {String? password}) async {
+    try {
+      final body = {'email': email, 'otp': otp};
+      if (password != null && password.isNotEmpty) {
+        body['password'] = password;
+      }
+      
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/link/email/verify'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Xác minh thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error verifying link email: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Link phone to account using Firebase token
+  Future<Map<String, dynamic>> linkPhone(String token, String firebaseIdToken) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/link/phone'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'firebaseIdToken': firebaseIdToken}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Liên kết số điện thoại thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error linking phone: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Check if phone is available for linking (not used by another account)
+  Future<Map<String, dynamic>> checkPhoneForLink(String token, String phone) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/link/phone/check?phone=${Uri.encodeComponent(phone)}'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'available': false,
+          'message': body['message'] ?? 'Không thể kiểm tra số điện thoại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error checking phone for link: $e');
+      return {'available': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  // ============= TWO-FACTOR AUTHENTICATION =============
+
+  /// Get 2FA settings
+  Future<Map<String, dynamic>> get2FASettings(String token) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/2fa/settings'),
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'enabled': false, 'methods': []};
+    } catch (e) {
+      print('❌ Error getting 2FA settings: $e');
+      return {'enabled': false, 'methods': []};
+    }
+  }
+
+  /// Update 2FA settings
+  Future<Map<String, dynamic>> update2FASettings(String token, bool enabled, List<String> methods) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/settings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'enabled': enabled, 'methods': methods}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Cập nhật 2FA thất bại'};
+    } catch (e) {
+      print('❌ Error updating 2FA settings: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Send 2FA OTP
+  Future<Map<String, dynamic>> send2FAOtp(int userId, String method) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/send-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userId': userId, 'method': method}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Gửi mã xác thực thất bại'};
+    } catch (e) {
+      print('❌ Error sending 2FA OTP: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Verify 2FA OTP
+  Future<Map<String, dynamic>> verify2FAOtp(int userId, String otp, String method) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/verify'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userId': userId, 'otp': otp, 'method': method}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Xác thực thất bại'};
+    } catch (e) {
+      print('❌ Error verifying 2FA: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Send OTP for 2FA settings change (enable/disable)
+  Future<Map<String, dynamic>> send2FASettingsOtp(String token, String method) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/send-settings-otp'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'method': method}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Gửi mã xác thực thất bại'};
+    } catch (e) {
+      print('❌ Error sending 2FA settings OTP: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Verify OTP and update 2FA settings
+  Future<Map<String, dynamic>> verify2FASettings(
+    String token,
+    String otp,
+    String method,
+    bool enabled,
+    List<String> methods,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/verify-settings'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'otp': otp,
+          'method': method,
+          'enabled': enabled,
+          'methods': methods,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Xác thực thất bại'};
+    } catch (e) {
+      print('❌ Error verifying 2FA settings: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  // ============= FORGOT PASSWORD WITH PHONE =============
+
+  /// Check if phone exists for password reset
+  Future<Map<String, dynamic>> checkPhoneForPasswordReset(String phone) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/forgot-password/check-phone?phone=$phone'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Số điện thoại không tồn tại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error checking phone for reset: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Reset password with phone (after Firebase verification)
+  Future<Map<String, dynamic>> resetPasswordWithPhone({
+    required String phone,
+    required String firebaseIdToken,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/forgot-password/phone/reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'firebaseIdToken': firebaseIdToken,
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      } else {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Đặt lại mật khẩu thất bại',
+        };
+      }
+    } catch (e) {
+      print('❌ Error resetting password with phone: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Format phone number to Vietnamese display format (0xxx xxx xxx)
+  static String formatPhoneForDisplay(String? phone) {
+    if (phone == null || phone.isEmpty) return '';
+    
+    // Remove +84 and replace with 0
+    String formatted = phone;
+    if (formatted.startsWith('+84')) {
+      formatted = '0${formatted.substring(3)}';
+    }
+    
+    // Format as 0xxx xxx xxx
+    if (formatted.length == 10) {
+      return '${formatted.substring(0, 4)} ${formatted.substring(4, 7)} ${formatted.substring(7)}';
+    }
+    
+    return formatted;
+  }
+
+  /// Parse Vietnamese phone display format to E.164 format (+84...)
+  static String parsePhoneToE164(String phone) {
+    // Remove spaces and special characters
+    String cleaned = phone.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    
+    // If starts with 0, replace with +84
+    if (cleaned.startsWith('0')) {
+      cleaned = '+84${cleaned.substring(1)}';
+    }
+    
+    // If doesn't start with +, add +84
+    if (!cleaned.startsWith('+')) {
+      cleaned = '+84$cleaned';
+    }
+    
+    return cleaned;
   }
 }

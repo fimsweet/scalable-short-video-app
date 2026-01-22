@@ -24,6 +24,8 @@ class AuthService {
   String? _username;
   int? _userId;
   String? _email;
+  String? _phoneNumber;
+  String? _authProvider;
   String? _avatarUrl;
   String? _token;
 
@@ -33,6 +35,9 @@ class AuthService {
   String? get avatarUrl => _avatarUrl;
   String? get bio => _user?['bio'] as String?;
   int? get userId => _userId;
+  String? get phoneNumber => _phoneNumber;
+  String? get email => _email;
+  String? get authProvider => _authProvider;
 
   /// Get current user data as a Map
   Future<Map<String, dynamic>?> getCurrentUser() async {
@@ -84,6 +89,8 @@ class AuthService {
     _username = userData['username'];
     _userId = userData['id'];
     _email = userData['email'];
+    _phoneNumber = userData['phoneNumber'];
+    _authProvider = userData['authProvider'];
     _avatarUrl = userData['avatar'];
     _isLoggedIn = true;
 
@@ -91,6 +98,8 @@ class AuthService {
     await _storage.write(key: 'username', value: _username);
     await _storage.write(key: 'userId', value: _userId.toString());
     await _storage.write(key: 'email', value: _email);
+    await _storage.write(key: 'phoneNumber', value: _phoneNumber ?? '');
+    await _storage.write(key: 'authProvider', value: _authProvider ?? '');
     await _storage.write(key: 'avatarUrl', value: _avatarUrl ?? '');
     
     // Save user data to SharedPreferences for bio
@@ -127,6 +136,8 @@ class AuthService {
     _username = null;
     _userId = null;
     _email = null;
+    _phoneNumber = null;
+    _authProvider = null;
     _avatarUrl = null;
     _isLoggedIn = false;
 
@@ -153,6 +164,8 @@ class AuthService {
     final userId = await _storage.read(key: 'userId');
     final email = await _storage.read(key: 'email');
     final avatarUrl = await _storage.read(key: 'avatarUrl');
+    final phoneNumber = await _storage.read(key: 'phoneNumber');
+    final authProvider = await _storage.read(key: 'authProvider');
     
     // Try to load user data with bio
     final prefs = await SharedPreferences.getInstance();
@@ -163,6 +176,8 @@ class AuthService {
       _userId = int.tryParse(userId);
       _email = email;
       _avatarUrl = avatarUrl;
+      _phoneNumber = phoneNumber;
+      _authProvider = authProvider;
       _isLoggedIn = true;
       _token = token;
 
@@ -174,6 +189,8 @@ class AuthService {
           'id': _userId,
           'email': email,
           'avatar': avatarUrl,
+          'phoneNumber': phoneNumber,
+          'authProvider': authProvider,
         };
       }
       

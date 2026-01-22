@@ -6,6 +6,7 @@ import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 
 class EditProfileScreen extends StatefulWidget {
@@ -29,6 +30,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   DateTime? _selectedDateOfBirth;
   bool _isLoading = false;
   bool _isUploading = false;
+  
+  // Account info
+  String? _linkedEmail;
+  String? _linkedPhone;
+  String? _authProvider;
 
   @override
   void initState() {
@@ -56,6 +62,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           }
         }
       });
+    }
+    
+    // Load account info
+    await _loadAccountInfo();
+  }
+
+  Future<void> _loadAccountInfo() async {
+    final token = await _authService.getToken();
+    if (token == null) return;
+    
+    try {
+      final result = await _apiService.getAccountInfo(token);
+      if (result['success'] == true && result['data'] != null && mounted) {
+        final accountInfo = result['data'] as Map<String, dynamic>;
+        setState(() {
+          _authProvider = accountInfo['authProvider'] as String?;
+          
+          // Check if user has a real email (not placeholder)
+          final email = accountInfo['email'] as String?;
+          if (email != null && !email.contains('@phone.user')) {
+            _linkedEmail = email;
+          }
+          
+          // Check if user has a phone number
+          final phone = accountInfo['phoneNumber'] as String?;
+          if (phone != null && phone.isNotEmpty) {
+            _linkedPhone = phone;
+          }
+        });
+        print('📱 Account info loaded: email=$_linkedEmail, phone=$_linkedPhone, provider=$_authProvider');
+      }
+    } catch (e) {
+      print('Error loading account info: $e');
     }
   }
 
@@ -401,6 +440,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               onTap: _showGenderPicker,
             ),
             
+            const SizedBox(height: 16),
+            
+            // Section: Account Info (Phone/Email)
+            _buildSectionTitle(_localeService.get('account_info')),
+            _buildAccountInfoSection(),
+            
             const SizedBox(height: 24),
             
             // Link to Settings - simple blue text like Instagram
@@ -585,6 +630,1102 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           color: _themeService.dividerColor,
         ),
       ],
+    );
+  }
+
+  Widget _buildAccountInfoSection() {
+    final hasEmail = _linkedEmail != null && _linkedEmail!.isNotEmpty;
+    final hasPhone = _linkedPhone != null && _linkedPhone!.isNotEmpty;
+    
+    return Column(
+      children: [
+        // Email row
+        _buildAccountInfoItem(
+          icon: Icons.email_outlined,
+          label: 'Email',
+          value: hasEmail ? _linkedEmail! : null,
+          onTap: () => _showEmailBottomSheet(hasEmail ? _linkedEmail : null),
+        ),
+        
+        // Phone row
+        _buildAccountInfoItem(
+          icon: Icons.phone_outlined,
+          label: _localeService.get('phone_number'),
+          value: hasPhone ? ApiService.formatPhoneForDisplay(_linkedPhone!) : null,
+          onTap: () => _showPhoneBottomSheet(hasPhone ? _linkedPhone : null),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccountInfoItem({
+    required IconData icon,
+    required String label,
+    String? value,
+    required VoidCallback onTap,
+  }) {
+    final hasValue = value != null && value.isNotEmpty;
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Container(
+            color: _themeService.inputBackground,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(
+                  icon, 
+                  color: _themeService.textSecondaryColor, 
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    hasValue ? value! : _localeService.get('not_linked'),
+                    style: TextStyle(
+                      color: hasValue 
+                          ? _themeService.textPrimaryColor 
+                          : Colors.blue,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Icon(
+                  hasValue ? Icons.edit_outlined : Icons.add,
+                  color: hasValue ? _themeService.textSecondaryColor : Colors.blue,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        Container(
+          margin: const EdgeInsets.only(left: 16),
+          height: 0.5,
+          color: _themeService.dividerColor,
+        ),
+      ],
+    );
+  }
+
+  // ===== MODERN BOTTOM SHEET DIALOGS =====
+
+  void _showEmailBottomSheet(String? currentEmail) {
+    final emailController = TextEditingController(text: currentEmail ?? '');
+    final otpController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
+    int currentStep = 0; // 0: email, 1: OTP, 2: password (only for phone users adding new email)
+    bool isLoading = false;
+    String? errorMessage;
+    bool obscurePassword = true;
+    bool obscureConfirmPassword = true;
+    final isEditing = currentEmail != null;
+    
+    // Determine if password step is needed:
+    // - Phone user adding NEW email -> needs password to login via email
+    // - Google user changing email -> no password needed (they login via Google)
+    // - Anyone editing existing email -> no password needed (keep existing password)
+    final needsPasswordStep = _authProvider == 'phone' && !isEditing;
+    final totalSteps = needsPasswordStep ? 3 : 2;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: _themeService.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: _themeService.textSecondaryColor.withAlpha(100),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    
+                    // Step indicator - dynamic based on needsPasswordStep
+                    Row(
+                      children: [
+                        _buildStepIndicator(0, currentStep, _localeService.get('email')),
+                        _buildStepLine(currentStep >= 1),
+                        _buildStepIndicator(1, currentStep, 'OTP'),
+                        if (needsPasswordStep) ...[
+                          _buildStepLine(currentStep >= 2),
+                          _buildStepIndicator(2, currentStep, _localeService.get('password')),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Title based on step
+                    Text(
+                      currentStep == 0 
+                          ? (isEditing ? _localeService.get('change_email') : _localeService.get('link_email'))
+                          : currentStep == 1 
+                              ? _localeService.get('verify_email')
+                              : _localeService.get('set_password_for_email'),
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      currentStep == 0 
+                          ? _localeService.get('enter_email_to_link')
+                          : currentStep == 1 
+                              ? _localeService.get('enter_otp_sent_to_email')
+                              : _localeService.get('set_password_to_login_with_email'),
+                      style: TextStyle(
+                        color: _themeService.textSecondaryColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Step 0: Email input
+                    if (currentStep == 0) ...[
+                      TextField(
+                        controller: emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autofocus: true,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'email@example.com',
+                          hintStyle: TextStyle(
+                            color: _themeService.textSecondaryColor.withAlpha(128),
+                          ),
+                          filled: true,
+                          fillColor: _themeService.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                    
+                    // Step 1: OTP input
+                    if (currentStep == 1) ...[
+                      // Show email being verified
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: _themeService.inputBackground,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.email_outlined,
+                              color: _themeService.textSecondaryColor,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              emailController.text,
+                              style: TextStyle(
+                                color: _themeService.textPrimaryColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // OTP input
+                      TextField(
+                        controller: otpController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        autofocus: true,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 24,
+                          letterSpacing: 8,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '000000',
+                          hintStyle: TextStyle(
+                            color: _themeService.textSecondaryColor.withAlpha(100),
+                            letterSpacing: 8,
+                          ),
+                          filled: true,
+                          fillColor: _themeService.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          counterText: '',
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                    
+                    // Step 2: Password input (only for phone users adding new email)
+                    if (currentStep == 2 && needsPasswordStep) ...[
+                      // Show email
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: _themeService.inputBackground,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle, color: Colors.green),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${_localeService.get('email_verified')}: ${emailController.text}',
+                                style: TextStyle(
+                                  color: _themeService.textPrimaryColor,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Password
+                      TextField(
+                        controller: passwordController,
+                        obscureText: obscurePassword,
+                        autofocus: true,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: _localeService.get('password'),
+                          hintStyle: TextStyle(
+                            color: _themeService.textSecondaryColor.withAlpha(128),
+                          ),
+                          filled: true,
+                          fillColor: _themeService.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscurePassword ? Icons.visibility_off : Icons.visibility,
+                              color: _themeService.textSecondaryColor,
+                            ),
+                            onPressed: () => setSheetState(() => obscurePassword = !obscurePassword),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Confirm password
+                      TextField(
+                        controller: confirmPasswordController,
+                        obscureText: obscureConfirmPassword,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 16,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: _localeService.get('confirm_password'),
+                          hintStyle: TextStyle(
+                            color: _themeService.textSecondaryColor.withAlpha(128),
+                          ),
+                          filled: true,
+                          fillColor: _themeService.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
+                              color: _themeService.textSecondaryColor,
+                            ),
+                            onPressed: () => setSheetState(() => obscureConfirmPassword = !obscureConfirmPassword),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _localeService.get('password_min_6_chars'),
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    
+                    // Error message
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Action buttons
+                    Row(
+                      children: [
+                        // Back/Cancel button
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              if (currentStep > 0) {
+                                setSheetState(() {
+                                  currentStep--;
+                                  errorMessage = null;
+                                });
+                              } else {
+                                Navigator.pop(context);
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              currentStep > 0 ? _localeService.get('back') : _localeService.get('cancel'),
+                              style: TextStyle(
+                                color: _themeService.textSecondaryColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Next/Submit button
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    if (currentStep == 0) {
+                                      // Step 0: Send OTP
+                                      final email = emailController.text.trim();
+                                      if (email.isEmpty || !email.contains('@')) {
+                                        setSheetState(() => errorMessage = _localeService.get('invalid_email'));
+                                        return;
+                                      }
+                                      
+                                      setSheetState(() {
+                                        isLoading = true;
+                                        errorMessage = null;
+                                      });
+                                      
+                                      final token = await _authService.getToken();
+                                      final result = await _apiService.sendLinkEmailOtp(token!, email);
+                                      
+                                      if (result['success']) {
+                                        setSheetState(() {
+                                          currentStep = 1;
+                                          isLoading = false;
+                                        });
+                                      } else {
+                                        setSheetState(() {
+                                          errorMessage = result['message'] ?? _localeService.get('send_otp_failed');
+                                          isLoading = false;
+                                        });
+                                      }
+                                    } else if (currentStep == 1) {
+                                      // Step 1: Verify OTP
+                                      final otp = otpController.text.trim();
+                                      if (otp.length != 6) {
+                                        setSheetState(() => errorMessage = _localeService.get('invalid_otp'));
+                                        return;
+                                      }
+                                      
+                                      if (needsPasswordStep) {
+                                        // Move to password step for phone users adding new email
+                                        setSheetState(() {
+                                          currentStep = 2;
+                                          errorMessage = null;
+                                        });
+                                      } else {
+                                        // Complete immediately for Google users or email changes (no password needed)
+                                        setSheetState(() {
+                                          isLoading = true;
+                                          errorMessage = null;
+                                        });
+                                        
+                                        final token = await _authService.getToken();
+                                        final result = await _apiService.verifyAndLinkEmail(
+                                          token!,
+                                          emailController.text.trim(),
+                                          otp,
+                                        );
+                                        
+                                        if (result['success']) {
+                                          Navigator.pop(context);
+                                          setState(() {
+                                            _linkedEmail = emailController.text.trim();
+                                          });
+                                          _showSnackBar(_localeService.get('email_linked_success'), Colors.green);
+                                        } else {
+                                          setSheetState(() {
+                                            errorMessage = result['message'] ?? _localeService.get('verify_otp_failed');
+                                            isLoading = false;
+                                          });
+                                        }
+                                      }
+                                    } else if (currentStep == 2) {
+                                      // Step 2: Set password and complete linking (phone users only)
+                                      final password = passwordController.text;
+                                      final confirmPassword = confirmPasswordController.text;
+                                      
+                                      if (password.length < 6) {
+                                        setSheetState(() => errorMessage = _localeService.get('password_too_short'));
+                                        return;
+                                      }
+                                      
+                                      if (password != confirmPassword) {
+                                        setSheetState(() => errorMessage = _localeService.get('passwords_not_match'));
+                                        return;
+                                      }
+                                      
+                                      setSheetState(() {
+                                        isLoading = true;
+                                        errorMessage = null;
+                                      });
+                                      
+                                      final token = await _authService.getToken();
+                                      final result = await _apiService.verifyAndLinkEmail(
+                                        token!,
+                                        emailController.text.trim(),
+                                        otpController.text.trim(),
+                                        password: password,
+                                      );
+                                      
+                                      if (result['success']) {
+                                        Navigator.pop(context);
+                                        setState(() {
+                                          _linkedEmail = emailController.text.trim();
+                                        });
+                                        _showSnackBar(_localeService.get('email_linked_can_login'), Colors.green);
+                                      } else {
+                                        setSheetState(() {
+                                          errorMessage = result['message'] ?? _localeService.get('verify_otp_failed');
+                                          isLoading = false;
+                                        });
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    currentStep == 0 
+                                        ? _localeService.get('send_otp') 
+                                        : (currentStep == 1 && needsPasswordStep)
+                                            ? _localeService.get('next')
+                                            : _localeService.get('complete'),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+  
+  Widget _buildStepIndicator(int step, int currentStep, String label) {
+    final isActive = step <= currentStep;
+    final isCurrent = step == currentStep;
+    return Column(
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: isActive ? Colors.blue : _themeService.inputBackground,
+            shape: BoxShape.circle,
+            border: isCurrent ? Border.all(color: Colors.blue, width: 2) : null,
+          ),
+          child: Center(
+            child: isActive && step < currentStep
+                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                : Text(
+                    '${step + 1}',
+                    style: TextStyle(
+                      color: isActive ? Colors.white : _themeService.textSecondaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: isActive ? _themeService.textPrimaryColor : _themeService.textSecondaryColor,
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildStepLine(bool isActive) {
+    return Expanded(
+      child: Container(
+        height: 2,
+        margin: const EdgeInsets.only(bottom: 18),
+        color: isActive ? Colors.blue : _themeService.inputBackground,
+      ),
+    );
+  }
+
+  void _showPhoneBottomSheet(String? currentPhone) {
+    final phoneController = TextEditingController(
+      text: currentPhone != null ? ApiService.formatPhoneForDisplay(currentPhone) : '',
+    );
+    bool isLoading = false;
+    String? errorMessage;
+    final isEditing = currentPhone != null;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: _themeService.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: _themeService.textSecondaryColor.withAlpha(100),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    
+                    // Title
+                    Text(
+                      isEditing 
+                          ? _localeService.get('change_phone') 
+                          : _localeService.get('link_phone'),
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _localeService.get('enter_phone_to_link'),
+                      style: TextStyle(
+                        color: _themeService.textSecondaryColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Phone input
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      autofocus: true,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 16,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '0912 345 678',
+                        hintStyle: TextStyle(
+                          color: _themeService.textSecondaryColor.withAlpha(128),
+                        ),
+                        filled: true,
+                        fillColor: _themeService.inputBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                        prefixIcon: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '🇻🇳 +84',
+                                style: TextStyle(
+                                  color: _themeService.textPrimaryColor,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 1,
+                                height: 24,
+                                color: _themeService.dividerColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 0),
+                      ),
+                    ),
+                    
+                    // Error message
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              _localeService.get('cancel'),
+                              style: TextStyle(
+                                color: _themeService.textSecondaryColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final phone = phoneController.text.trim();
+                                    if (phone.isEmpty) {
+                                      setSheetState(() => errorMessage = _localeService.get('enter_phone'));
+                                      return;
+                                    }
+                                    
+                                    final e164Phone = ApiService.parsePhoneToE164(phone);
+                                    
+                                    setSheetState(() {
+                                      isLoading = true;
+                                      errorMessage = null;
+                                    });
+                                    
+                                    // Step 1: Check if phone is available for linking
+                                    final token = await _authService.getToken();
+                                    if (token == null) {
+                                      setSheetState(() {
+                                        errorMessage = _localeService.get('session_expired');
+                                        isLoading = false;
+                                      });
+                                      return;
+                                    }
+                                    
+                                    final checkResult = await _apiService.checkPhoneForLink(token, e164Phone);
+                                    if (checkResult['available'] != true) {
+                                      setSheetState(() {
+                                        errorMessage = checkResult['message'] ?? _localeService.get('phone_already_used');
+                                        isLoading = false;
+                                      });
+                                      return;
+                                    }
+                                    
+                                    // Step 2: Phone is available, send OTP via Firebase
+                                    await FirebaseAuth.instance.verifyPhoneNumber(
+                                      phoneNumber: e164Phone,
+                                      verificationCompleted: (PhoneAuthCredential credential) async {},
+                                      verificationFailed: (FirebaseAuthException e) {
+                                        setSheetState(() {
+                                          errorMessage = e.message ?? _localeService.get('verification_failed');
+                                          isLoading = false;
+                                        });
+                                      },
+                                      codeSent: (String verId, int? resendToken) {
+                                        Navigator.pop(context);
+                                        _showPhoneOtpBottomSheet(e164Phone, verId);
+                                      },
+                                      codeAutoRetrievalTimeout: (String verId) {},
+                                    );
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    _localeService.get('send_otp'),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showPhoneOtpBottomSheet(String phoneNumber, String verificationId) {
+    final otpController = TextEditingController();
+    bool isLoading = false;
+    String? errorMessage;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            decoration: BoxDecoration(
+              color: _themeService.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                          color: _themeService.textSecondaryColor.withAlpha(100),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    
+                    // Title
+                    Text(
+                      _localeService.get('verify_phone'),
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_localeService.get('otp_sent_to')} ${ApiService.formatPhoneForDisplay(phoneNumber)}',
+                      style: TextStyle(
+                        color: _themeService.textSecondaryColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // OTP input
+                    TextField(
+                      controller: otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      autofocus: true,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 24,
+                        letterSpacing: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: '000000',
+                        hintStyle: TextStyle(
+                          color: _themeService.textSecondaryColor.withAlpha(100),
+                          letterSpacing: 8,
+                        ),
+                        filled: true,
+                        fillColor: _themeService.inputBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        counterText: '',
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 16,
+                        ),
+                      ),
+                    ),
+                    
+                    // Error message
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.redAccent,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Action buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              _localeService.get('cancel'),
+                              style: TextStyle(
+                                color: _themeService.textSecondaryColor,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final otp = otpController.text.trim();
+                                    if (otp.length != 6) {
+                                      setSheetState(() => errorMessage = _localeService.get('invalid_otp'));
+                                      return;
+                                    }
+                                    
+                                    setSheetState(() {
+                                      isLoading = true;
+                                      errorMessage = null;
+                                    });
+                                    
+                                    try {
+                                      final credential = PhoneAuthProvider.credential(
+                                        verificationId: verificationId,
+                                        smsCode: otp,
+                                      );
+                                      
+                                      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+                                      final firebaseIdToken = await userCredential.user?.getIdToken();
+                                      
+                                      if (firebaseIdToken == null) {
+                                        throw Exception(_localeService.get('verification_failed'));
+                                      }
+                                      
+                                      final token = await _authService.getToken();
+                                      final result = await _apiService.linkPhone(token!, firebaseIdToken);
+                                      
+                                      await FirebaseAuth.instance.signOut();
+                                      
+                                      if (result['success']) {
+                                        Navigator.pop(context);
+                                        setState(() {
+                                          _linkedPhone = phoneNumber;
+                                        });
+                                        _showSnackBar(_localeService.get('phone_linked_success'), Colors.green);
+                                      } else {
+                                        setSheetState(() {
+                                          errorMessage = result['message'] ?? _localeService.get('link_phone_failed');
+                                          isLoading = false;
+                                        });
+                                      }
+                                    } catch (e) {
+                                      await FirebaseAuth.instance.signOut();
+                                      setSheetState(() {
+                                        errorMessage = _localeService.get('verify_otp_failed');
+                                        isLoading = false;
+                                      });
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Text(
+                                    _localeService.get('verify'),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
