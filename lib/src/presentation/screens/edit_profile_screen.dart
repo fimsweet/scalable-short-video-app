@@ -35,12 +35,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _linkedEmail;
   String? _linkedPhone;
   String? _authProvider;
+  
+  // Track original values for unsaved changes detection
+  String _originalBio = '';
+  String _originalGender = '';
+  DateTime? _originalDateOfBirth;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: _authService.username ?? '');
     _bioController = TextEditingController(text: _authService.bio ?? '');
+    _originalBio = _authService.bio ?? '';
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
     _loadUserData();
@@ -54,9 +60,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (userData != null && mounted) {
       setState(() {
         _selectedGender = userData['gender'] ?? '';
+        _originalGender = _selectedGender;
         if (userData['dateOfBirth'] != null) {
           try {
             _selectedDateOfBirth = DateTime.parse(userData['dateOfBirth']);
+            _originalDateOfBirth = _selectedDateOfBirth;
           } catch (e) {
             print('Error parsing date: $e');
           }
@@ -104,6 +112,119 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   void _onLocaleChanged() {
     if (mounted) setState(() {});
+  }
+  
+  // Check if there are unsaved changes
+  bool _hasUnsavedChanges() {
+    final currentBio = _bioController.text.trim();
+    final bioChanged = currentBio != _originalBio;
+    final genderChanged = _selectedGender != _originalGender;
+    final dateChanged = _selectedDateOfBirth != _originalDateOfBirth;
+    
+    return bioChanged || genderChanged || dateChanged;
+  }
+  
+  // Show confirmation dialog when trying to exit with unsaved changes
+  Future<bool> _onWillPop() async {
+    if (!_hasUnsavedChanges()) {
+      return true;
+    }
+    
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orange,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _localeService.isVietnamese ? 'Thay đổi chưa lưu' : 'Unsaved Changes',
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          _localeService.isVietnamese 
+              ? 'Bạn có thay đổi chưa được lưu. Bạn muốn lưu trước khi rời đi không?' 
+              : 'You have unsaved changes. Do you want to save before leaving?',
+          style: TextStyle(
+            color: _themeService.textSecondaryColor,
+            fontSize: 15,
+          ),
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        actions: [
+          // Discard button
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'discard'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            child: Text(
+              _localeService.isVietnamese ? 'Bỏ thay đổi' : 'Discard',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          // Cancel button
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'cancel'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            child: Text(
+              _localeService.isVietnamese ? 'Tiếp tục chỉnh sửa' : 'Keep Editing',
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          // Save button
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, 'save'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ThemeService.accentColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text(
+              _localeService.isVietnamese ? 'Lưu' : 'Save',
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    if (result == 'save') {
+      await _saveProfile();
+      return false; // _saveProfile will handle navigation
+    } else if (result == 'discard') {
+      return true;
+    }
+    return false; // cancel - stay on page
   }
 
   @override
@@ -325,38 +446,52 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _themeService.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: _themeService.appBarBackground,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.close, color: _themeService.iconColor),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          _localeService.get('edit_profile'),
-          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _saveProfile,
-            child: _isLoading
-                ? SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: _themeService.textPrimaryColor,
-                    ),
-                  )
-                : Text(
-                    _localeService.get('save'),
-                    style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (shouldPop && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _themeService.backgroundColor,
+        appBar: AppBar(
+          backgroundColor: _themeService.appBarBackground,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.close, color: _themeService.iconColor),
+            onPressed: () async {
+              final shouldPop = await _onWillPop();
+              if (shouldPop && context.mounted) {
+                Navigator.pop(context);
+              }
+            },
+          ),
+          title: Text(
+            _localeService.get('edit_profile'),
+            style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.bold),
+          ),
+          centerTitle: true,
+          actions: [
+            TextButton(
+              onPressed: _isLoading ? null : _saveProfile,
+              child: _isLoading
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: _themeService.textPrimaryColor,
+                      ),
+                    )
+                  : Text(
+                      _localeService.get('save'),
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                     ),
                   ),
           ),
@@ -473,6 +608,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

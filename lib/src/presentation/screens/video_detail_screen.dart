@@ -23,6 +23,7 @@ class VideoDetailScreen extends StatefulWidget {
   final int initialIndex;
   final String? screenTitle;
   final VoidCallback? onVideoDeleted; // Callback when video is deleted
+  final bool openCommentsOnLoad; // Auto-open comments when loaded
 
   const VideoDetailScreen({
     super.key,
@@ -30,6 +31,7 @@ class VideoDetailScreen extends StatefulWidget {
     required this.initialIndex,
     this.screenTitle,
     this.onVideoDeleted,
+    this.openCommentsOnLoad = false,
   });
 
   @override
@@ -81,6 +83,46 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     _localeService.addListener(_onLocaleChanged);
     
     _initializeVideoData();
+    
+    // Auto-open comments if requested (e.g., from notification)
+    if (widget.openCommentsOnLoad && _videos.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openCommentsForCurrentVideo();
+      });
+    }
+  }
+  
+  void _openCommentsForCurrentVideo() {
+    if (_videos.isEmpty || _currentPage >= _videos.length) return;
+    final video = _videos[_currentPage];
+    if (video == null || video['id'] == null) return;
+    final videoId = video['id'].toString();
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => CommentSectionWidget(
+        videoId: videoId,
+        onCommentAdded: () async {
+          final count = await _commentService.getCommentCount(videoId);
+          if (mounted) {
+            setState(() {
+              _commentCounts[videoId] = count;
+            });
+          }
+        },
+        onCommentDeleted: () async {
+          final count = await _commentService.getCommentCount(videoId);
+          if (mounted) {
+            setState(() {
+              _commentCounts[videoId] = count;
+            });
+          }
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: false,
+    );
   }
 
   void _onThemeChanged() {
