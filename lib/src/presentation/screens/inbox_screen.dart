@@ -25,6 +25,7 @@ class _InboxScreenState extends State<InboxScreen> {
 
   List<Map<String, dynamic>> _conversations = [];
   Map<String, Map<String, dynamic>> _userCache = {};
+  Map<String, bool> _onlineStatusCache = {};
   bool _isLoading = true;
   
   StreamSubscription? _newMessageSubscription;
@@ -101,6 +102,22 @@ class _InboxScreenState extends State<InboxScreen> {
     }
 
     return {'username': 'User', 'avatar': null};
+  }
+
+  Future<bool> _getOnlineStatus(String userId) async {
+    if (_onlineStatusCache.containsKey(userId)) {
+      return _onlineStatusCache[userId]!;
+    }
+
+    try {
+      final status = await _apiService.getOnlineStatus(userId);
+      final isOnline = status['isOnline'] == true;
+      _onlineStatusCache[userId] = isOnline;
+      return isOnline;
+    } catch (e) {
+      print('❌ Error fetching online status: $e');
+      return false;
+    }
   }
 
   void _navigateToChat(Map<String, dynamic> conversation) async {
@@ -319,32 +336,39 @@ class _InboxScreenState extends State<InboxScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                     child: Row(
                                       children: [
-                                        Stack(
-                                          children: [
-                                            CircleAvatar(
-                                              radius: 28,
-                                              backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
-                                              backgroundImage: userInfo['avatar'] != null
-                                                  ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
-                                                  : null,
-                                              child: userInfo['avatar'] == null
-                                                  ? Icon(Icons.person, color: _themeService.textPrimaryColor, size: 28)
-                                                  : null,
-                                            ),
-                                            Positioned(
-                                              right: 0,
-                                              bottom: 0,
-                                              child: Container(
-                                                width: 14,
-                                                height: 14,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(color: _themeService.backgroundColor, width: 2),
+                                        FutureBuilder<bool>(
+                                          future: _getOnlineStatus(otherUserId),
+                                          builder: (context, onlineSnapshot) {
+                                            final isOnline = onlineSnapshot.data ?? false;
+                                            return Stack(
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 28,
+                                                  backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                                                  backgroundImage: userInfo['avatar'] != null
+                                                      ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                                      : null,
+                                                  child: userInfo['avatar'] == null
+                                                      ? Icon(Icons.person, color: _themeService.textPrimaryColor, size: 28)
+                                                      : null,
                                                 ),
-                                              ),
-                                            ),
-                                          ],
+                                                if (isOnline)
+                                                  Positioned(
+                                                    right: 0,
+                                                    bottom: 0,
+                                                    child: Container(
+                                                      width: 14,
+                                                      height: 14,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.green,
+                                                        shape: BoxShape.circle,
+                                                        border: Border.all(color: _themeService.backgroundColor, width: 2),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            );
+                                          },
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(

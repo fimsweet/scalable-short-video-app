@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
+import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/locale_service.dart';
 
@@ -22,6 +23,7 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
   final _phoneController = TextEditingController();
   
   final _apiService = ApiService();
+  final _authService = AuthService();
   final _themeService = ThemeService();
   final _localeService = LocaleService();
   
@@ -175,13 +177,30 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
 
       if (result['success']) {
         if (mounted) {
+          // Auto-login after successful registration
+          final responseData = result['data'];
+          if (responseData != null) {
+            final userData = responseData['user'];
+            final token = responseData['access_token'];
+            
+            if (userData != null && token != null) {
+              // Login the user automatically
+              await _authService.login(
+                Map<String, dynamic>.from(userData),
+                token.toString(),
+              );
+              print('✅ Auto-login after registration successful');
+            }
+          }
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(_localeService.get('register_success')),
               backgroundColor: ThemeService.successColor,
             ),
           );
-          Navigator.of(context).pop(true);
+          // Navigate to select interests screen for onboarding
+          Navigator.of(context).pushReplacementNamed('/select-interests');
         }
       } else {
         if (mounted) {
@@ -480,6 +499,69 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     ),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // Divider with "or"
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Divider(
+                          color: _themeService.dividerColor,
+                          thickness: 1,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          _localeService.get('or'),
+                          style: TextStyle(
+                            color: _themeService.textSecondaryColor,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(
+                          color: _themeService.dividerColor,
+                          thickness: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Register with Phone button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.pushNamed(context, '/phone-register');
+                      },
+                      icon: Icon(
+                        Icons.phone_android_rounded,
+                        color: _themeService.textPrimaryColor,
+                        size: 22,
+                      ),
+                      label: Text(
+                        _localeService.get('register_with_phone'),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: _themeService.textPrimaryColor,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: _themeService.dividerColor,
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
                   // Terms and Privacy
                   Center(
@@ -539,12 +621,6 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
-                  // Language toggle button at bottom
-                  Center(
-                    child: _buildLanguageToggleButton(),
-                  ),
-                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -852,158 +928,7 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildLanguageToggleButton() {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: _showLanguageDialog,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: _themeService.isLightMode 
-                  ? Colors.grey[400]! 
-                  : Colors.grey[600]!,
-              width: 1.2,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.language,
-                size: 16,
-                color: _themeService.textSecondaryColor,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                _localeService.isVietnamese ? 'VI' : 'EN',
-                style: TextStyle(
-                  color: _themeService.textSecondaryColor,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
-  void _showLanguageDialog() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: _themeService.backgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(top: 12),
-              decoration: BoxDecoration(
-                color: _themeService.textSecondaryColor.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Text(
-                _localeService.get('language'),
-                style: TextStyle(
-                  color: _themeService.textPrimaryColor,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            _buildLanguageOption(
-              title: 'Tiếng Việt',
-              value: 'vi',
-              isSelected: _localeService.currentLocale == 'vi',
-            ),
-            _buildLanguageOption(
-              title: 'English',
-              value: 'en',
-              isSelected: _localeService.currentLocale == 'en',
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLanguageOption({
-    required String title,
-    required String value,
-    required bool isSelected,
-  }) {
-    return InkWell(
-      onTap: () {
-        _localeService.setLocale(value);
-        Navigator.pop(context);
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isSelected 
-                      ? ThemeService.accentColor 
-                      : _themeService.textSecondaryColor,
-                  width: 2,
-                ),
-              ),
-              child: isSelected
-                  ? Center(
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: const BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: ThemeService.accentColor,
-                        ),
-                      ),
-                    )
-                  : null,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: _themeService.textPrimaryColor,
-                  fontSize: 16,
-                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                ),
-              ),
-            ),
-            if (isSelected)
-              const Icon(
-                Icons.check,
-                color: ThemeService.accentColor,
-                size: 24,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 

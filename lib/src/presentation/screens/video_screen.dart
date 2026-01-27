@@ -70,6 +70,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   PageController? _pageController;
   int _currentPage = 0;
 
+  // Watch time tracking for recommendation algorithm
+  DateTime? _videoStartTime;
+  String? _currentWatchingVideoId;
+  int? _currentVideoDuration; // in seconds
+
   int _selectedFeedTab = 2; // 0 = Following, 1 = Friends, 2 = For You (default)
   
   // Separate video lists for each tab
@@ -142,11 +147,22 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     
     // Pause video when app goes to background
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Send watch time when app goes to background
+      _sendWatchTime();
       _pauseCurrentVideo();
     } else if (state == AppLifecycleState.resumed) {
       // Resume video when app comes back if tab is visible
       if (_videoPlaybackService.isVideoTabVisible) {
         _resumeCurrentVideo();
+        // Restart tracking for current video
+        if (_videos.isNotEmpty && _currentPage < _videos.length) {
+          final video = _videos[_currentPage];
+          if (video != null && video['id'] != null) {
+            final videoId = video['id'].toString();
+            final duration = video['duration'] as int? ?? 30;
+            _startWatchTimeTracking(videoId, duration);
+          }
+        }
       }
     }
   }
@@ -174,6 +190,9 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
   @override
   void dispose() {
+    // Send final watch time before disposing
+    _sendWatchTime();
+    
     WidgetsBinding.instance.removeObserver(this);
     // Remove auth listeners
     _authService.removeLogoutListener(_onAuthChanged);
@@ -188,6 +207,54 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     _followStatus.clear();
     _currentVideoPlayerState = null;
     super.dispose();
+  }
+
+  // ========== Watch Time Tracking ==========
+  
+  /// Start tracking watch time for a video
+  void _startWatchTimeTracking(String videoId, int? durationSeconds) {
+    // Send previous video's watch time first
+    _sendWatchTime();
+    
+    // Start tracking new video
+    _videoStartTime = DateTime.now();
+    _currentWatchingVideoId = videoId;
+    _currentVideoDuration = durationSeconds;
+  }
+  
+  /// Send watch time to server (for recommendation algorithm)
+  void _sendWatchTime() {
+    if (_currentWatchingVideoId == null || _videoStartTime == null) return;
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+    
+    final watchDuration = DateTime.now().difference(_videoStartTime!).inSeconds;
+    
+    // Only record if watched for more than 1 second
+    if (watchDuration > 1) {
+      final userId = _authService.user!['id'].toString();
+      final videoId = _currentWatchingVideoId!;
+      final videoDuration = _currentVideoDuration ?? 30; // Default 30 seconds if unknown
+      
+      // Fire and forget - don't await to avoid blocking UI
+      _apiService.recordWatchTime(
+        userId: userId,
+        videoId: videoId,
+        watchDuration: watchDuration,
+        videoDuration: videoDuration,
+      ).then((result) {
+        if (result['success'] == true) {
+          final data = result['data'];
+          print('📺 Watch time sent: ${watchDuration}s / ${videoDuration}s (${data?['watchPercentage']?.toStringAsFixed(1) ?? 0}%)');
+        }
+      }).catchError((e) {
+        // Silent fail - analytics shouldn't break UX
+      });
+    }
+    
+    // Reset tracking
+    _videoStartTime = null;
+    _currentWatchingVideoId = null;
+    _currentVideoDuration = null;
   }
 
   Future<void> _loadVideos() async {
@@ -227,10 +294,19 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   }
 
   Future<void> _loadForYouVideos() async {
-    // REMOVE cache check - always reload status from server
-    // if (_forYouVideos.isNotEmpty) { ... }
-
-    final videos = await _videoService.getAllVideos();
+    // Use personalized recommendations if user is logged in
+    List<dynamic> videos;
+    
+    if (_authService.isLoggedIn && _authService.user != null) {
+      final userId = _authService.user!['id'] as int;
+      print('🎯 Loading personalized recommendations for user $userId');
+      videos = await _videoService.getRecommendedVideos(userId);
+    } else {
+      // For guests, use trending videos or regular feed
+      print('📈 Loading trending videos for guest');
+      videos = await _videoService.getTrendingVideos();
+    }
+    
     final readyVideos = videos.where((v) => v != null && v['status'] == 'ready').toList();
 
     // Process videos and wait for all status checks to complete
@@ -686,6 +762,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                 if (video != null && video['id'] != null) {
                                   final videoId = video['id'].toString();
                                   _videoService.incrementViewCount(videoId);
+                                  
+                                  // Start tracking watch time for recommendation algorithm
+                                  // Get video duration (usually in seconds from backend)
+                                  final duration = video['duration'] as int? ?? 30;
+                                  _startWatchTimeTracking(videoId, duration);
                                 }
                               },
                               itemBuilder: (context, index) {

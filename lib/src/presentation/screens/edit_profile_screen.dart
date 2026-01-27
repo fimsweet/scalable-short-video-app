@@ -586,7 +586,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             // Link to Settings - simple blue text like Instagram
             InkWell(
               onTap: () {
-                Navigator.push(
+                Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
                 );

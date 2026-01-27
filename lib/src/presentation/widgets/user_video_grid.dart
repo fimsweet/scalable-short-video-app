@@ -53,21 +53,16 @@ class _UserVideoGridState extends State<UserVideoGrid> {
       final userId = _authService.user!['id'].toString();
       final videos = await _videoService.getUserVideos(userId);
       
-      // Debug: Log first video data
-      if (videos.isNotEmpty) {
-        final firstVideo = videos[0];
-        print('🔍 First video from backend:');
-        print('   Video ID: ${firstVideo['id']}');
-        print('   likeCount: ${firstVideo['likeCount']}');
-        print('   commentCount: ${firstVideo['commentCount']}');
-        print('   saveCount: ${firstVideo['saveCount']}');
-        print('   shareCount: ${firstVideo['shareCount']}');
-        print('   viewCount: ${firstVideo['viewCount']}');
-        print('   isHidden: ${firstVideo['isHidden']}');
+      // Debug: Log all videos data including status
+      print('🔍 UserVideoGrid: Loaded ${videos.length} videos from backend');
+      for (var i = 0; i < videos.length; i++) {
+        final video = videos[i];
+        print('   Video $i: ID=${video['id']}, status=${video['status']}, isHidden=${video['isHidden']}');
       }
       
-      // Show only non-hidden videos
+      // Show only non-hidden videos (include all statuses including processing)
       final allVideos = videos.where((v) => v != null && v['isHidden'] != true).toList();
+      print('📹 UserVideoGrid: ${allVideos.length} videos after filtering hidden');
 
       if (mounted) {
         setState(() {
@@ -161,15 +156,9 @@ class _UserVideoGridState extends State<UserVideoGrid> {
           final video = _videos[index];
           final isProcessing = video['status'] != 'ready';
           
-          print('📹 Video ${index}: ${video['id']}');
-          print('   status: ${video['status']}');
-          print('   thumbnailUrl: ${video['thumbnailUrl']}');
-          
           final thumbnailUrl = video['thumbnailUrl'] != null
               ? _videoService.getVideoUrl(video['thumbnailUrl'])
               : null;
-          
-          print('   Full thumbnail URL: $thumbnailUrl');
 
           final isHidden = video['isHidden'] == true;
 
@@ -209,7 +198,6 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                         thumbnailUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
-                          print('❌ Thumbnail load error for ${video['id']}: $error');
                           return Container(
                             color: Colors.grey[800],
                             child: const Icon(
@@ -221,7 +209,6 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                         },
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) {
-                            print('✅ Thumbnail loaded for ${video['id']}');
                             return child;
                           }
                           return Container(

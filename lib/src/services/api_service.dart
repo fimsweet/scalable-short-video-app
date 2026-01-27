@@ -100,6 +100,7 @@ class ApiService {
     required String username,
     String? fullName,
     String? dateOfBirth,
+    String? language,
   }) async {
     final url = Uri.parse('$_baseUrl/auth/register/phone');
     try {
@@ -113,6 +114,9 @@ class ApiService {
       }
       if (dateOfBirth != null && dateOfBirth.isNotEmpty) {
         body['dateOfBirth'] = dateOfBirth;
+      }
+      if (language != null && language.isNotEmpty) {
+        body['language'] = language;
       }
       
       final response = await http.post(
@@ -326,6 +330,35 @@ class ApiService {
     } catch (e) {
       print('❌ Error fetching user: $e');
       return null;
+    }
+  }
+
+  /// Send heartbeat to update user's online status
+  Future<void> sendHeartbeat(String userId) async {
+    try {
+      await http.post(
+        Uri.parse('$_baseUrl/users/$userId/heartbeat'),
+        headers: {'Content-Type': 'application/json'},
+      );
+    } catch (e) {
+      // Silently fail - heartbeat is not critical
+    }
+  }
+
+  /// Get user's online status
+  Future<Map<String, dynamic>> getOnlineStatus(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/$userId/online-status'),
+      );
+      
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      return {'success': false, 'isOnline': false, 'statusText': 'Offline'};
+    } catch (e) {
+      print('❌ Error fetching online status: $e');
+      return {'success': false, 'isOnline': false, 'statusText': 'Offline'};
     }
   }
 
@@ -1192,5 +1225,390 @@ class ApiService {
     }
     
     return cleaned;
+  }
+
+  // ==================== CATEGORIES & INTERESTS ====================
+
+  /// Get all available categories from video service
+  Future<Map<String, dynamic>> getCategories() async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/categories');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load categories',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching categories: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get user's interests
+  Future<Map<String, dynamic>> getUserInterests(int userId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/users/$userId/interests');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load interests',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching user interests: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Check if user has selected interests
+  Future<bool> hasSelectedInterests(int userId) async {
+    try {
+      final url = Uri.parse('$_baseUrl/users/$userId/interests/check');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      return body['hasInterests'] == true;
+    } catch (e) {
+      print('❌ Error checking user interests: $e');
+      return false;
+    }
+  }
+
+  /// Set user's interests (replaces existing)
+  Future<Map<String, dynamic>> setUserInterests(
+    int userId,
+    List<int> categoryIds,
+    String token,
+  ) async {
+    try {
+      final url = Uri.parse('$_baseUrl/users/$userId/interests');
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'categoryIds': categoryIds}),
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+          'message': body['message'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to save interests',
+        };
+      }
+    } catch (e) {
+      print('❌ Error setting user interests: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  // ==================== RECOMMENDATIONS ====================
+
+  /// Get personalized video recommendations for a user
+  Future<Map<String, dynamic>> getRecommendedVideos(int userId, {int limit = 50}) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/recommendation/for-you/$userId?limit=$limit');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+          'count': body['count'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load recommendations',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching recommendations: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get trending videos (for new users or discovery)
+  Future<Map<String, dynamic>> getTrendingVideos({int limit = 50}) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/recommendation/trending?limit=$limit');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+          'count': body['count'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load trending videos',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching trending videos: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get videos by category
+  Future<Map<String, dynamic>> getVideosByCategory(int categoryId, {int limit = 50}) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/recommendation/category/$categoryId?limit=$limit');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+          'count': body['count'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load videos',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching videos by category: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get categories for a specific video
+  Future<Map<String, dynamic>> getVideoCategories(String videoId) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/categories/video/$videoId');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load video categories',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching video categories: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  // ========== WATCH HISTORY APIs ==========
+
+  /// Record watch time when user views a video
+  /// This is crucial for the recommendation algorithm to learn user preferences
+  Future<Map<String, dynamic>> recordWatchTime({
+    required String userId,
+    required String videoId,
+    required int watchDuration, // seconds
+    required int videoDuration, // total video duration in seconds
+  }) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/watch-history');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'videoId': videoId,
+          'watchDuration': watchDuration,
+          'videoDuration': videoDuration,
+        }),
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {
+          'success': true,
+          'data': body['data'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to record watch time',
+        };
+      }
+    } catch (e) {
+      // Silent fail - don't disrupt user experience for analytics
+      print('⚠️ Error recording watch time: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get user's watch history
+  Future<Map<String, dynamic>> getWatchHistory(String userId, {int limit = 50, int offset = 0}) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/watch-history/$userId?limit=$limit&offset=$offset');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+          'total': body['total'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load watch history',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching watch history: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get user's interests based on watch time (for debugging/display)
+  Future<Map<String, dynamic>> getWatchTimeInterests(String userId) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/watch-history/$userId/interests');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load watch interests',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching watch interests: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get user's watch stats
+  Future<Map<String, dynamic>> getWatchStats(String userId) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/watch-history/$userId/stats');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load watch stats',
+        };
+      }
+    } catch (e) {
+      print('❌ Error fetching watch stats: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Clear watch history
+  Future<Map<String, dynamic>> clearWatchHistory(String userId) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/watch-history/$userId');
+      final response = await http.delete(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'deletedCount': body['deletedCount'] ?? 0,
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to clear history',
+        };
+      }
+    } catch (e) {
+      print('❌ Error clearing watch history: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
   }
 }

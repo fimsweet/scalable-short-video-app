@@ -35,13 +35,14 @@ class VideoService {
 
   String get _videoApiUrl => '$_baseUrl/videos';
 
-  /// Upload video to video-service
+  /// Upload video to video-service with optional category tags
   Future<Map<String, dynamic>> uploadVideo({
     required XFile videoFile,
     required String userId,
     required String title,
     String? description,
     required String token,
+    List<int>? categoryIds,
   }) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$_videoApiUrl/upload'));
@@ -68,6 +69,12 @@ class VideoService {
       request.fields['title'] = title;
       if (description != null && description.isNotEmpty) {
         request.fields['description'] = description;
+      }
+      
+      // Add category IDs as JSON array
+      if (categoryIds != null && categoryIds.isNotEmpty) {
+        request.fields['categoryIds'] = json.encode(categoryIds);
+        print('🏷️ Categories: $categoryIds');
       }
       
       print('📤 Uploading video to: $_videoApiUrl/upload');
@@ -397,6 +404,78 @@ class VideoService {
     } catch (e) {
       print('❌ Error deleting video: $e');
       rethrow; // Re-throw to handle in UI
+    }
+  }
+
+  /// Get personalized recommended videos for For You feed
+  Future<List<dynamic>> getRecommendedVideos(int userId, {int limit = 50}) async {
+    try {
+      print('🎯 Fetching recommended videos for user $userId...');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/recommendation/for-you/$userId?limit=$limit'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('📥 Recommendation response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final List<dynamic> videos = data['data'];
+          print('✅ Loaded ${videos.length} recommended videos');
+          return videos;
+        }
+        return [];
+      } else {
+        print('❌ Failed to load recommendations: ${response.statusCode}');
+        // Fallback to regular feed
+        return await getAllVideos();
+      }
+    } catch (e) {
+      print('❌ Error fetching recommendations: $e');
+      // Fallback to regular feed
+      return await getAllVideos();
+    }
+  }
+
+  /// Get trending videos (for new users or discovery)
+  Future<List<dynamic>> getTrendingVideos({int limit = 50}) async {
+    try {
+      print('📈 Fetching trending videos...');
+      
+      final response = await http.get(
+        Uri.parse('$_baseUrl/recommendation/trending?limit=$limit'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
+
+      print('📥 Trending response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          final List<dynamic> videos = data['data'];
+          print('✅ Loaded ${videos.length} trending videos');
+          return videos;
+        }
+        return [];
+      } else {
+        print('❌ Failed to load trending videos: ${response.statusCode}');
+        return await getAllVideos();
+      }
+    } catch (e) {
+      print('❌ Error fetching trending videos: $e');
+      return await getAllVideos();
     }
   }
 }

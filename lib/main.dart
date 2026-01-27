@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:scalable_short_video_app/firebase_options.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/select_interests_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/phone_register_screen.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
@@ -68,6 +70,11 @@ class _MyAppState extends State<MyApp> {
       theme: _themeService.themeData,
       home: MainScreen(key: mainScreenKey),
       debugShowCheckedModeBanner: false,
+      // Named routes for navigation
+      routes: {
+        '/select-interests': (context) => const SelectInterestsScreen(isOnboarding: true),
+        '/phone-register': (context) => const PhoneRegisterScreen(isRegistration: true),
+      },
       // Add builder to ensure we always have a navigator
       builder: (context, child) {
         return child ?? const SizedBox.shrink();

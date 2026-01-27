@@ -96,6 +96,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isUserBlocked = false; // Track if I blocked the recipient
   bool _amIBlocked = false; // Track if recipient blocked me
   bool _isCheckingBlockStatus = true; // Track if we're still checking block status
+  
+  // Online status
+  bool _recipientIsOnline = false;
+  String _recipientStatusText = 'Offline';
+  Timer? _onlineStatusTimer;
+  Timer? _heartbeatTimer;
 
   // Common emojis for quick access - CHANGED TO STATIC CONST
   static const List<String> _commonEmojis = [
@@ -122,6 +128,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _imagePicker = ImagePicker();
     _initChat();
     _messageController.addListener(_onTextChanged);
+    
+    // Start online status polling and heartbeat
+    _startOnlineStatusPolling();
+    _startHeartbeat();
   }
 
   void _onThemeChanged() {
@@ -134,6 +144,44 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  // Start polling for recipient's online status
+  void _startOnlineStatusPolling() {
+    // Fetch immediately
+    _fetchOnlineStatus();
+    
+    // Then poll every 30 seconds
+    _onlineStatusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _fetchOnlineStatus();
+    });
+  }
+
+  Future<void> _fetchOnlineStatus() async {
+    try {
+      final status = await _apiService.getOnlineStatus(widget.recipientId);
+      if (mounted) {
+        setState(() {
+          _recipientIsOnline = status['isOnline'] == true;
+          _recipientStatusText = status['statusText'] ?? 'Offline';
+        });
+      }
+    } catch (e) {
+      // Silently fail
+    }
+  }
+
+  // Send heartbeat to update my online status
+  void _startHeartbeat() {
+    if (_currentUserId.isEmpty) return;
+    
+    // Send immediately
+    _apiService.sendHeartbeat(_currentUserId);
+    
+    // Then send every 60 seconds
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _apiService.sendHeartbeat(_currentUserId);
+    });
   }
 
   void _initChat() async {
@@ -443,6 +491,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.dispose();
     _focusNode.dispose();
     _typingTimer?.cancel();
+    _onlineStatusTimer?.cancel();
+    _heartbeatTimer?.cancel();
     _newMessageSubscription?.cancel();
     _messageSentSubscription?.cancel();
     _typingSubscription?.cancel();
@@ -835,9 +885,28 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     )
                   else
-                    Text(
-                      _localeService.get('online'),
-                      style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
+                    Row(
+                      children: [
+                        if (_recipientIsOnline)
+                          Container(
+                            width: 8,
+                            height: 8,
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: const BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        Text(
+                          _recipientIsOnline 
+                              ? (_localeService.isVietnamese ? 'Đang hoạt động' : 'Active now')
+                              : _recipientStatusText,
+                          style: TextStyle(
+                            color: _recipientIsOnline ? Colors.green : _themeService.textSecondaryColor, 
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                 ],
               ),
