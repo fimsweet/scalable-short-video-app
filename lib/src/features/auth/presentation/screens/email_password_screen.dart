@@ -146,7 +146,7 @@ class _EmailPasswordScreenState extends State<EmailPasswordScreen> {
 
       if (!mounted) return;
       
-      // Success - navigate to home or verification screen
+      // Success - navigate to select interests screen for onboarding
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_localeService.get('registration_successful')),
@@ -154,8 +154,11 @@ class _EmailPasswordScreenState extends State<EmailPasswordScreen> {
         ),
       );
       
-      // Pop all registration screens and go to login or home
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // Navigate to select interests screen for onboarding
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/select-interests',
+        (route) => route.isFirst,
+      );
       
     } catch (e) {
       setState(() {

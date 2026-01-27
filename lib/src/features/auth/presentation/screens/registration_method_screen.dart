@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/phone_register_screen.dart';
 import 'birthday_picker_screen.dart';
+import 'email_register_screen.dart';
 
 /// TikTok-style registration method selection screen
 /// Step 1: Choose registration method (Email, Google, Facebook, Apple)
@@ -116,7 +118,7 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
                       _buildOptionButton(
                         icon: Icons.phone_outlined,
                         label: _localeService.get('use_phone'),
-                        onTap: () => _navigateToBirthday(context, 'phone'),
+                        onTap: () => _navigateToPhoneRegister(context),
                         isDarkMode: isDarkMode,
                       ),
                       
@@ -126,7 +128,7 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
                       _buildOptionButton(
                         icon: Icons.email_outlined,
                         label: _localeService.get('use_email'),
-                        onTap: () => _navigateToBirthday(context, 'email'),
+                        onTap: () => _navigateToEmailRegister(context),
                         isDarkMode: isDarkMode,
                       ),
                       
@@ -216,11 +218,6 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
                           textAlign: TextAlign.center,
                         ),
                       ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Language toggle button
-                      _buildLanguageToggle(isDarkMode, accentColor),
                     ],
                   ),
                 ),
@@ -353,36 +350,7 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
     );
   }
 
-  Widget _buildLanguageToggle(bool isDarkMode, Color accentColor) {
-    return OutlinedButton.icon(
-      onPressed: () {
-        final newLocale = _localeService.currentLocale == 'vi' ? 'en' : 'vi';
-        _localeService.setLocale(newLocale);
-      },
-      icon: Icon(
-        Icons.language,
-        size: 18,
-        color: isDarkMode ? Colors.white70 : Colors.black54,
-      ),
-      label: Text(
-        _localeService.currentLocale == 'vi' ? 'English' : 'Tiếng Việt',
-        style: TextStyle(
-          fontSize: 13,
-          color: isDarkMode ? Colors.white70 : Colors.black54,
-        ),
-      ),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        side: BorderSide(
-          color: isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
-          width: 1,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-      ),
-    );
-  }
+
 
   void _navigateToBirthday(BuildContext context, String method) {
     Navigator.push(
@@ -391,6 +359,24 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
         builder: (context) => BirthdayPickerScreen(
           registrationMethod: method,
         ),
+      ),
+    );
+  }
+
+  void _navigateToEmailRegister(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const EmailRegisterScreen(),
+      ),
+    );
+  }
+
+  void _navigateToPhoneRegister(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const PhoneRegisterScreen(isRegistration: true),
       ),
     );
   }

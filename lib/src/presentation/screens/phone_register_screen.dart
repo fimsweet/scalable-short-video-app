@@ -8,7 +8,12 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class PhoneRegisterScreen extends StatefulWidget {
-  const PhoneRegisterScreen({super.key});
+  final bool isRegistration; // true = from register screen, false = from login screen
+  
+  const PhoneRegisterScreen({
+    super.key,
+    this.isRegistration = false,
+  });
 
   @override
   State<PhoneRegisterScreen> createState() => _PhoneRegisterScreenState();
@@ -174,17 +179,34 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
       final checkResult = await _apiService.checkPhone(_phoneNumber);
       _isPhoneRegistered = checkResult['available'] == false;
       
-      // Step 2: Send OTP regardless of registration status
-      final success = await _phoneAuthService.sendOtp(_phoneNumber);
-      
-      if (success && mounted) {
-        if (_isPhoneRegistered) {
-          // Phone is registered - proceed to OTP for login
-          _animateToOtpScreen();
-        } else {
-          // Phone not registered - show dialog
+      // Step 2: Handle based on registration status and flow type
+      if (_isPhoneRegistered) {
+        if (widget.isRegistration) {
+          // Registration flow but phone already exists - show error
           setState(() => _isLoading = false);
-          _showPhoneNotRegisteredDialog();
+          _showPhoneAlreadyRegisteredDialog();
+        } else {
+          // Login flow - proceed to OTP for login
+          final success = await _phoneAuthService.sendOtp(_phoneNumber);
+          if (success && mounted) {
+            _animateToOtpScreen();
+          }
+        }
+      } else {
+        // Phone not registered
+        if (widget.isRegistration) {
+          // Registration flow - proceed to OTP for registration
+          final success = await _phoneAuthService.sendOtp(_phoneNumber);
+          if (success && mounted) {
+            _animateToOtpScreen();
+          }
+        } else {
+          // Login flow but phone not registered - show dialog to register
+          final success = await _phoneAuthService.sendOtp(_phoneNumber);
+          if (success && mounted) {
+            setState(() => _isLoading = false);
+            _showPhoneNotRegisteredDialog();
+          }
         }
       }
     } catch (e) {
@@ -347,6 +369,128 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
       ),
     );
   }
+
+  void _showPhoneAlreadyRegisteredDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.white : const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Icon
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.red.withOpacity(0.1),
+                ),
+                child: const Icon(
+                  Icons.error_outline,
+                  color: Colors.red,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Title
+              Text(
+                _localeService.get('phone_already_registered'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _themeService.textPrimaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              
+              // Phone number display
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _themeService.isLightMode 
+                      ? Colors.grey[100] 
+                      : Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('🇻🇳', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Text(
+                      _phoneNumber,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: _themeService.textPrimaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Description
+              Text(
+                _localeService.get('phone_already_registered_description'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _themeService.textSecondaryColor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              
+              // Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    Navigator.pop(context); // Go back to registration screen
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    _localeService.get('understood'),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
   
   void _animateToOtpScreen() {
     _animController.reset();
@@ -479,6 +623,7 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
         firebaseIdToken: idToken,
         username: username,
         dateOfBirth: dateOfBirth,
+        language: _localeService.currentLocale,
       );
       
       if (result['success'] == true) {
@@ -487,13 +632,8 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
         await _authService.login(userData, token);
         
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(_localeService.get('register_success')),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pop(context, true);
+          // Navigate to select interests screen for onboarding (no snackbar)
+          Navigator.of(context).pushReplacementNamed('/select-interests');
         }
       } else {
         setState(() {
@@ -538,7 +678,9 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
 
   @override
   Widget build(BuildContext context) {
-    String title = _localeService.get('phone_login');
+    String title = widget.isRegistration 
+        ? _localeService.get('phone_register')
+        : _localeService.get('phone_login');
     if (_showOtpScreen) {
       title = _isPhoneRegistered 
           ? _localeService.get('verify_login')

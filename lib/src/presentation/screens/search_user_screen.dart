@@ -92,13 +92,18 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
   }
 
   void _navigateToChat(Map<String, dynamic> user) {
+    // Get full avatar URL if avatar exists
+    final avatarUrl = user['avatar'] != null 
+        ? _apiService.getAvatarUrl(user['avatar']) 
+        : null;
+    
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ChatScreen(
           recipientId: user['id'].toString(),
           recipientUsername: user['username'] ?? 'User',
-          recipientAvatar: user['avatar'],
+          recipientAvatar: avatarUrl,
         ),
       ),
     );
@@ -269,17 +274,6 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
           fontWeight: FontWeight.w600,
         ),
       ),
-      subtitle: user['bio'] != null && user['bio'].toString().isNotEmpty
-          ? Text(
-              user['bio'],
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: _themeService.textSecondaryColor,
-                fontSize: 13,
-              ),
-            )
-          : null,
       trailing: Icon(
         Icons.chat_bubble_outline,
         color: _themeService.textSecondaryColor,

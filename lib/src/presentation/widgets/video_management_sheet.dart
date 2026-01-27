@@ -321,43 +321,24 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                           print('   VideoId: ${widget.videoId}');
                           print('   UserId: ${widget.userId}');
                           
-                          // Get the navigator before any async operations
-                          final navigator = Navigator.of(context);
-                          final scaffoldMessenger = ScaffoldMessenger.of(context);
+                          // Get root navigator to pop all overlays
+                          final rootNavigator = Navigator.of(context, rootNavigator: true);
                           
                           try {
-                            print('   Step 1: Closing confirmation dialog...');
-                            // Close confirmation dialog first
-                            navigator.pop();
+                            print('   Step 1: Closing all dialogs/sheets...');
+                            // Close confirmation dialog
+                            rootNavigator.pop();
                             
-                            print('   Step 2: Showing loading indicator...');
-                            // Show loading indicator
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (BuildContext dialogContext) {
-                                return const Center(
-                                  child: CircularProgressIndicator(),
-                                );
-                              },
-                            );
+                            // Small delay to let UI update
+                            await Future.delayed(const Duration(milliseconds: 100));
                             
-                            print('   Step 3: Calling deleteVideo API...');
+                            print('   Step 2: Calling deleteVideo API...');
                             // Delete video
                             await videoService.deleteVideo(widget.videoId, widget.userId);
                             
-                            print('   Step 4: Video deleted successfully!');
+                            print('   Step 3: Video deleted successfully!');
+                            print('   Step 4: Calling onDeleted callback...');
                             
-                            if (!context.mounted) {
-                              print('   ⚠️ Context not mounted after delete');
-                              return;
-                            }
-                            
-                            print('   Step 5: Closing loading indicator...');
-                            // Close loading indicator
-                            navigator.pop();
-                            
-                            print('   Step 6: Calling onDeleted callback...');
                             // Call onDeleted callback - this will handle navigation
                             widget.onDeleted();
                             
@@ -366,30 +347,22 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                           } catch (e) {
                             print('   ❌ Error during delete: $e');
                             
-                            if (!context.mounted) {
-                              print('   ⚠️ Context not mounted in error handler');
-                              return;
-                            }
-                            
-                            // Close loading indicator if showing
+                            // Try to close any remaining dialogs
                             try {
-                              navigator.pop();
-                            } catch (popError) {
-                              print('   ⚠️ Error popping loading: $popError');
+                              rootNavigator.pop();
+                            } catch (_) {}
+                            
+                            // Show error using root scaffold - check if context is still mounted
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('❌ Lỗi: ${e.toString().replaceAll('Exception: ', '')}'),
+                                  backgroundColor: Colors.red,
+                                  behavior: SnackBarBehavior.floating,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
                             }
-                            
-                            // Extract error message
-                            String errorMessage = e.toString().replaceAll('Exception: ', '');
-                            
-                            // Show error in a snackbar
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(
-                                content: Text('❌ Lỗi: $errorMessage'),
-                                backgroundColor: Colors.red,
-                                behavior: SnackBarBehavior.floating,
-                                duration: const Duration(seconds: 3),
-                              ),
-                            );
                           }
                         },
                         style: TextButton.styleFrom(

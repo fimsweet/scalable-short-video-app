@@ -23,6 +23,7 @@ class VideoDetailScreen extends StatefulWidget {
   final int initialIndex;
   final String? screenTitle;
   final VoidCallback? onVideoDeleted; // Callback when video is deleted
+  final bool openCommentsOnLoad; // Auto-open comments when loaded
 
   const VideoDetailScreen({
     super.key,
@@ -30,6 +31,7 @@ class VideoDetailScreen extends StatefulWidget {
     required this.initialIndex,
     this.screenTitle,
     this.onVideoDeleted,
+    this.openCommentsOnLoad = false,
   });
 
   @override
@@ -81,6 +83,46 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     _localeService.addListener(_onLocaleChanged);
     
     _initializeVideoData();
+    
+    // Auto-open comments if requested (e.g., from notification)
+    if (widget.openCommentsOnLoad && _videos.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openCommentsForCurrentVideo();
+      });
+    }
+  }
+  
+  void _openCommentsForCurrentVideo() {
+    if (_videos.isEmpty || _currentPage >= _videos.length) return;
+    final video = _videos[_currentPage];
+    if (video == null || video['id'] == null) return;
+    final videoId = video['id'].toString();
+    
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => CommentSectionWidget(
+        videoId: videoId,
+        onCommentAdded: () async {
+          final count = await _commentService.getCommentCount(videoId);
+          if (mounted) {
+            setState(() {
+              _commentCounts[videoId] = count;
+            });
+          }
+        },
+        onCommentDeleted: () async {
+          final count = await _commentService.getCommentCount(videoId);
+          if (mounted) {
+            setState(() {
+              _commentCounts[videoId] = count;
+            });
+          }
+        },
+      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: false,
+    );
   }
 
   void _onThemeChanged() {
@@ -527,6 +569,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                           userId != null &&
                           _authService.user!['id'].toString() == userId,
                       onManageTap: () {
+                        // Save navigator before showing modal
+                        final screenNavigator = Navigator.of(context);
+                        
                         showModalBottomSheet(
                           context: context,
                           backgroundColor: Colors.transparent,
@@ -536,63 +581,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                             isHidden: video['isHidden'] ?? false,
                             onDeleted: () {
                               print('📱 VideoDetailScreen.onDeleted called');
-                              print('   Current page: $_currentPage');
-                              print('   Videos count before removal: ${_videos.length}');
-                              print('   Mounted: $mounted');
                               
-                              // Remove video from list
-                              if (!mounted) {
-                                print('   ⚠️ Widget not mounted, skipping...');
-                                return;
-                              }
-                              
-                              // If no more videos, close the screen immediately
-                              if (_videos.length <= 1) {
-                                print('   📤 Last video or empty, closing VideoDetailScreen...');
-                                
-                                // Call parent callback first
-                                widget.onVideoDeleted?.call();
-                                
-                                // Then pop after a short delay to ensure callback completes
-                                Future.delayed(const Duration(milliseconds: 100), () {
-                                  if (mounted && Navigator.of(context).canPop()) {
-                                    print('   🚪 Popping navigation...');
-                                    Navigator.of(context).pop();
-                                    print('   ✅ Navigated back to parent');
-                                  }
-                                });
-                                return;
-                              }
-                              
-                              // Remove video and update state
-                              setState(() {
-                                _videos.removeAt(_currentPage);
-                                print('   ✅ Video removed from list');
-                                print('   Videos count after removal: ${_videos.length}');
-                                
-                                // Adjust current page if needed
-                                if (_currentPage >= _videos.length) {
-                                  _currentPage = _videos.length - 1;
-                                  print('   🔄 Adjusted current page to: $_currentPage');
-                                }
-                                
-                                // Increment key to force PageView rebuild
-                                _pageViewKey++;
-                                print('   🔄 PageView key updated to: $_pageViewKey');
-                              });
-                              
-                              // Recreate PageController with new page
-                              _pageController.dispose();
-                              _pageController = PageController(initialPage: _currentPage);
-                              print('   🔄 PageController recreated for page: $_currentPage');
-                              
-                              // Call the callback to refresh parent screen
+                              // Call parent callback first to refresh the grid
                               widget.onVideoDeleted?.call();
                               print('   ✅ Parent callback called');
                               
-                              // Force a rebuild
-                              setState(() {});
-                              print('   ✅ State updated, UI should rebuild');
+                              // Pop VideoDetailScreen using saved navigator
+                              // The management sheet and confirmation dialog are already closed
+                              print('   📤 Popping VideoDetailScreen...');
+                              if (screenNavigator.canPop()) {
+                                screenNavigator.pop();
+                                print('   ✅ Navigation complete');
+                              }
                             },
                             onHiddenChanged: (isHidden) {
                               if (mounted) {

@@ -208,6 +208,7 @@ class LocaleService extends ChangeNotifier {
     
     // Phone OTP Authentication
     'phone_login': 'Đăng nhập bằng số điện thoại',
+    'phone_register': 'Đăng ký bằng số điện thoại',
     'enter_phone_number': 'Nhập số điện thoại',
     'phone_otp_description': 'Chúng tôi sẽ gửi mã OTP qua SMS để xác thực số điện thoại của bạn.',
     'send_otp': 'Gửi mã OTP',
@@ -219,6 +220,9 @@ class LocaleService extends ChangeNotifier {
     'phone_username_hint': 'Tên người dùng sẽ được hiển thị trên hồ sơ của bạn.',
     'phone_not_registered': 'Số điện thoại chưa đăng ký',
     'phone_not_registered_description': 'Số điện thoại này chưa được đăng ký. Bạn có muốn tạo tài khoản mới không?',
+    'phone_already_registered': 'Số điện thoại đã được đăng ký',
+    'phone_already_registered_description': 'Số điện thoại này đã được đăng ký. Vui lòng đăng nhập hoặc sử dụng số điện thoại khác.',
+    'understood': 'Đã hiểu',
     'verify_login': 'Xác minh đăng nhập',
     'verify_register': 'Xác minh đăng ký',
     'logging_in': 'Đang đăng nhập',
@@ -642,6 +646,11 @@ class LocaleService extends ChangeNotifier {
     'registration_successful': 'Đăng ký thành công!',
     'registration_failed': 'Đăng ký thất bại',
     'login_successful': 'Đăng nhập thành công!',
+    
+    // Email registration
+    'email_register': 'Đăng ký bằng email',
+    'birthday_confirmed': 'Đã xác nhận ngày sinh',
+    'email_password_description': 'Nhập email và tạo mật khẩu để bảo vệ tài khoản của bạn.',
 
     // Help Screen
     'help_center': 'Trung tâm trợ giúp',
@@ -672,6 +681,30 @@ class LocaleService extends ChangeNotifier {
     'faq_delete_answer': 'Mở video bạn muốn xóa, nhấn vào biểu tượng ba chấm (...) và chọn "Xóa video". Video sẽ bị xóa vĩnh viễn.',
     'faq_report': 'Làm sao để báo cáo nội dung vi phạm?',
     'faq_report_answer': 'Nhấn vào biểu tượng ba chấm (...) trên video hoặc trang cá nhân vi phạm và chọn "Báo cáo". Đội ngũ của chúng tôi sẽ xem xét.',
+    
+    // Interests & Categories
+    'select_interests': 'Chọn chủ đề quan tâm',
+    'what_interests_you': 'Bạn quan tâm đến gì?',
+    'select_interests_description': 'Chọn ít nhất 3 chủ đề bạn quan tâm để chúng tôi có thể đề xuất video phù hợp với bạn.',
+    'interests_help_personalize': 'Thông tin này giúp chúng tôi cá nhân hóa trải nghiệm của bạn',
+    'select_at_least_3_interests': 'Vui lòng chọn ít nhất 3 chủ đề',
+    'interests_saved': 'Đã lưu chủ đề quan tâm',
+    'skip_for_now': 'Bỏ qua',
+    'selected': 'Đã chọn',
+    'minimum': 'tối thiểu',
+    'great_choices': 'Tuyệt vời!',
+    'add_more_if_you_want': 'Hãy chọn thêm nếu bạn muốn',
+    'pick_3_to_continue': 'Chọn 3 để tiếp tục',
+    'register_with_phone': 'Đăng ký với số điện thoại',
+    'select_categories': 'Chọn thể loại video',
+    'max_3_categories': 'Chỉ được chọn tối đa 3 thể loại',
+    'retry': 'Thử lại',
+    
+    // Upload discard dialog
+    'discard_changes': 'Hủy thay đổi?',
+    'discard_changes_message': 'Nếu bạn thoát, mọi thay đổi sẽ bị mất. Bạn có chắc muốn thoát không?',
+    'continue_editing': 'Tiếp tục chỉnh sửa',
+    'discard': 'Hủy bỏ',
   };
 
   // English translations
@@ -745,6 +778,7 @@ class LocaleService extends ChangeNotifier {
     
     // Phone OTP Authentication
     'phone_login': 'Login with phone number',
+    'phone_register': 'Register with phone number',
     'enter_phone_number': 'Enter phone number',
     'phone_otp_description': 'We will send an OTP via SMS to verify your phone number.',
     'send_otp': 'Send OTP',
@@ -756,6 +790,9 @@ class LocaleService extends ChangeNotifier {
     'phone_username_hint': 'Your username will be displayed on your profile.',
     'phone_not_registered': 'Phone number not registered',
     'phone_not_registered_description': 'This phone number is not registered. Would you like to create a new account?',
+    'phone_already_registered': 'Phone number already registered',
+    'phone_already_registered_description': 'This phone number is already registered. Please login or use a different phone number.',
+    'understood': 'Understood',
     'verify_login': 'Verify login',
     'verify_register': 'Verify registration',
     'logging_in': 'Logging in',
@@ -1179,6 +1216,11 @@ class LocaleService extends ChangeNotifier {
     'registration_successful': 'Registration successful!',
     'registration_failed': 'Registration failed',
     'login_successful': 'Login successful!',
+    
+    // Email registration
+    'email_register': 'Register with email',
+    'birthday_confirmed': 'Birthday confirmed',
+    'email_password_description': 'Enter your email and create a password to secure your account.',
 
     // Help Screen
     'help_center': 'Help Center',
@@ -1209,6 +1251,30 @@ class LocaleService extends ChangeNotifier {
     'faq_delete_answer': 'Open the video you want to delete, tap the three-dot icon (...) and select "Delete video". The video will be permanently deleted.',
     'faq_report': 'How do I report inappropriate content?',
     'faq_report_answer': 'Tap the three-dot icon (...) on the video or profile that violates policies and select "Report". Our team will review it.',
+    
+    // Interests & Categories
+    'select_interests': 'Select Your Interests',
+    'what_interests_you': 'What interests you?',
+    'select_interests_description': 'Select at least 3 topics you\'re interested in so we can recommend videos tailored for you.',
+    'interests_help_personalize': 'This helps us personalize your experience',
+    'select_at_least_3_interests': 'Please select at least 3 topics',
+    'interests_saved': 'Interests saved successfully',
+    'skip_for_now': 'Skip for now',
+    'selected': 'Selected',
+    'minimum': 'minimum',
+    'great_choices': 'Great choices!',
+    'add_more_if_you_want': 'Add more if you want',
+    'pick_3_to_continue': 'Pick 3 to continue',
+    'register_with_phone': 'Register with phone',
+    'select_categories': 'Select video categories',
+    'max_3_categories': 'Maximum 3 categories allowed',
+    'retry': 'Retry',
+    
+    // Upload discard dialog
+    'discard_changes': 'Discard changes?',
+    'discard_changes_message': 'If you exit, all changes will be lost. Are you sure you want to exit?',
+    'continue_editing': 'Continue editing',
+    'discard': 'Discard',
   };
 }
 

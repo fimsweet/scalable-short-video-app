@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/phone_register_screen.dart';
 import 'email_password_screen.dart';
 
 /// TikTok-style username creation screen
@@ -408,9 +409,12 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
         ),
       );
     } else if (widget.registrationMethod == 'phone') {
-      // TODO: Go to phone verification screen
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Phone registration coming soon')),
+      // Go to phone registration screen
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const PhoneRegisterScreen(isRegistration: true),
+        ),
       );
     } else {
       // OAuth registration - complete directly
@@ -449,15 +453,11 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
       final token = result['access_token'];
       await _authService.login(userData, token);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_localeService.get('registration_successful')),
-          backgroundColor: Colors.green,
-        ),
+      // Navigate to select interests screen for onboarding (no snackbar)
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/select-interests',
+        (route) => route.isFirst,
       );
-
-      // Pop all registration screens
-      Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

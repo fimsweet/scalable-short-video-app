@@ -111,9 +111,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   void _showSnackBar(String message, Color backgroundColor) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: Text(
+          message,
+          style: TextStyle(color: _themeService.snackBarTextColor),
+        ),
         backgroundColor: backgroundColor,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }
@@ -462,12 +467,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
               title: _localeService.get('light_mode'),
               subtitle: _localeService.get('light_mode_desc'),
               value: _themeService.isLightMode,
-              onChanged: (value) {
-                _themeService.toggleTheme(value);
-                _showSnackBar(
-                  value ? _localeService.get('light_mode_enabled') : _localeService.get('dark_mode_enabled'),
-                  _themeService.snackBarBackground,
-                );
+              onChanged: (value) async {
+                // Clear any existing snackbar first
+                ScaffoldMessenger.of(context).clearSnackBars();
+                
+                // Toggle theme
+                await _themeService.toggleTheme(value);
+                
+                // Show snackbar after theme change with updated colors
+                if (mounted) {
+                  _showSnackBar(
+                    value ? _localeService.get('light_mode_enabled') : _localeService.get('dark_mode_enabled'),
+                    _themeService.snackBarBackground,
+                  );
+                }
               },
             ),
             _buildMenuItem(
@@ -489,7 +502,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     
     return InkWell(
       onTap: () {
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const EditProfileScreen()),
         );
