@@ -1,22 +1,13 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class FollowService {
   static final FollowService _instance = FollowService._internal();
   factory FollowService() => _instance;
   FollowService._internal();
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
-    } else {
-      return 'http://localhost:3000';
-    }
-  }
+  String get _baseUrl => AppConfig.userServiceUrl;
 
   Future<Map<String, dynamic>> toggleFollow(int followerId, int followingId) async {
     try {

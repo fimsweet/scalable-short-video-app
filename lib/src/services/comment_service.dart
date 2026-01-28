@@ -2,23 +2,14 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class CommentService {
   static final CommentService _instance = CommentService._internal();
   factory CommentService() => _instance;
   CommentService._internal();
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3002';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3002';
-    } else {
-      return 'http://localhost:3002';
-    }
-  }
+  String get _baseUrl => AppConfig.videoServiceUrl;
 
   Future<Map<String, dynamic>?> createComment(
     String videoId, 

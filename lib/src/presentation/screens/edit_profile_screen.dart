@@ -40,6 +40,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String _originalBio = '';
   String _originalGender = '';
   DateTime? _originalDateOfBirth;
+  
+  // Bio expand/collapse state
+  bool _isBioExpanded = false;
 
   @override
   void initState() {
@@ -290,6 +293,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  // Helper function to get gender display text based on stored key
+  String _getGenderDisplayText(String genderKey) {
+    switch (genderKey.toLowerCase()) {
+      case 'male':
+        return _localeService.get('male');
+      case 'female':
+        return _localeService.get('female');
+      case 'other':
+        return _localeService.get('other');
+      case 'prefer_not_to_say':
+        return _localeService.get('prefer_not_to_say');
+      default:
+        return genderKey; // fallback to raw value if not recognized
+    }
+  }
+
   void _showGenderPicker() {
     showModalBottomSheet(
       context: context,
@@ -324,10 +343,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
               Divider(height: 1, color: _themeService.dividerColor),
-              _buildGenderOption(_localeService.get('male')),
-              _buildGenderOption(_localeService.get('female')),
-              _buildGenderOption(_localeService.get('other')),
-              _buildGenderOption(_localeService.get('prefer_not_to_say')),
+              // Store key values (male, female, etc.) not translated text
+              _buildGenderOption('male', _localeService.get('male')),
+              _buildGenderOption('female', _localeService.get('female')),
+              _buildGenderOption('other', _localeService.get('other')),
+              _buildGenderOption('prefer_not_to_say', _localeService.get('prefer_not_to_say')),
               const SizedBox(height: 20),
             ],
           ),
@@ -336,10 +356,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildGenderOption(String gender) {
+  Widget _buildGenderOption(String genderKey, String displayText) {
     return InkWell(
       onTap: () {
-        setState(() => _selectedGender = gender);
+        setState(() => _selectedGender = genderKey);
         Navigator.pop(context);
       },
       child: Container(
@@ -348,14 +368,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             Expanded(
               child: Text(
-                gender,
+                displayText,
                 style: TextStyle(
                   fontSize: 16,
                   color: _themeService.textPrimaryColor,
                 ),
               ),
             ),
-            if (_selectedGender == gender)
+            if (_selectedGender.toLowerCase() == genderKey.toLowerCase())
               const Icon(Icons.check, color: Colors.blue, size: 24),
           ],
         ),
@@ -456,7 +476,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
       },
       child: Scaffold(
-        backgroundColor: _themeService.backgroundColor,
+        backgroundColor: _themeService.isLightMode 
+            ? const Color(0xFFF5F5F5) 
+            : _themeService.backgroundColor,
         appBar: AppBar(
           backgroundColor: _themeService.appBarBackground,
           elevation: 0,
@@ -499,6 +521,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       body: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 24),
             
@@ -529,80 +552,87 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            TextButton(
-              onPressed: _pickAndUploadAvatar,
-              child: Text(
-                _localeService.get('change_photo'),
-                style: const TextStyle(
-                  color: Colors.blue,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Section: Thông tin cơ bản
-            _buildSectionTitle(_localeService.get('basic_info')),
-            _buildEditField(
-              label: _localeService.get('name'),
-              hint: _localeService.get('add_name'),
-              controller: _nameController,
-              enabled: false,
-            ),
-            _buildEditField(
-              label: _localeService.get('bio'),
-              hint: _localeService.get('add_bio'),
-              controller: _bioController,
-              maxLines: 3,
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Section: Thông tin bổ sung
-            _buildSectionTitle(_localeService.get('additional_info')),
-            _buildTapField(
-              label: _localeService.get('date_of_birth'),
-              value: _selectedDateOfBirth != null 
-                  ? '${_selectedDateOfBirth!.day.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.month.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.year}'
-                  : _localeService.get('select_date_of_birth'),
-              onTap: _showDatePicker,
-            ),
-            _buildTapField(
-              label: _localeService.get('gender'),
-              value: _selectedGender.isEmpty ? _localeService.get('select_gender') : _selectedGender,
-              onTap: _showGenderPicker,
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Section: Account Info (Phone/Email)
-            _buildSectionTitle(_localeService.get('account_info')),
-            _buildAccountInfoSection(),
-            
-            const SizedBox(height: 24),
-            
-            // Link to Settings - simple blue text like Instagram
-            InkWell(
-              onTap: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
-                );
-              },
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            Center(
+              child: TextButton(
+                onPressed: _pickAndUploadAvatar,
                 child: Text(
-                  _localeService.get('account_settings'),
+                  _localeService.get('change_photo'),
                   style: const TextStyle(
                     color: Colors.blue,
                     fontSize: 16,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Basic Info
+            _buildSectionTitle(_localeService.get('basic_info')),
+            _buildSettingsGroup([
+              _buildEditField(
+                label: _localeService.get('name'),
+                hint: _localeService.get('add_name'),
+                controller: _nameController,
+                enabled: false,
+                showDivider: true,
+              ),
+              _buildCollapsibleBioField(showDivider: false),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Additional Info
+            _buildSectionTitle(_localeService.get('additional_info')),
+            _buildSettingsGroup([
+              _buildTapField(
+                label: _localeService.get('date_of_birth'),
+                value: _selectedDateOfBirth != null 
+                    ? '${_selectedDateOfBirth!.day.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.month.toString().padLeft(2, '0')}/${_selectedDateOfBirth!.year}'
+                    : _localeService.get('select_date_of_birth'),
+                onTap: _showDatePicker,
+                showDivider: true,
+              ),
+              _buildTapField(
+                label: _localeService.get('gender'),
+                value: _selectedGender.isEmpty ? _localeService.get('select_gender') : _getGenderDisplayText(_selectedGender),
+                onTap: _showGenderPicker,
+              ),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Account Info
+            _buildSectionTitle(_localeService.get('account_info')),
+            _buildSettingsGroup([
+              _buildAccountInfoSection(),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Link to Settings
+            _buildSettingsGroup([
+              InkWell(
+                onTap: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
+                  );
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Text(
+                    _localeService.get('account_settings'),
+                    style: const TextStyle(
+                      color: Colors.blue,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+            ]),
             
             const SizedBox(height: 100),
           ],
@@ -613,16 +643,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: _themeService.sectionTitleBackground,
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, bottom: 8),
       child: Text(
         title,
         style: TextStyle(
           color: _themeService.textSecondaryColor,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsGroup(List<Widget> children) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: _themeService.inputBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: children,
         ),
       ),
     );
@@ -668,11 +712,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required TextEditingController controller,
     int maxLines = 1,
     bool enabled = true,
+    bool showDivider = false,
   }) {
     return Column(
       children: [
         Container(
-          color: _themeService.inputBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             crossAxisAlignment: maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
@@ -711,35 +755,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ],
           ),
         ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
       ],
     );
   }
 
-  Widget _buildTapField({
-    required String label,
-    required String value,
-    required VoidCallback onTap,
-  }) {
-    final isPlaceholder = value == _localeService.get('select_gender');
+  Widget _buildCollapsibleBioField({bool showDivider = false}) {
+    final hasBio = _bioController.text.trim().isNotEmpty;
     
     return Column(
       children: [
-        InkWell(
-          onTap: onTap,
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isBioExpanded = !_isBioExpanded;
+            });
+          },
+          behavior: HitTestBehavior.opaque,
           child: Container(
-            color: _themeService.inputBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 SizedBox(
                   width: 80,
                   child: Text(
-                    label,
+                    _localeService.get('bio'),
                     style: TextStyle(
                       color: _themeService.textPrimaryColor,
                       fontSize: 16,
@@ -748,9 +794,122 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 Expanded(
                   child: Text(
+                    hasBio 
+                        ? _localeService.get('tap_to_edit_bio')
+                        : _localeService.get('add_bio'),
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 16,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _isBioExpanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: _themeService.textSecondaryColor,
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Animated expand section
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _isBioExpanded
+              ? Container(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _themeService.isLightMode 
+                          ? Colors.grey[100] 
+                          : Colors.grey[900],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _themeService.isLightMode
+                            ? Colors.grey[300]!
+                            : Colors.grey[700]!,
+                        width: 1,
+                      ),
+                    ),
+                    child: TextField(
+                      controller: _bioController,
+                      maxLines: 4,
+                      maxLength: 150,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 15,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: _localeService.get('add_bio'),
+                        hintStyle: TextStyle(
+                          color: _themeService.textSecondaryColor.withAlpha(150),
+                          fontSize: 15,
+                        ),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.all(14),
+                        counterStyle: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        setState(() {}); // Update preview text
+                      },
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTapField({
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+    bool showDivider = false,
+  }) {
+    final isPlaceholder = value == _localeService.get('select_gender');
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
                     value,
                     style: TextStyle(
-                      color: isPlaceholder ? _themeService.textSecondaryColor : _themeService.textPrimaryColor,
+                      color: isPlaceholder 
+                          ? _themeService.textSecondaryColor 
+                          : _themeService.textPrimaryColor,
                       fontSize: 16,
                     ),
                   ),
@@ -760,11 +919,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
         ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
       ],
     );
   }
@@ -781,6 +941,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           label: 'Email',
           value: hasEmail ? _linkedEmail! : null,
           onTap: () => _showEmailBottomSheet(hasEmail ? _linkedEmail : null),
+          showDivider: true,
         ),
         
         // Phone row
@@ -799,6 +960,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     required String label,
     String? value,
     required VoidCallback onTap,
+    bool showDivider = false,
   }) {
     final hasValue = value != null && value.isNotEmpty;
     
@@ -807,7 +969,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         InkWell(
           onTap: onTap,
           child: Container(
-            color: _themeService.inputBackground,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
@@ -847,11 +1008,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ),
           ),
         ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
       ],
     );
   }
@@ -1576,7 +1738,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                       return;
                                     }
                                     
-                                    final checkResult = await _apiService.checkPhoneForLink(token, e164Phone);
+                                    final checkResult = await _apiService.checkPhoneForLink(token: token, phone: e164Phone);
                                     if (checkResult['available'] != true) {
                                       setSheetState(() {
                                         errorMessage = checkResult['message'] ?? _localeService.get('phone_already_used');
@@ -1801,7 +1963,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                       }
                                       
                                       final token = await _authService.getToken();
-                                      final result = await _apiService.linkPhone(token!, firebaseIdToken);
+                                      final result = await _apiService.linkPhone(token: token!, firebaseIdToken: firebaseIdToken);
                                       
                                       await FirebaseAuth.instance.signOut();
                                       

@@ -5,33 +5,16 @@ import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class VideoService {
   static final VideoService _instance = VideoService._internal();
   factory VideoService() => _instance;
   VideoService._internal();
 
-  // Use 10.0.2.2 for Android emulator, localhost for web/iOS
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3002';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3002';
-    } else {
-      return 'http://localhost:3002';
-    }
-  }
-
-  // User service URL
-  String get _userServiceUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
-    } else {
-      return 'http://localhost:3000';
-    }
-  }
+  // Use centralized config for URLs
+  String get _baseUrl => AppConfig.videoServiceUrl;
+  String get _userServiceUrl => AppConfig.userServiceUrl;
 
   String get _videoApiUrl => '$_baseUrl/videos';
 
@@ -342,7 +325,36 @@ class VideoService {
         if (data['success'] == true && data['videos'] != null) {
           final List<dynamic> videos = data['videos'];
           print('✅ Found ${videos.length} videos for query: "$query"');
-          return videos;
+          
+          // Fetch user info for each video
+          final videosWithUser = await Future.wait(
+            videos.map((video) async {
+              if (video['userId'] != null) {
+                try {
+                  final userUrl = '$_userServiceUrl/users/id/${video['userId']}';
+                  final userResponse = await http.get(Uri.parse(userUrl));
+                  
+                  if (userResponse.statusCode == 200) {
+                    final userData = json.decode(userResponse.body);
+                    video['user'] = {
+                      'username': userData['username'] ?? 'user',
+                      'avatar': userData['avatar'],
+                    };
+                  } else {
+                    video['user'] = {'username': 'user', 'avatar': null};
+                  }
+                } catch (e) {
+                  print('⚠️ Error fetching user for video ${video['id']}: $e');
+                  video['user'] = {'username': 'user', 'avatar': null};
+                }
+              } else {
+                video['user'] = {'username': 'user', 'avatar': null};
+              }
+              return video;
+            }).toList(),
+          );
+          
+          return videosWithUser;
         }
         return [];
       } else {

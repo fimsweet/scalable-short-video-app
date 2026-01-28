@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import 'package:scalable_short_video_app/src/features/auth/presentation/screens/registration_method_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/forgot_password_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/phone_register_screen.dart';
@@ -57,14 +58,49 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      // Get device info
+      String platform = 'unknown';
+      try {
+        if (Platform.isAndroid) {
+          platform = 'android';
+        } else if (Platform.isIOS) {
+          platform = 'ios';
+        } else if (Platform.isWindows) {
+          platform = 'windows';
+        } else if (Platform.isMacOS) {
+          platform = 'macos';
+        } else if (Platform.isLinux) {
+          platform = 'linux';
+        }
+      } catch (e) {
+        platform = 'web';
+      }
+
       final result = await _apiService.login(
         username: _usernameController.text.trim(),
         password: _passwordController.text,
+        deviceInfo: {
+          'platform': platform,
+          'deviceName': platform,
+          'appVersion': '1.0.0',
+        },
       );
 
       if (result['success']) {
         // Lấy dữ liệu người dùng từ API response
         final responseData = result['data'];
+        
+        // Check if account requires reactivation
+        if (responseData['requiresReactivation'] == true) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showReactivationDialog(
+              userId: responseData['userId'],
+              daysRemaining: responseData['daysRemaining'] ?? 30,
+            );
+          }
+          return;
+        }
         
         // Check if 2FA is required
         if (responseData['requires2FA'] == true) {
@@ -108,6 +144,151 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _isLoading = false;
         });
+      }
+    }
+  }
+
+  /// Show reactivation dialog for deactivated accounts
+  void _showReactivationDialog({required int userId, required int daysRemaining}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.account_circle_outlined, color: Colors.deepOrange, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _localeService.get('account_deactivated'),
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _localeService.get('reactivate_account_prompt'),
+              style: TextStyle(color: _themeService.textSecondaryColor, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, color: Colors.deepOrange, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_localeService.get('days_remaining')}: $daysRemaining',
+                      style: const TextStyle(
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _reactivateAccount();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(_localeService.get('reactivate_account')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Reactivate the account
+  Future<void> _reactivateAccount() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final result = await _apiService.reactivateAccount(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text,
+      );
+      
+      if (result['success'] == true) {
+        // Now login normally
+        final loginResult = await _apiService.login(
+          username: _usernameController.text.trim(),
+          password: _passwordController.text,
+        );
+        
+        if (loginResult['success'] == true) {
+          final responseData = loginResult['data'];
+          final userData = responseData['user'];
+          final token = responseData['access_token'];
+          await _auth.login(userData, token);
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(_localeService.get('account_reactivated')),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context, true);
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? _localeService.get('error')),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_localeService.get('error')}: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }

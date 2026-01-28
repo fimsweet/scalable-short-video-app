@@ -11,6 +11,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'dart:io';
 
 class ChatScreen extends StatefulWidget {
@@ -850,68 +851,81 @@ class _ChatScreenState extends State<ChatScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
-              backgroundImage: widget.recipientAvatar != null
-                  ? NetworkImage(widget.recipientAvatar!)
-                  : null,
-              child: widget.recipientAvatar == null
-                  ? Icon(Icons.person, color: _themeService.iconColor, size: 18)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.recipientUsername,
-                    style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (_otherUserTyping)
+        title: GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserProfileScreen(
+                  userId: int.parse(widget.recipientId),
+                ),
+              ),
+            );
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                backgroundImage: widget.recipientAvatar != null
+                    ? NetworkImage(widget.recipientAvatar!)
+                    : null,
+                child: widget.recipientAvatar == null
+                    ? Icon(Icons.person, color: _themeService.iconColor, size: 18)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      _localeService.isVietnamese ? 'Đang nhập...' : 'Typing...',
-                      style: const TextStyle(
-                        color: Colors.blue,
-                        fontSize: 12,
-                        fontStyle: FontStyle.italic,
+                      widget.recipientUsername,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
-                    )
-                  else
-                    Row(
-                      children: [
-                        if (_recipientIsOnline)
-                          Container(
-                            width: 8,
-                            height: 8,
-                            margin: const EdgeInsets.only(right: 4),
-                            decoration: const BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
+                    ),
+                    if (_otherUserTyping)
+                      Text(
+                        _localeService.isVietnamese ? 'Đang nhập...' : 'Typing...',
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      )
+                    else
+                      Row(
+                        children: [
+                          if (_recipientIsOnline)
+                            Container(
+                              width: 8,
+                              height: 8,
+                              margin: const EdgeInsets.only(right: 4),
+                              decoration: const BoxDecoration(
+                                color: Colors.green,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          Text(
+                            _recipientIsOnline 
+                                ? (_localeService.isVietnamese ? 'Đang hoạt động' : 'Active now')
+                                : _recipientStatusText,
+                            style: TextStyle(
+                              color: _recipientIsOnline ? Colors.green : _themeService.textSecondaryColor, 
+                              fontSize: 12,
                             ),
                           ),
-                        Text(
-                          _recipientIsOnline 
-                              ? (_localeService.isVietnamese ? 'Đang hoạt động' : 'Active now')
-                              : _recipientStatusText,
-                          style: TextStyle(
-                            color: _recipientIsOnline ? Colors.green : _themeService.textSecondaryColor, 
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
+                        ],
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           IconButton(

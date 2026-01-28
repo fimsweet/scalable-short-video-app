@@ -21,7 +21,9 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
   final AuthService _authService = AuthService();
 
   List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _suggestedUsers = [];
   bool _isLoading = false;
+  bool _isLoadingSuggestions = true;
   bool _hasSearched = false;
 
   @override
@@ -29,10 +31,7 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
-    // Auto focus search field
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
+    _loadSuggestedUsers();
   }
 
   @override
@@ -50,6 +49,33 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
 
   void _onLocaleChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadSuggestedUsers() async {
+    setState(() => _isLoadingSuggestions = true);
+    
+    try {
+      final currentUserId = _authService.user?['id'];
+      if (currentUserId == null) {
+        setState(() => _isLoadingSuggestions = false);
+        return;
+      }
+
+      // Get following list as suggested users
+      final following = await _apiService.getFollowing(currentUserId.toString());
+      
+      if (mounted) {
+        setState(() {
+          _suggestedUsers = following;
+          _isLoadingSuggestions = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading suggested users: $e');
+      if (mounted) {
+        setState(() => _isLoadingSuggestions = false);
+      }
+    }
   }
 
   Future<void> _searchUsers(String query) async {
@@ -185,7 +211,7 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
             ),
           ),
 
-          // Results
+          // Results or Suggestions
           Expanded(
             child: _isLoading
                 ? Center(
@@ -193,38 +219,70 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
                       color: _themeService.textPrimaryColor,
                     ),
                   )
-                : _searchResults.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        itemCount: _searchResults.length,
-                        itemBuilder: (context, index) {
-                          final user = _searchResults[index];
-                          return _buildUserTile(user);
-                        },
-                      ),
+                : _hasSearched
+                    ? _searchResults.isEmpty
+                        ? _buildNoResultsState()
+                        : ListView.builder(
+                            itemCount: _searchResults.length,
+                            itemBuilder: (context, index) {
+                              final user = _searchResults[index];
+                              return _buildUserTile(user);
+                            },
+                          )
+                    : _buildSuggestionsSection(),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    if (!_hasSearched) {
+  Widget _buildSuggestionsSection() {
+    if (_isLoadingSuggestions) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: _themeService.textPrimaryColor,
+        ),
+      );
+    }
+
+    if (_suggestedUsers.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.search,
-              size: 80,
-              color: _themeService.textSecondaryColor,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _localeService.get('search_users_to_chat'),
-              style: TextStyle(
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[100] 
+                    : Colors.grey[850],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.people_outline,
+                size: 48,
                 color: _themeService.textSecondaryColor,
-                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _localeService.get('no_suggestions'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                _localeService.get('follow_to_see_suggestions'),
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -232,13 +290,42 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
       );
     }
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            _localeService.get('suggested'),
+            style: TextStyle(
+              color: _themeService.textSecondaryColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _suggestedUsers.length,
+            itemBuilder: (context, index) {
+              final user = _suggestedUsers[index];
+              return _buildUserTile(user);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNoResultsState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.person_search,
-            size: 80,
+            size: 64,
             color: _themeService.textSecondaryColor,
           ),
           const SizedBox(height: 16),

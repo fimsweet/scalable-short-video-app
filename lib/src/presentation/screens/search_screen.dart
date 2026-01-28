@@ -35,6 +35,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   List<dynamic> _suggestedVideos = [];
   bool _isSearching = false;
   bool _hasSearched = false;
+  bool _isHistoryExpanded = false;
   
   // Track follow status
   Map<String, bool> _followStatus = {};
@@ -43,6 +44,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadSearchHistory();
     _loadSuggestions();
     
@@ -52,8 +54,15 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     });
   }
 
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _searchController.dispose();
     _focusNode.dispose();
     _tabController.dispose();
@@ -206,6 +215,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               child: TextField(
                 controller: _searchController,
                 focusNode: _focusNode,
+                textAlignVertical: TextAlignVertical.center,
                 style: TextStyle(
                   color: _themeService.textPrimaryColor,
                   fontSize: 14,
@@ -247,10 +257,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                         )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 8,
-                  ),
+                  isCollapsed: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
                 onChanged: (value) {
                   setState(() {});
@@ -279,29 +287,48 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Widget _buildSearchSuggestions() {
+    // Calculate how many history items to show
+    final int maxHistoryItems = 10; // Maximum limit like Instagram/TikTok
+    final int visibleHistoryCount = _isHistoryExpanded 
+        ? (_searchHistory.length > maxHistoryItems ? maxHistoryItems : _searchHistory.length)
+        : (_searchHistory.length > 3 ? 3 : _searchHistory.length);
+    final bool canExpand = _searchHistory.length > 3;
+    final bool canCollapse = _isHistoryExpanded;
+    
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
         // Search history
         if (_searchHistory.isNotEmpty) ...[
           const SizedBox(height: 8),
-          ..._searchHistory.take(5).map((query) => _buildHistoryItem(query)),
-          if (_searchHistory.length > 5)
-            Center(
-              child: TextButton(
-                onPressed: () {},
+          ..._searchHistory.take(visibleHistoryCount).map((query) => _buildHistoryItem(query)),
+          if (canExpand || canCollapse)
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isHistoryExpanded = !_isHistoryExpanded;
+                });
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _localeService.get('see_more'),
+                      _isHistoryExpanded 
+                          ? _localeService.get('see_less')
+                          : _localeService.get('see_more'),
                       style: TextStyle(
                         color: _themeService.textSecondaryColor,
                         fontSize: 13,
                       ),
                     ),
+                    const SizedBox(width: 4),
                     Icon(
-                      Icons.keyboard_arrow_down,
+                      _isHistoryExpanded 
+                          ? Icons.keyboard_arrow_up 
+                          : Icons.keyboard_arrow_down,
                       color: _themeService.textSecondaryColor,
                       size: 16,
                     ),
@@ -312,7 +339,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           const SizedBox(height: 16),
         ],
         
-        // Suggestions section - "Bạn có thể thích"
+        // Suggestions section - "Bạn có thể thích" TikTok style
         if (_suggestedVideos.isNotEmpty) ...[
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -327,6 +354,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               ),
               GestureDetector(
                 onTap: _loadSuggestions,
+                behavior: HitTestBehavior.opaque,
                 child: Row(
                   children: [
                     Icon(
@@ -391,42 +419,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         ? _videoService.getVideoUrl(video['thumbnailUrl'])
         : null;
 
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.red,
-          shape: BoxShape.circle,
-        ),
-      ),
-      title: Text(
-        title.toString().isEmpty ? 'Video' : title,
-        style: TextStyle(
-          color: Colors.red,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: thumbnailUrl != null
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: Image.network(
-                thumbnailUrl,
-                width: 50,
-                height: 70,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 50,
-                  height: 70,
-                  color: Colors.grey[800],
-                ),
-              ),
-            )
-          : null,
+    return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
@@ -438,34 +431,72 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           ),
         );
       },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            // Red dot indicator
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: ThemeService.accentColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Title
+            Expanded(
+              child: Text(
+                title.toString().isEmpty ? 'Video' : title,
+                style: TextStyle(
+                  color: ThemeService.accentColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Search icon or Thumbnail (TikTok style: square thumbnail)
+            thumbnailUrl != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.network(
+                      thumbnailUrl,
+                      width: 44,
+                      height: 44,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 44,
+                        height: 44,
+                        color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
+                        child: Icon(
+                          Icons.play_arrow,
+                          color: _themeService.textSecondaryColor,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  )
+                : Icon(
+                    Icons.search,
+                    color: _themeService.textSecondaryColor,
+                    size: 20,
+                  ),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildSearchResults() {
     return Column(
       children: [
-        // Tabs
-        Container(
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: _themeService.dividerColor,
-                width: 0.5,
-              ),
-            ),
-          ),
-          child: TabBar(
-            controller: _tabController,
-            labelColor: _themeService.textPrimaryColor,
-            unselectedLabelColor: _themeService.textSecondaryColor,
-            indicatorColor: _themeService.textPrimaryColor,
-            indicatorSize: TabBarIndicatorSize.label,
-            tabs: [
-              Tab(text: _localeService.get('videos_tab')),
-              Tab(text: _localeService.get('users_tab')),
-            ],
-          ),
-        ),
+        // TikTok-style custom tabs
+        _buildCustomTabBar(),
         // Results
         Expanded(
           child: _isSearching
@@ -476,6 +507,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 )
               : TabBarView(
                   controller: _tabController,
+                  physics: const BouncingScrollPhysics(),
                   children: [
                     _buildVideoResults(),
                     _buildUserResults(),
@@ -483,6 +515,69 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCustomTabBar() {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: _themeService.dividerColor,
+            width: 0.5,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildCustomTab(_localeService.get('videos_tab'), 0),
+          ),
+          Expanded(
+            child: _buildCustomTab(_localeService.get('users_tab'), 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomTab(String title, int index) {
+    final isSelected = _tabController.index == index;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _tabController.animateTo(index);
+        });
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                color: isSelected 
+                    ? _themeService.textPrimaryColor 
+                    : _themeService.textSecondaryColor,
+                fontSize: 15,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+            const SizedBox(height: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isSelected ? 32 : 0,
+              height: 2,
+              decoration: BoxDecoration(
+                color: _themeService.textPrimaryColor,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -510,80 +605,137 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       );
     }
 
+    // TikTok-style 2-column grid
     return GridView.builder(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.all(8),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 9 / 16,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+        crossAxisCount: 2,
+        childAspectRatio: 0.55, // Taller to fit info below thumbnail
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 16,
       ),
       itemCount: _videoResults.length,
       itemBuilder: (context, index) {
         final video = _videoResults[index];
-        final thumbnailUrl = video['thumbnailUrl'] != null
-            ? _videoService.getVideoUrl(video['thumbnailUrl'])
-            : null;
-        final viewCount = video['viewCount'] ?? 0;
+        return _buildVideoGridItem(video);
+      },
+    );
+  }
 
-        return GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => VideoDetailScreen(
-                  videos: [video],
-                  initialIndex: 0,
-                ),
-              ),
-            );
-          },
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-            ),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (thumbnailUrl != null)
-                  Image.network(
-                    thumbnailUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      color: Colors.grey[800],
-                      child: const Icon(Icons.video_library, color: Colors.white54),
-                    ),
-                  )
-                else
-                  Container(
-                    color: Colors.grey[800],
-                    child: const Icon(Icons.video_library, color: Colors.white54),
-                  ),
-                // View count
-                Positioned(
-                  bottom: 4,
-                  left: 4,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.play_arrow, color: Colors.white, size: 14),
-                      const SizedBox(width: 2),
-                      Text(
-                        _formatCount(viewCount is int ? viewCount : 0),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          shadows: [Shadow(blurRadius: 4, color: Colors.black)],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+  Widget _buildVideoGridItem(dynamic video) {
+    final thumbnailUrl = video['thumbnailUrl'] != null
+        ? _videoService.getVideoUrl(video['thumbnailUrl'])
+        : null;
+    final title = video['title'] ?? video['description'] ?? '';
+    final likeCount = video['likeCount'] ?? 0;
+    final user = video['user'];
+    final username = user?['username'] ?? 'user';
+    final avatar = user?['avatar'];
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VideoDetailScreen(
+              videos: [video],
+              initialIndex: 0,
             ),
           ),
         );
       },
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Thumbnail
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                width: double.infinity,
+                color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
+                child: thumbnailUrl != null
+                    ? Image.network(
+                        thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
+                          child: Icon(
+                            Icons.video_library,
+                            color: _themeService.textSecondaryColor,
+                          ),
+                        ),
+                      )
+                    : Icon(
+                        Icons.video_library,
+                        color: _themeService.textSecondaryColor,
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Title
+          Text(
+            title.toString().isEmpty ? 'Video' : title,
+            style: TextStyle(
+              color: _themeService.textPrimaryColor,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 6),
+          // User info and likes
+          Row(
+            children: [
+              // Avatar
+              CircleAvatar(
+                radius: 10,
+                backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[700],
+                backgroundImage: avatar != null
+                    ? NetworkImage(_apiService.getAvatarUrl(avatar))
+                    : null,
+                child: avatar == null
+                    ? Icon(
+                        Icons.person,
+                        size: 12,
+                        color: _themeService.textSecondaryColor,
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 6),
+              // Username
+              Expanded(
+                child: Text(
+                  username,
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              // Like count
+              Icon(
+                Icons.favorite_outline,
+                size: 14,
+                color: _themeService.textSecondaryColor,
+              ),
+              const SizedBox(width: 2),
+              Text(
+                _formatCount(likeCount is int ? likeCount : 0),
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

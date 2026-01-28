@@ -6,21 +6,14 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:image_picker/image_picker.dart';
+import '../config/app_config.dart';
 
 class MessageService {
   static final MessageService _instance = MessageService._internal();
   factory MessageService() => _instance;
   MessageService._internal();
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3002';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3002';
-    } else {
-      return 'http://localhost:3002';
-    }
-  }
+  String get _baseUrl => AppConfig.videoServiceUrl;
 
   IO.Socket? _socket;
   String? _currentUserId;

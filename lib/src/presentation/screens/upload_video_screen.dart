@@ -251,15 +251,28 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
       );
 
       if (video != null) {
-        final extension = video.path.toLowerCase().split('.').last;
-        final isValidFormat =
-            ['mp4', 'mov', 'avi', 'webm', 'mkv'].contains(extension);
+        // On web, video.path is a blob URL, so we need to check video.name instead
+        final fileName = video.name.toLowerCase();
+        final extension = fileName.contains('.') 
+            ? fileName.split('.').last 
+            : '';
+        
+        // Check valid video extensions
+        final validExtensions = ['mp4', 'mov', 'avi', 'webm', 'mkv', 'm4v', '3gp', 'wmv', 'flv'];
+        final isValidFormat = validExtensions.contains(extension);
+
+        // Debug log for web
+        print('🎬 Video selected:');
+        print('   Name: ${video.name}');
+        print('   Path: ${video.path}');
+        print('   Extension: $extension');
+        print('   Is valid: $isValidFormat');
 
         if (!isValidFormat) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(_localeService.get('video_format_not_supported')),
+                content: Text('${_localeService.get('video_format_not_supported')}: $extension'),
                 backgroundColor: Colors.red,
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -96,19 +96,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   String _getDisplayText(String value) {
     switch (value) {
       case 'everyone':
-        return 'Mọi người';
+        return _localeService.get('everyone');
       case 'friends':
-        return 'Bạn bè';
+        return _localeService.get('friends');
       case 'onlyMe':
-        return 'Chỉ mình tôi';
+        return _localeService.get('only_me');
       case 'noOne':
-        return 'Không ai';
+        return _localeService.get('no_one');
       default:
-        return 'Mọi người';
+        return _localeService.get('everyone');
     }
   }
 
   void _showSnackBar(String message, Color backgroundColor) {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -313,7 +314,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _themeService.backgroundColor,
+      backgroundColor: _themeService.isLightMode 
+          ? const Color(0xFFF5F5F5) 
+          : _themeService.backgroundColor,
       appBar: AppBar(
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
@@ -332,162 +335,176 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       ),
       body: SingleChildScrollView(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 8),
-            
-            // Blue link to Edit Profile
-            _buildProfileLink(),
-            
             const SizedBox(height: 16),
             
-            // Section: Tài khoản
+            // Profile Link Card
+            _buildSettingsGroup([
+              _buildProfileLink(),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Account
             _buildSectionTitle(_localeService.get('account')),
-            _buildMenuItem(
-              title: _localeService.get('account_management'),
-              subtitle: _localeService.get('account_management_subtitle'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AccountManagementScreen()),
-                );
-              },
-            ),
+            _buildSettingsGroup([
+              _buildMenuItem(
+                title: _localeService.get('account_management'),
+                subtitle: _localeService.get('account_management_subtitle'),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AccountManagementScreen()),
+                  );
+                },
+              ),
+            ]),
             
-            // Section: Quyền riêng tư
+            const SizedBox(height: 24),
+            
+            // Section: Privacy
             _buildSectionTitle(_localeService.get('privacy')),
-            _buildSettingSwitch(
-              title: _localeService.get('private_account'),
-              subtitle: _localeService.get('private_account_desc'),
-              value: _isPrivateAccount,
-              onChanged: (value) {
-                setState(() => _isPrivateAccount = value);
-                _updatePrivacySetting('accountPrivacy', value ? 'private' : 'public');
-                _showSnackBar(
-                  value ? _localeService.get('private_account_enabled') : _localeService.get('private_account_disabled'),
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-            _buildMenuItem(
-              title: _localeService.get('who_can_view_videos'),
-              subtitle: _getDisplayText(_whoCanViewVideos),
-              onTap: () => _showPrivacySelectionModal(
-                title: _localeService.get('who_can_view_videos_title'),
-                currentValue: _whoCanViewVideos,
-                options: [
-                  {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                  {'title': _localeService.get('friends'), 'value': 'friends'},
-                  {'title': _localeService.get('only_me'), 'value': 'onlyMe'},
-                ],
-                onSelect: (value) {
-                  setState(() => _whoCanViewVideos = value);
-                  _updatePrivacySetting('whoCanViewVideos', value);
-                  _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                },
-              ),
-            ),
-            _buildMenuItem(
-              title: _localeService.get('who_can_send_messages'),
-              subtitle: _getDisplayText(_whoCanSendMessages),
-              onTap: () => _showPrivacySelectionModal(
-                title: _localeService.get('who_can_send_messages_title'),
-                currentValue: _whoCanSendMessages,
-                options: [
-                  {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                  {'title': _localeService.get('friends'), 'value': 'friends'},
-                  {'title': _localeService.get('no_one'), 'value': 'noOne'},
-                ],
-                onSelect: (value) {
-                  setState(() => _whoCanSendMessages = value);
-                  _updatePrivacySetting('whoCanSendMessages', value);
-                  _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                },
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Section: Tương tác
-            _buildSectionTitle(_localeService.get('comments')),
-            _buildMenuItem(
-              title: _localeService.get('who_can_comment'),
-              subtitle: _getDisplayText(_whoCanComment),
-              onTap: () => _showPrivacySelectionModal(
-                title: _localeService.get('who_can_comment_title'),
-                currentValue: _whoCanComment,
-                options: [
-                  {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                  {'title': _localeService.get('friends'), 'value': 'friends'},
-                  {'title': _localeService.get('no_one'), 'value': 'noOne'},
-                ],
-                onSelect: (value) {
-                  setState(() => _whoCanComment = value);
-                  _updatePrivacySetting('whoCanComment', value);
-                  _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                },
-              ),
-            ),
-            _buildSettingSwitch(
-              title: _localeService.get('filter_comments'),
-              subtitle: _localeService.get('filter_comments_desc'),
-              value: _filterComments,
-              onChanged: (value) {
-                setState(() => _filterComments = value);
-                _updatePrivacySetting('filterComments', value);
-                _showSnackBar(
-                  value ? _localeService.get('filter_comments_enabled') : _localeService.get('filter_comments_disabled'),
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-            
-            // Section: Thông báo
-            _buildSectionTitle(_localeService.get('notifications')),
-            _buildSettingSwitch(
-              title: _localeService.get('push_notifications'),
-              subtitle: _localeService.get('push_notifications_desc'),
-              value: _pushNotificationsEnabled,
-              onChanged: (value) {
-                setState(() => _pushNotificationsEnabled = value);
-                _updatePrivacySetting('pushNotifications', value);
-                _showSnackBar(
-                  value ? _localeService.get('push_notifications_enabled') : _localeService.get('push_notifications_disabled'),
-                  _themeService.snackBarBackground,
-                );
-              },
-            ),
-
-            const SizedBox(height: 16),
-            
-            // Section: Nội dung và hiển thị
-            _buildSectionTitle(_localeService.get('content_display')),
-            _buildSettingSwitch(
-              title: _localeService.get('light_mode'),
-              subtitle: _localeService.get('light_mode_desc'),
-              value: _themeService.isLightMode,
-              onChanged: (value) async {
-                // Clear any existing snackbar first
-                ScaffoldMessenger.of(context).clearSnackBars();
-                
-                // Toggle theme
-                await _themeService.toggleTheme(value);
-                
-                // Show snackbar after theme change with updated colors
-                if (mounted) {
+            _buildSettingsGroup([
+              _buildSettingSwitch(
+                title: _localeService.get('private_account'),
+                subtitle: _localeService.get('private_account_desc'),
+                value: _isPrivateAccount,
+                onChanged: (value) {
+                  setState(() => _isPrivateAccount = value);
+                  _updatePrivacySetting('accountPrivacy', value ? 'private' : 'public');
                   _showSnackBar(
-                    value ? _localeService.get('light_mode_enabled') : _localeService.get('dark_mode_enabled'),
+                    value ? _localeService.get('private_account_enabled') : _localeService.get('private_account_disabled'),
                     _themeService.snackBarBackground,
                   );
-                }
-              },
-            ),
-            _buildMenuItem(
-              title: _localeService.get('language'),
-              subtitle: _localeService.isVietnamese ? 'Tiếng Việt' : 'English',
-              onTap: _showLanguageSelector,
-            ),
+                },
+                showDivider: true,
+              ),
+              _buildMenuItem(
+                title: _localeService.get('who_can_view_videos'),
+                subtitle: _getDisplayText(_whoCanViewVideos),
+                onTap: () => _showPrivacySelectionModal(
+                  title: _localeService.get('who_can_view_videos_title'),
+                  currentValue: _whoCanViewVideos,
+                  options: [
+                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
+                    {'title': _localeService.get('friends'), 'value': 'friends'},
+                    {'title': _localeService.get('only_me'), 'value': 'onlyMe'},
+                  ],
+                  onSelect: (value) {
+                    setState(() => _whoCanViewVideos = value);
+                    _updatePrivacySetting('whoCanViewVideos', value);
+                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
+                  },
+                ),
+                showDivider: true,
+              ),
+              _buildMenuItem(
+                title: _localeService.get('who_can_send_messages'),
+                subtitle: _getDisplayText(_whoCanSendMessages),
+                onTap: () => _showPrivacySelectionModal(
+                  title: _localeService.get('who_can_send_messages_title'),
+                  currentValue: _whoCanSendMessages,
+                  options: [
+                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
+                    {'title': _localeService.get('friends'), 'value': 'friends'},
+                    {'title': _localeService.get('no_one'), 'value': 'noOne'},
+                  ],
+                  onSelect: (value) {
+                    setState(() => _whoCanSendMessages = value);
+                    _updatePrivacySetting('whoCanSendMessages', value);
+                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
+                  },
+                ),
+              ),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Comments
+            _buildSectionTitle(_localeService.get('comments')),
+            _buildSettingsGroup([
+              _buildMenuItem(
+                title: _localeService.get('who_can_comment'),
+                subtitle: _getDisplayText(_whoCanComment),
+                onTap: () => _showPrivacySelectionModal(
+                  title: _localeService.get('who_can_comment_title'),
+                  currentValue: _whoCanComment,
+                  options: [
+                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
+                    {'title': _localeService.get('friends'), 'value': 'friends'},
+                    {'title': _localeService.get('no_one'), 'value': 'noOne'},
+                  ],
+                  onSelect: (value) {
+                    setState(() => _whoCanComment = value);
+                    _updatePrivacySetting('whoCanComment', value);
+                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
+                  },
+                ),
+                showDivider: true,
+              ),
+              _buildSettingSwitch(
+                title: _localeService.get('filter_comments'),
+                subtitle: _localeService.get('filter_comments_desc'),
+                value: _filterComments,
+                onChanged: (value) {
+                  setState(() => _filterComments = value);
+                  _updatePrivacySetting('filterComments', value);
+                  _showSnackBar(
+                    value ? _localeService.get('filter_comments_enabled') : _localeService.get('filter_comments_disabled'),
+                    _themeService.snackBarBackground,
+                  );
+                },
+              ),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Notifications
+            _buildSectionTitle(_localeService.get('notifications')),
+            _buildSettingsGroup([
+              _buildSettingSwitch(
+                title: _localeService.get('push_notifications'),
+                subtitle: _localeService.get('push_notifications_desc'),
+                value: _pushNotificationsEnabled,
+                onChanged: (value) {
+                  setState(() => _pushNotificationsEnabled = value);
+                  _updatePrivacySetting('pushNotifications', value);
+                  _showSnackBar(
+                    value ? _localeService.get('push_notifications_enabled') : _localeService.get('push_notifications_disabled'),
+                    _themeService.snackBarBackground,
+                  );
+                },
+              ),
+            ]),
+            
+            const SizedBox(height: 24),
+            
+            // Section: Content & Display
+            _buildSectionTitle(_localeService.get('content_display')),
+            _buildSettingsGroup([
+              _buildSettingSwitch(
+                title: _localeService.get('light_mode'),
+                subtitle: _localeService.get('light_mode_desc'),
+                value: _themeService.isLightMode,
+                onChanged: (value) async {
+                  ScaffoldMessenger.of(context).clearSnackBars();
+                  await _themeService.toggleTheme(value);
+                  if (mounted) {
+                    _showSnackBar(
+                      value ? _localeService.get('light_mode_enabled') : _localeService.get('dark_mode_enabled'),
+                      _themeService.snackBarBackground,
+                    );
+                  }
+                },
+                showDivider: true,
+              ),
+              _buildMenuItem(
+                title: _localeService.get('language'),
+                subtitle: _localeService.isVietnamese ? 'Tiếng Việt' : 'English',
+                onTap: _showLanguageSelector,
+              ),
+            ]),
             
             const SizedBox(height: 100),
           ],
@@ -508,7 +525,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         );
       },
       child: Container(
-        color: _themeService.inputBackground,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Row(
           children: [
@@ -566,16 +582,30 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: _themeService.sectionTitleBackground,
+    return Padding(
+      padding: const EdgeInsets.only(left: 20, bottom: 8),
       child: Text(
         title,
         style: TextStyle(
           color: _themeService.textSecondaryColor,
           fontSize: 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsGroup(List<Widget> children) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: _themeService.inputBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: children,
         ),
       ),
     );
@@ -585,14 +615,14 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
+    bool showDivider = false,
   }) {
     return Column(
       children: [
         InkWell(
           onTap: onTap,
           child: Container(
-            color: _themeService.inputBackground,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
                 Expanded(
@@ -626,11 +656,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             ),
           ),
         ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
       ],
     );
   }
@@ -640,11 +671,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+    bool showDivider = false,
   }) {
     return Column(
       children: [
         Container(
-          color: _themeService.inputBackground,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
@@ -681,11 +712,12 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             ],
           ),
         ),
-        Container(
-          margin: const EdgeInsets.only(left: 16),
-          height: 0.5,
-          color: _themeService.dividerColor,
-        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
       ],
     );
   }

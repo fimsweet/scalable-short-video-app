@@ -2,18 +2,12 @@ import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 
 class ApiService {
-  // Use 10.0.2.2 for Android emulator to connect to host's localhost
-  // For web and other platforms, use localhost.
-  static final String _baseUrl = (kIsWeb || !Platform.isAndroid)
-      ? 'http://localhost:3000'
-      : 'http://10.0.2.2:3000';
-
-  // Video service base URL (port 3002)
-  static final String _videoServiceBaseUrl = (kIsWeb || !Platform.isAndroid)
-      ? 'http://localhost:3002'
-      : 'http://10.0.2.2:3002';
+  // Use centralized config for URLs
+  static String get _baseUrl => AppConfig.userServiceUrl;
+  static String get _videoServiceBaseUrl => AppConfig.videoServiceUrl;
 
   /// Generic GET request
   Future<http.Response> get(String path, {Map<String, String>? headers}) async {
@@ -177,6 +171,7 @@ class ApiService {
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
+    Map<String, String>? deviceInfo,
   }) async {
     final url = Uri.parse('$_baseUrl/auth/login');
     try {
@@ -186,6 +181,7 @@ class ApiService {
         body: jsonEncode({
           'username': username,
           'password': password,
+          if (deviceInfo != null) 'deviceInfo': deviceInfo,
         }),
       );
 
@@ -445,6 +441,10 @@ class ApiService {
   /// Check if user has password (for OAuth users)
   Future<Map<String, dynamic>> hasPassword(String token) async {
     try {
+      print('🔐 Calling hasPassword API...');
+      print('🔐 URL: $_baseUrl/users/has-password');
+      print('🔐 Token length: ${token.length}');
+      
       final response = await http.get(
         Uri.parse('$_baseUrl/users/has-password'),
         headers: {
@@ -453,9 +453,18 @@ class ApiService {
         },
       );
 
-      if (response.statusCode == 200) {
+      print('🔐 hasPassword response status: ${response.statusCode}');
+      print('🔐 hasPassword response headers: ${response.headers}');
+      print('🔐 hasPassword response body length: ${response.body.length}');
+      print('🔐 hasPassword response body: "${response.body}"');
+      
+      if (response.statusCode == 200 && response.body.isNotEmpty) {
         return json.decode(response.body);
+      } else if (response.statusCode == 401) {
+        print('❌ Unauthorized - token may be expired');
+        return {'success': false, 'hasPassword': false, 'error': 'Unauthorized'};
       } else {
+        print('❌ hasPassword failed with status: ${response.statusCode}, body: ${response.body}');
         return {'success': false, 'hasPassword': false};
       }
     } catch (e) {
@@ -491,11 +500,240 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error setting password: $e');
+      print('❌ Error setting password: \$e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
       };
+    }
+  }
+
+  // ============= ACCOUNT DEACTIVATION =============
+
+  // ============= PHONE MANAGEMENT =============
+
+  /// Link phone to account using Firebase ID token
+  Future<Map<String, dynamic>> linkPhone({
+    required String token,
+    required String firebaseIdToken,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/link/phone'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'firebaseIdToken': firebaseIdToken}),
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...body};
+      }
+      return {'success': false, 'message': body['message'] ?? 'Liên kết thất bại'};
+    } catch (e) {
+      print('❌ Error linking phone: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Check if phone is available for linking
+  Future<Map<String, dynamic>> checkPhoneForLink({
+    required String token,
+    required String phone,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/auth/link/phone/check?phone=$phone'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error checking phone: $e');
+      return {'available': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Unlink phone from account
+  Future<Map<String, dynamic>> unlinkPhone({
+    required String token,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/unlink/phone'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'password': password}),
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error unlinking phone: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Deactivate user account
+  Future<Map<String, dynamic>> deactivateAccount({
+    required String token,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('\$_baseUrl/users/deactivate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer \$token',
+        },
+        body: json.encode({'password': password}),
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error deactivating account: \$e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Reactivate deactivated account
+  Future<Map<String, dynamic>> reactivateAccount({
+    String? email,
+    String? username,
+    required String password,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('\$_baseUrl/users/reactivate'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          if (email != null) 'email': email,
+          if (username != null) 'username': username,
+          'password': password,
+        }),
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error reactivating account: \$e');
+      return {
+        'success': false,
+        'message': 'Không thể kết nối đến server',
+      };
+    }
+  }
+
+  /// Check if account is deactivated
+  Future<Map<String, dynamic>> checkDeactivatedStatus(String identifier) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/check-deactivated/$identifier'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error checking deactivated status: $e');
+      return {'isDeactivated': false};
+    }
+  }
+
+  // ==================== SESSION MANAGEMENT ====================
+
+  /// Get all active sessions (logged in devices)
+  Future<Map<String, dynamic>> getSessions({required String token}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/sessions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = json.decode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': body['data'] ?? []};
+      }
+      return {'success': false, 'message': body['message'] ?? 'Không thể lấy danh sách thiết bị'};
+    } catch (e) {
+      print('❌ Error getting sessions: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Logout from a specific session/device
+  Future<Map<String, dynamic>> logoutSession({
+    required String token,
+    required int sessionId,
+  }) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/sessions/$sessionId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error logging out session: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Logout from all other sessions (except current)
+  Future<Map<String, dynamic>> logoutOtherSessions({required String token}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/sessions/logout-others'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error logging out other sessions: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Logout from all sessions (including current)
+  Future<Map<String, dynamic>> logoutAllSessions({required String token}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/sessions/logout-all'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      final body = json.decode(response.body);
+      return body;
+    } catch (e) {
+      print('❌ Error logging out all sessions: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
 
@@ -945,58 +1183,6 @@ class ApiService {
     } catch (e) {
       print('❌ Error verifying link email: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
-    }
-  }
-
-  /// Link phone to account using Firebase token
-  Future<Map<String, dynamic>> linkPhone(String token, String firebaseIdToken) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/auth/link/phone'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'firebaseIdToken': firebaseIdToken}),
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return {'success': true, ...jsonDecode(response.body)};
-      } else {
-        final body = jsonDecode(response.body);
-        return {
-          'success': false,
-          'message': body['message'] ?? 'Liên kết số điện thoại thất bại',
-        };
-      }
-    } catch (e) {
-      print('❌ Error linking phone: $e');
-      return {'success': false, 'message': 'Không thể kết nối đến server'};
-    }
-  }
-
-  /// Check if phone is available for linking (not used by another account)
-  Future<Map<String, dynamic>> checkPhoneForLink(String token, String phone) async {
-    try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/auth/link/phone/check?phone=${Uri.encodeComponent(phone)}'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        final body = jsonDecode(response.body);
-        return {
-          'available': false,
-          'message': body['message'] ?? 'Không thể kiểm tra số điện thoại',
-        };
-      }
-    } catch (e) {
-      print('❌ Error checking phone for link: $e');
-      return {'available': false, 'message': 'Không thể kết nối đến server'};
     }
   }
 
@@ -1608,6 +1794,61 @@ class ApiService {
       }
     } catch (e) {
       print('❌ Error clearing watch history: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  // ============= ACTIVITY HISTORY =============
+
+  /// Get activity history for a user
+  Future<Map<String, dynamic>> getActivityHistory(
+    String userId, {
+    int page = 1,
+    int limit = 20,
+    String? filter,
+  }) async {
+    try {
+      var url = '$_baseUrl/activity-history/$userId?page=$page&limit=$limit';
+      if (filter != null && filter != 'all') {
+        url += '&filter=$filter';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          ...jsonDecode(response.body),
+        };
+      } else {
+        return {'success': false, 'activities': []};
+      }
+    } catch (e) {
+      print('❌ Error getting activity history: $e');
+      return {'success': false, 'activities': []};
+    }
+  }
+
+  // ============= ANALYTICS =============
+
+  /// Get creator analytics for a user
+  Future<Map<String, dynamic>> getAnalytics(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_videoServiceBaseUrl/analytics/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'success': false, 'message': 'Failed to load analytics'};
+      }
+    } catch (e) {
+      print('❌ Error getting analytics: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }

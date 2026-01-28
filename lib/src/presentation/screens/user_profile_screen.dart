@@ -699,6 +699,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         final thumbnailUrl = video['thumbnailUrl'] != null
             ? _videoService.getVideoUrl(video['thumbnailUrl'])
             : null;
+        final viewCount = video['viewCount'] ?? 0;
 
         return GestureDetector(
           onTap: () {
@@ -716,26 +717,71 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               ),
             );
           },
-          child: Container(
-            color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
-            child: thumbnailUrl != null
-                ? Image.network(
-                    thumbnailUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(
-                      Icons.play_arrow_rounded,
-                      color: _themeService.textSecondaryColor,
-                      size: 40,
-                    ),
-                  )
-                : Icon(
-                    Icons.play_arrow_rounded,
-                    color: _themeService.textSecondaryColor,
-                    size: 40,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Container(
+                color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
+                child: thumbnailUrl != null
+                    ? Image.network(
+                        thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Icon(
+                          Icons.play_arrow_rounded,
+                          color: _themeService.textSecondaryColor,
+                          size: 40,
+                        ),
+                      )
+                    : Icon(
+                        Icons.play_arrow_rounded,
+                        color: _themeService.textSecondaryColor,
+                        size: 40,
+                      ),
+              ),
+              // View count overlay - bottom left like TikTok with grey background
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(130),
+                    borderRadius: BorderRadius.circular(4),
                   ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.play_arrow,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        _formatViewCount(viewCount),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
     );
+  }
+
+  String _formatViewCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
   }
 }

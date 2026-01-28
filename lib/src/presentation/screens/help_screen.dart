@@ -55,21 +55,25 @@ class _HelpScreenState extends State<HelpScreen> {
             icon: Icons.account_circle_outlined,
             title: _localeService.get('account_help'),
             subtitle: _localeService.get('account_help_desc'),
+            helpKey: 'account',
           ),
           _buildQuickHelpCard(
             icon: Icons.videocam_outlined,
             title: _localeService.get('video_help'),
             subtitle: _localeService.get('video_help_desc'),
+            helpKey: 'video',
           ),
           _buildQuickHelpCard(
             icon: Icons.security_outlined,
             title: _localeService.get('privacy_security_help'),
             subtitle: _localeService.get('privacy_security_help_desc'),
+            helpKey: 'privacy',
           ),
           _buildQuickHelpCard(
             icon: Icons.chat_bubble_outline,
             title: _localeService.get('messaging_help'),
             subtitle: _localeService.get('messaging_help_desc'),
+            helpKey: 'messaging',
           ),
           const SizedBox(height: 24),
           
@@ -251,13 +255,13 @@ class _HelpScreenState extends State<HelpScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    required String helpKey,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onTap: () {
-          // Show a simple dialog with more info
-          _showHelpDialog(title, subtitle);
+          _showDetailedHelp(helpKey, title, icon);
         },
         borderRadius: BorderRadius.circular(12),
         child: Container(
@@ -323,39 +327,255 @@ class _HelpScreenState extends State<HelpScreen> {
     );
   }
 
-  void _showHelpDialog(String title, String content) {
-    showDialog(
+  void _showDetailedHelp(String helpKey, String title, IconData icon) {
+    final helpItems = _getHelpItems(helpKey);
+    
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _themeService.cardColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: _themeService.textPrimaryColor,
-            fontWeight: FontWeight.bold,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: _themeService.cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[400],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Header
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: ThemeService.accentColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        icon,
+                        color: ThemeService.accentColor,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close, color: _themeService.textSecondaryColor),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Divider(color: _themeService.dividerColor),
+              // Content
+              Expanded(
+                child: ListView.separated(
+                  controller: scrollController,
+                  padding: const EdgeInsets.all(20),
+                  itemCount: helpItems.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) {
+                    final item = helpItems[index];
+                    return _buildHelpItem(
+                      icon: item['icon'] as IconData,
+                      title: item['title'] as String,
+                      description: item['description'] as String,
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
-        content: Text(
-          content,
-          style: TextStyle(
-            color: _themeService.textSecondaryColor,
-            height: 1.5,
-          ),
+      ),
+    );
+  }
+
+  Widget _buildHelpItem({
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _themeService.isLightMode 
+            ? Colors.grey[50] 
+            : Colors.grey[900],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _themeService.isLightMode
+              ? Colors.grey[200]!
+              : Colors.grey[800]!,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              _localeService.get('ok'),
-              style: const TextStyle(color: ThemeService.accentColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: ThemeService.accentColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: ThemeService.accentColor,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _getHelpItems(String helpKey) {
+    switch (helpKey) {
+      case 'account':
+        return [
+          {
+            'icon': Icons.person_outline,
+            'title': _localeService.get('help_edit_profile'),
+            'description': _localeService.get('help_edit_profile_desc'),
+          },
+          {
+            'icon': Icons.key_outlined,
+            'title': _localeService.get('help_change_password'),
+            'description': _localeService.get('help_change_password_desc'),
+          },
+          {
+            'icon': Icons.link_outlined,
+            'title': _localeService.get('help_link_accounts'),
+            'description': _localeService.get('help_link_accounts_desc'),
+          },
+          {
+            'icon': Icons.delete_outline,
+            'title': _localeService.get('help_delete_account'),
+            'description': _localeService.get('help_delete_account_desc'),
+          },
+        ];
+      case 'video':
+        return [
+          {
+            'icon': Icons.upload_outlined,
+            'title': _localeService.get('help_upload_video'),
+            'description': _localeService.get('help_upload_video_desc'),
+          },
+          {
+            'icon': Icons.edit_outlined,
+            'title': _localeService.get('help_edit_video'),
+            'description': _localeService.get('help_edit_video_desc'),
+          },
+          {
+            'icon': Icons.visibility_outlined,
+            'title': _localeService.get('help_video_visibility'),
+            'description': _localeService.get('help_video_visibility_desc'),
+          },
+          {
+            'icon': Icons.analytics_outlined,
+            'title': _localeService.get('help_video_analytics'),
+            'description': _localeService.get('help_video_analytics_desc'),
+          },
+        ];
+      case 'privacy':
+        return [
+          {
+            'icon': Icons.lock_outline,
+            'title': _localeService.get('help_private_account'),
+            'description': _localeService.get('help_private_account_desc'),
+          },
+          {
+            'icon': Icons.block_outlined,
+            'title': _localeService.get('help_block_users'),
+            'description': _localeService.get('help_block_users_desc'),
+          },
+          {
+            'icon': Icons.comment_outlined,
+            'title': _localeService.get('help_comment_settings'),
+            'description': _localeService.get('help_comment_settings_desc'),
+          },
+          {
+            'icon': Icons.shield_outlined,
+            'title': _localeService.get('help_two_factor'),
+            'description': _localeService.get('help_two_factor_desc'),
+          },
+        ];
+      case 'messaging':
+        return [
+          {
+            'icon': Icons.send_outlined,
+            'title': _localeService.get('help_send_message'),
+            'description': _localeService.get('help_send_message_desc'),
+          },
+          {
+            'icon': Icons.group_outlined,
+            'title': _localeService.get('help_group_chat'),
+            'description': _localeService.get('help_group_chat_desc'),
+          },
+          {
+            'icon': Icons.notifications_outlined,
+            'title': _localeService.get('help_message_notifications'),
+            'description': _localeService.get('help_message_notifications_desc'),
+          },
+          {
+            'icon': Icons.do_not_disturb_outlined,
+            'title': _localeService.get('help_message_requests'),
+            'description': _localeService.get('help_message_requests_desc'),
+          },
+        ];
+      default:
+        return [];
+    }
   }
 
   Widget _buildContactCard() {

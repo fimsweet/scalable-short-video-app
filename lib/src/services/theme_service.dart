@@ -83,8 +83,8 @@ class ThemeService extends ChangeNotifier {
   Color get radioActiveColor => accentColor;
   
   // Additional helper colors
-  Color get sectionTitleBackground => _isLightMode ? Colors.white : Colors.grey[900]!;
-  Color get inputBackground => _isLightMode ? Colors.white : Colors.black;
+  Color get sectionTitleBackground => _isLightMode ? const Color(0xFFF5F5F5) : Colors.black;
+  Color get inputBackground => _isLightMode ? Colors.white : const Color(0xFF1A1A1A);
   Color get switchTrackColor => _isLightMode ? Colors.grey[300]! : Colors.grey[700]!;
   Color get appBarBackground => _isLightMode ? Colors.white : Colors.black;
   Color get snackBarBackground => _isLightMode ? const Color(0xFF333333) : const Color(0xFF333333);

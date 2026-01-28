@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/phone_register
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/fcm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,10 @@ void main() async {
   final localeService = LocaleService();
   await localeService.init();
   print('✅ LocaleService initialized');
+  
+  // Initialize FCM service for push notifications
+  await FcmService().initialize();
+  print('✅ FCM Service initialized');
   
   // Then try auto-login which will trigger the listeners if successful
   await AuthService().tryAutoLogin();
