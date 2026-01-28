@@ -1,22 +1,13 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class ShareService {
   static final ShareService _instance = ShareService._internal();
   factory ShareService() => _instance;
   ShareService._internal();
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3002';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3002';
-    } else {
-      return 'http://localhost:3002';
-    }
-  }
+  String get _baseUrl => AppConfig.videoServiceUrl;
 
   Future<Map<String, dynamic>> shareVideo(
     String videoId,

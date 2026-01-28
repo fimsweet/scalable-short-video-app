@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/services/fcm_service.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
@@ -108,6 +109,14 @@ class AuthService {
     
     print('✅ Login successful - notifying ${_loginListeners.length} listeners');
     
+    // Register FCM token for push notifications
+    try {
+      await FcmService().registerToken();
+      print('✅ FCM token registered');
+    } catch (e) {
+      print('⚠️ Failed to register FCM token: $e');
+    }
+    
     // Notify all login listeners with error handling
     int listenerIndex = 0;
     for (var listener in List.from(_loginListeners)) { // Create copy to avoid modification during iteration
@@ -195,6 +204,14 @@ class AuthService {
       }
       
       print('✅ Auto-login successful - notifying ${_loginListeners.length} listeners');
+      
+      // Register FCM token for push notifications
+      try {
+        await FcmService().registerToken();
+        print('✅ FCM token registered after auto-login');
+      } catch (e) {
+        print('⚠️ Failed to register FCM token: $e');
+      }
       
       // Notify all login listeners with error handling
       for (var listener in List.from(_loginListeners)) {

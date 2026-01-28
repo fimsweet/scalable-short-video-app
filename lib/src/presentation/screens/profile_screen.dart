@@ -769,6 +769,12 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               PopupMenuButton<String>(
                 icon: Icon(Icons.menu, color: _themeService.iconColor),
                 splashRadius: 0.1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                color: _themeService.cardColor,
+                elevation: 8,
+                offset: const Offset(0, 50),
                 onSelected: (v) {
                   if (v == 'logout') _showLogoutDialog();
                   if (v == 'settings') {
@@ -787,16 +793,58 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'settings',
-                    child: Row(children: [Icon(Icons.settings, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('settings'), style: TextStyle(color: _themeService.textPrimaryColor))]),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[800],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.settings_outlined, color: _themeService.textPrimaryColor, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_localeService.get('settings'), style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 15, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
                   PopupMenuItem(
                     value: 'help',
-                    child: Row(children: [Icon(Icons.help, color: _themeService.textPrimaryColor), const SizedBox(width: 12), Text(_localeService.get('help'), style: TextStyle(color: _themeService.textPrimaryColor))]),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[800],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.help_outline, color: _themeService.textPrimaryColor, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_localeService.get('help'), style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 15, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
-                  const PopupMenuDivider(),
+                  const PopupMenuDivider(height: 16),
                   PopupMenuItem(
                     value: 'logout',
-                    child: Row(children: [const Icon(Icons.logout, color: Colors.red), const SizedBox(width: 12), Text(_localeService.get('logout'), style: const TextStyle(color: Colors.red))]),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.logout, color: Colors.red, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(_localeService.get('logout'), style: const TextStyle(color: Colors.red, fontSize: 15, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
                   ),
                 ],
               ),

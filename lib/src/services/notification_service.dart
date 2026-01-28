@@ -1,23 +1,14 @@
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
+import '../config/app_config.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3002';
-    } else if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3002';
-    } else {
-      return 'http://localhost:3002';
-    }
-  }
+  String get _baseUrl => AppConfig.videoServiceUrl;
   
   Timer? _pollTimer;
   final StreamController<int> _unreadCountController = StreamController<int>.broadcast();
