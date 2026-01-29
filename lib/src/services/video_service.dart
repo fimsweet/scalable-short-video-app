@@ -490,4 +490,80 @@ class VideoService {
       return await getAllVideos();
     }
   }
+
+  /// Update video privacy settings
+  Future<Map<String, dynamic>> updateVideoPrivacy({
+    required String videoId,
+    required String userId,
+    String? visibility,
+    bool? allowComments,
+    bool? allowDuet,
+  }) async {
+    try {
+      print('🔒 Updating privacy for video $videoId...');
+      
+      final body = <String, dynamic>{'userId': userId};
+      if (visibility != null) body['visibility'] = visibility;
+      if (allowComments != null) body['allowComments'] = allowComments;
+      if (allowDuet != null) body['allowDuet'] = allowDuet;
+      
+      final response = await http.put(
+        Uri.parse('$_baseUrl/videos/$videoId/privacy'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
+
+      print('📥 Privacy update response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          print('✅ Video privacy updated');
+          return data;
+        }
+      }
+      
+      throw Exception('Failed to update video privacy');
+    } catch (e) {
+      print('❌ Error updating video privacy: $e');
+      rethrow;
+    }
+  }
+
+  /// Edit video (title, description)
+  Future<Map<String, dynamic>> editVideo({
+    required String videoId,
+    required String userId,
+    String? title,
+    String? description,
+  }) async {
+    try {
+      print('✏️ Editing video $videoId...');
+      
+      final body = <String, dynamic>{'userId': userId};
+      if (title != null) body['title'] = title;
+      if (description != null) body['description'] = description;
+      
+      final response = await http.put(
+        Uri.parse('$_baseUrl/videos/$videoId/edit'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
+
+      print('📥 Edit response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          print('✅ Video edited successfully');
+          return data;
+        }
+      }
+      
+      throw Exception('Failed to edit video');
+    } catch (e) {
+      print('❌ Error editing video: $e');
+      rethrow;
+    }
+  }
 }

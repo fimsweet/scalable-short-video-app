@@ -84,19 +84,63 @@ class CommentService {
     }
   }
 
-  Future<List<dynamic>> getCommentsByVideo(String videoId) async {
+  Future<List<dynamic>> getCommentsByVideo(String videoId, {int? limit, int? offset}) async {
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/comments/video/$videoId'),
-      );
+      final queryParams = <String, String>{};
+      if (limit != null) queryParams['limit'] = limit.toString();
+      if (offset != null) queryParams['offset'] = offset.toString();
+      
+      final uri = Uri.parse('$_baseUrl/comments/video/$videoId').replace(queryParameters: queryParams.isNotEmpty ? queryParams : null);
+      
+      final response = await http.get(uri);
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final data = json.decode(response.body);
+        // Support both old format (array) and new format (object with comments)
+        if (data is List) {
+          return data;
+        } else if (data is Map && data['comments'] != null) {
+          return data['comments'] as List;
+        }
+        return [];
       }
       return [];
     } catch (e) {
       print('❌ Error getting comments: $e');
       return [];
+    }
+  }
+
+  /// Get comments with pagination info
+  Future<Map<String, dynamic>> getCommentsByVideoWithPagination(String videoId, {int limit = 20, int offset = 0}) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/comments/video/$videoId?limit=$limit&offset=$offset');
+      
+      final response = await http.get(uri);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        // New format with pagination
+        if (data is Map) {
+          return {
+            'comments': data['comments'] ?? [],
+            'hasMore': data['hasMore'] ?? false,
+            'total': data['total'] ?? 0,
+          };
+        }
+        // Old format (array) - no pagination
+        if (data is List) {
+          return {
+            'comments': data,
+            'hasMore': false,
+            'total': data.length,
+          };
+        }
+      }
+      return {'comments': [], 'hasMore': false, 'total': 0};
+    } catch (e) {
+      print('❌ Error getting comments with pagination: $e');
+      return {'comments': [], 'hasMore': false, 'total': 0};
     }
   }
 

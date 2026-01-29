@@ -123,8 +123,9 @@ class _BirthdayPickerScreenState extends State<BirthdayPickerScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(
-            Icons.arrow_back,
+            Icons.chevron_left,
             color: isDarkMode ? Colors.white : Colors.black,
+            size: 28,
           ),
           onPressed: () => Navigator.pop(context),
         ),

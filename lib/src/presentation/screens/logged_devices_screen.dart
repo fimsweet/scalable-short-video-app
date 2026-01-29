@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io' show Platform;
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
@@ -266,7 +265,7 @@ class _LoggedDevicesScreenState extends State<LoggedDevicesScreen> {
         backgroundColor: _themeService.backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.textPrimaryColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.textPrimaryColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -431,7 +430,6 @@ class _LoggedDevicesScreenState extends State<LoggedDevicesScreen> {
     final deviceName = session['deviceName']?.toString() ?? _getPlatformName(platform);
     final deviceModel = session['deviceModel']?.toString();
     final osVersion = session['osVersion']?.toString();
-    final ipAddress = session['ipAddress']?.toString();
     final loginAt = session['loginAt']?.toString();
     final lastActivityAt = session['lastActivityAt']?.toString();
 
@@ -507,16 +505,6 @@ class _LoggedDevicesScreenState extends State<LoggedDevicesScreen> {
                       fontSize: 13,
                     ),
                   ),
-                  if (ipAddress != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      'IP: $ipAddress',
-                      style: TextStyle(
-                        color: _themeService.textSecondaryColor,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 4),
                   Text(
                     '${_localeService.get('last_active')}: ${_formatDate(lastActivityAt ?? loginAt)}',

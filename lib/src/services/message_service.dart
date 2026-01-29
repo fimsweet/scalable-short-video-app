@@ -295,11 +295,12 @@ class MessageService {
     _userTypingController.close();
   }
 
-  // Get conversation settings (mute, pin)
+  // Get conversation settings (mute, pin, theme, nickname)
   Future<Map<String, dynamic>> getConversationSettings(String recipientId) async {
     try {
+      final currentUserId = _currentUserId ?? '';
       final response = await http.get(
-        Uri.parse('$_baseUrl/messages/settings/$recipientId'),
+        Uri.parse('$_baseUrl/messages/settings/$recipientId?userId=$currentUserId'),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -311,12 +312,16 @@ class MessageService {
       return {
         'isMuted': false,
         'isPinned': false,
+        'themeColor': null,
+        'nickname': null,
       };
     } catch (e) {
       print('Error getting conversation settings: $e');
       return {
         'isMuted': false,
         'isPinned': false,
+        'themeColor': null,
+        'nickname': null,
       };
     }
   }
@@ -326,14 +331,19 @@ class MessageService {
     String recipientId, {
     bool? isMuted,
     bool? isPinned,
+    String? themeColor,
+    String? nickname,
   }) async {
     try {
+      final currentUserId = _currentUserId ?? '';
       final body = <String, dynamic>{};
       if (isMuted != null) body['isMuted'] = isMuted;
       if (isPinned != null) body['isPinned'] = isPinned;
+      if (themeColor != null) body['themeColor'] = themeColor;
+      if (nickname != null) body['nickname'] = nickname;
 
       final response = await http.put(
-        Uri.parse('$_baseUrl/messages/settings/$recipientId'),
+        Uri.parse('$_baseUrl/messages/settings/$recipientId?userId=$currentUserId'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode(body),
       );
@@ -342,6 +352,97 @@ class MessageService {
     } catch (e) {
       print('Error updating conversation settings: $e');
       return false;
+    }
+  }
+
+  // ========== PINNED MESSAGES ==========
+
+  Future<bool> pinMessage(String messageId) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.post(
+        Uri.parse('$_baseUrl/messages/pin/$messageId?userId=$currentUserId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('Error pinning message: $e');
+      return false;
+    }
+  }
+
+  Future<bool> unpinMessage(String messageId) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.post(
+        Uri.parse('$_baseUrl/messages/unpin/$messageId?userId=$currentUserId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      print('Error unpinning message: $e');
+      return false;
+    }
+  }
+
+  Future<List<dynamic>> getPinnedMessages(String recipientId) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.get(
+        Uri.parse('$_baseUrl/messages/pinned/$currentUserId/$recipientId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print('Error getting pinned messages: $e');
+      return [];
+    }
+  }
+
+  // ========== SEARCH MESSAGES ==========
+
+  Future<List<dynamic>> searchMessages(String recipientId, String query, {int limit = 50}) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.get(
+        Uri.parse('$_baseUrl/messages/search/$currentUserId/$recipientId?query=${Uri.encodeComponent(query)}&limit=$limit'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print('Error searching messages: $e');
+      return [];
+    }
+  }
+
+  // ========== MEDIA MESSAGES ==========
+
+  Future<List<dynamic>> getMediaMessages(String recipientId, {int limit = 50, int offset = 0}) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.get(
+        Uri.parse('$_baseUrl/messages/media/$currentUserId/$recipientId?limit=$limit&offset=$offset'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['data'] ?? [];
+      }
+      return [];
+    } catch (e) {
+      print('Error getting media messages: $e');
+      return [];
     }
   }
 }

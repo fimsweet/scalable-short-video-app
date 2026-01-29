@@ -92,7 +92,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProv
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -130,7 +130,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProv
         ),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: ThemeService.accentColor))
+          ? _buildSkeletonLoading()
           : _analytics == null
               ? _buildErrorState()
               : TabBarView(
@@ -140,6 +140,98 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProv
                     _buildChartsTab(),
                   ],
                 ),
+    );
+  }
+
+  Widget _buildSkeletonLoading() {
+    final isDark = !_themeService.isLightMode;
+    final shimmerBase = isDark ? Colors.grey[850]! : Colors.grey[200]!;
+    final shimmerHighlight = isDark ? Colors.grey[700]! : Colors.grey[100]!;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title skeleton
+          _buildShimmerBox(width: 100, height: 24, shimmerBase: shimmerBase, shimmerHighlight: shimmerHighlight),
+          const SizedBox(height: 16),
+          // Stats grid skeleton
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.5,
+            children: List.generate(6, (_) => _buildStatCardSkeleton(shimmerBase, shimmerHighlight)),
+          ),
+          const SizedBox(height: 24),
+          // Follower/Following skeleton
+          Row(
+            children: [
+              Expanded(child: _buildShimmerBox(height: 60, shimmerBase: shimmerBase, shimmerHighlight: shimmerHighlight)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildShimmerBox(height: 60, shimmerBase: shimmerBase, shimmerHighlight: shimmerHighlight)),
+            ],
+          ),
+          const SizedBox(height: 24),
+          // Recent section skeleton
+          _buildShimmerBox(width: 80, height: 20, shimmerBase: shimmerBase, shimmerHighlight: shimmerHighlight),
+          const SizedBox(height: 12),
+          _buildShimmerBox(height: 100, shimmerBase: shimmerBase, shimmerHighlight: shimmerHighlight),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShimmerBox({double? width, required double height, required Color shimmerBase, required Color shimmerHighlight}) {
+    return _ShimmerWidget(
+      width: width,
+      height: height,
+      shimmerBase: shimmerBase,
+      shimmerHighlight: shimmerHighlight,
+    );
+  }
+
+  Widget _buildStatCardSkeleton(Color shimmerBase, Color shimmerHighlight) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: shimmerBase,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: shimmerHighlight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          const Spacer(),
+          Container(
+            width: 50,
+            height: 24,
+            decoration: BoxDecoration(
+              color: shimmerHighlight,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 70,
+            height: 14,
+            decoration: BoxDecoration(
+              color: shimmerHighlight,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1660,4 +1752,72 @@ class _ChartSection {
   final Color color;
 
   _ChartSection(this.type, this.label, this.value, this.color);
+}
+
+/// Shimmer widget with smooth looping animation
+class _ShimmerWidget extends StatefulWidget {
+  final double? width;
+  final double height;
+  final Color shimmerBase;
+  final Color shimmerHighlight;
+
+  const _ShimmerWidget({
+    this.width,
+    required this.height,
+    required this.shimmerBase,
+    required this.shimmerHighlight,
+  });
+
+  @override
+  State<_ShimmerWidget> createState() => _ShimmerWidgetState();
+}
+
+class _ShimmerWidgetState extends State<_ShimmerWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    )..repeat();
+
+    _animation = Tween<double>(begin: -1.0, end: 2.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
+        return Container(
+          width: widget.width,
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment(_animation.value - 1, 0),
+              end: Alignment(_animation.value + 1, 0),
+              colors: [
+                widget.shimmerBase,
+                widget.shimmerHighlight,
+                widget.shimmerBase,
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

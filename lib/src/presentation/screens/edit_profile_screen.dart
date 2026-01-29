@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/edit_username_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -571,13 +572,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             // Section: Basic Info
             _buildSectionTitle(_localeService.get('basic_info')),
             _buildSettingsGroup([
-              _buildEditField(
-                label: _localeService.get('name'),
-                hint: _localeService.get('add_name'),
-                controller: _nameController,
-                enabled: false,
-                showDivider: true,
-              ),
+              _buildUsernameTapField(showDivider: true),
               _buildCollapsibleBioField(showDivider: false),
             ]),
             
@@ -765,6 +760,66 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Widget _buildUsernameTapField({bool showDivider = false}) {
+    final currentUsername = _authService.username ?? '';
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: () async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const EditUsernameScreen()),
+            );
+            if (result == true && mounted) {
+              // Username was changed, update the controller
+              _nameController.text = _authService.username ?? '';
+              setState(() {});
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    _localeService.get('name'),
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    currentUsername.isEmpty 
+                        ? _localeService.get('add_name')
+                        : currentUsername,
+                    style: TextStyle(
+                      color: currentUsername.isEmpty 
+                          ? _themeService.textSecondaryColor 
+                          : _themeService.textPrimaryColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 20),
+              ],
+            ),
+          ),
+        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
+      ],
+    );
+  }
+
   Widget _buildCollapsibleBioField({bool showDivider = false}) {
     final hasBio = _bioController.text.trim().isNotEmpty;
     
@@ -787,8 +842,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Text(
                     _localeService.get('bio'),
                     style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontSize: 16,
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 14,
                     ),
                   ),
                 ),
@@ -798,8 +853,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ? _localeService.get('tap_to_edit_bio')
                         : _localeService.get('add_bio'),
                     style: TextStyle(
-                      color: _themeService.textSecondaryColor,
+                      color: _themeService.textPrimaryColor,
                       fontSize: 16,
+                      fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

@@ -406,9 +406,9 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
-                    Icons.arrow_back,
+                    Icons.chevron_left,
                     color: Colors.white,
-                    size: 26,
+                    size: 30,
                   ),
                 ),
               ),

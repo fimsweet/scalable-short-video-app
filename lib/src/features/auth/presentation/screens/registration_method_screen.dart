@@ -79,8 +79,9 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(
-            Icons.close,
+            Icons.chevron_left,
             color: isDarkMode ? Colors.white : Colors.black,
+            size: 28,
           ),
           onPressed: () => Navigator.pop(context),
         ),

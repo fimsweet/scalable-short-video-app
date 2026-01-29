@@ -196,9 +196,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           GestureDetector(
             onTap: () => Navigator.pop(context),
             child: Icon(
-              Icons.arrow_back_ios,
+              Icons.chevron_left,
               color: _themeService.iconColor,
-              size: 22,
+              size: 28,
             ),
           ),
           const SizedBox(width: 8),

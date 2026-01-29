@@ -263,6 +263,21 @@ class AuthService {
     print('✅ Bio updated in AuthService: $bio');
   }
 
+  /// Update username in local storage and memory
+  Future<void> updateUsername(String username) async {
+    _username = username;
+    await _storage.write(key: 'username', value: username);
+    
+    // Update in-memory user object
+    if (_user != null) {
+      _user!['username'] = username;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(_user));
+    }
+    
+    print('✅ Username updated in AuthService: $username');
+  }
+
   // ============= Google OAuth Methods =============
 
   /// Sign in with Google and get ID token

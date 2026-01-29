@@ -401,6 +401,72 @@ class ApiService {
     }
   }
 
+  /// Get username change info (cooldown status)
+  Future<Map<String, dynamic>> getUsernameChangeInfo({required String token}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/username-change-info'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          'success': false,
+          'message': 'Failed to get username change info',
+        };
+      }
+    } catch (e) {
+      print('❌ Error getting username change info: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
+  /// Change username (with 30-day cooldown like TikTok)
+  Future<Map<String, dynamic>> changeUsername({
+    required String token,
+    required String newUsername,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/change-username'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'newUsername': newUsername,
+        }),
+      );
+
+      print('Change username response: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        final body = json.decode(response.body);
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to change username',
+        };
+      }
+    } catch (e) {
+      print('❌ Error changing username: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
   /// Change password
   Future<Map<String, dynamic>> changePassword({
     required String token,
@@ -1829,6 +1895,119 @@ class ApiService {
     } catch (e) {
       print('❌ Error getting activity history: $e');
       return {'success': false, 'activities': []};
+    }
+  }
+
+  /// Delete a single activity
+  Future<Map<String, dynamic>> deleteActivity(String userId, int activityId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/activity-history/$userId/$activityId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'success': false, 'message': 'Failed to delete activity'};
+      }
+    } catch (e) {
+      print('❌ Error deleting activity: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Delete all activities for a user
+  Future<Map<String, dynamic>> deleteAllActivities(String userId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/activity-history/$userId/all'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'success': false, 'message': 'Failed to delete activities'};
+      }
+    } catch (e) {
+      print('❌ Error deleting all activities: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Delete activities by type (videos, social, comments, likes, follows)
+  Future<Map<String, dynamic>> deleteActivitiesByType(String userId, String actionType) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$_baseUrl/activity-history/$userId/type/$actionType'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'success': false, 'message': 'Failed to delete activities'};
+      }
+    } catch (e) {
+      print('❌ Error deleting activities by type: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Delete activities by time range (today, week, month, all) with optional filter
+  Future<Map<String, dynamic>> deleteActivitiesByTimeRange(
+    String userId,
+    String timeRange, {
+    String? filter,
+  }) async {
+    try {
+      var url = '$_baseUrl/activity-history/$userId/range/$timeRange';
+      if (filter != null && filter != 'all') {
+        url += '?filter=$filter';
+      }
+      
+      final response = await http.delete(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'success': false, 'message': 'Failed to delete activities'};
+      }
+    } catch (e) {
+      print('❌ Error deleting activities by time range: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get activity count by time range for preview before delete
+  Future<Map<String, dynamic>> getActivityCount(
+    String userId,
+    String timeRange, {
+    String? filter,
+  }) async {
+    try {
+      var url = '$_baseUrl/activity-history/$userId/count/$timeRange';
+      if (filter != null && filter != 'all') {
+        url += '?filter=$filter';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {'count': 0};
+      }
+    } catch (e) {
+      print('❌ Error getting activity count: $e');
+      return {'count': 0};
     }
   }
 

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_screen.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen_v2.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 // Global key to access MainScreen state
 final GlobalKey<_MainScreenState> mainScreenKey = GlobalKey<_MainScreenState>();
@@ -177,8 +178,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     // Pause video when navigating to upload
     _videoPlaybackService.setVideoTabInvisible();
 
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const UploadVideoScreen()),
+    final result = await NavigationUtils.slideToScreen(
+      context,
+      const UploadVideoScreenV2(),
     );
 
     if (result == true) {

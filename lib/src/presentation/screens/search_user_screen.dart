@@ -143,7 +143,7 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(

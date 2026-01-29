@@ -62,7 +62,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen> {
         backgroundColor: _themeService.backgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.textPrimaryColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.textPrimaryColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(

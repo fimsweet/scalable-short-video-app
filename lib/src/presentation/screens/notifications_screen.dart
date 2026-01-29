@@ -633,10 +633,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                             backgroundColor: _themeService.isLightMode 
                                 ? Colors.grey[200] 
                                 : Colors.grey[800],
-                            backgroundImage: userInfo['avatar'] != null
+                            backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
                                 ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
                                 : null,
-                            child: userInfo['avatar'] == null
+                            child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
                                 ? Icon(Icons.person, 
                                     color: _themeService.textSecondaryColor, 
                                     size: 26)
@@ -776,7 +776,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/comment_section_widget.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/options_menu_widget.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/share_sheet_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_controls_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hls_video_player.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
@@ -13,12 +11,14 @@ import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
+import 'package:scalable_short_video_app/src/services/analytics_tracking_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/feed_tab_bar.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/video_management_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_owner_options_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_privacy_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/search_screen.dart';
 
 class VideoScreen extends StatefulWidget {
@@ -39,6 +39,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   final SavedVideoService _savedVideoService = SavedVideoService();
   final LocaleService _localeService = LocaleService();
   final VideoPlaybackService _videoPlaybackService = VideoPlaybackService();
+  final AnalyticsTrackingService _analyticsService = AnalyticsTrackingService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -59,6 +60,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   Map<String, int> _commentCounts = {};
   Map<String, int> _saveCounts = {};
   Map<String, int> _shareCounts = {}; // ADD THIS
+  Map<String, int> _viewCounts = {}; // Track view counts
+  
+  // Track video privacy settings
+  Map<String, String> _videoVisibility = {};
+  Map<String, bool> _videoAllowComments = {};
+  Map<String, bool> _videoAllowDuet = {};
   
   // Track follow status for each user
   Map<String, bool> _followStatus = {};
@@ -82,9 +89,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   List<dynamic> _followingVideos = [];
   List<dynamic> _friendsVideos = [];
 
-  bool _lastLoginState = false;
-  int? _lastUserId;
-
   @override
   void initState() {
     super.initState();
@@ -101,10 +105,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         }
       }
     });
-    
-    // Initialize login state tracking
-    _lastLoginState = _authService.isLoggedIn;
-    _lastUserId = _authService.user?['id'] as int?;
     
     // Add listeners to reload videos when auth state changes
     _authService.addLogoutListener(_onAuthChanged);
@@ -382,6 +382,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     _saveStatus.clear();
     _saveCounts.clear();
     _shareCounts.clear();
+    _viewCounts.clear();
+    _videoVisibility.clear();
+    _videoAllowComments.clear();
+    _videoAllowDuet.clear();
 
     // Initialize counts first (immediate display)
     for (var video in readyVideos) {
@@ -392,6 +396,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       _commentCounts[videoId] = _parseIntSafe(video['commentCount']);
       _saveCounts[videoId] = _parseIntSafe(video['saveCount']);
       _shareCounts[videoId] = _parseIntSafe(video['shareCount']);
+      _viewCounts[videoId] = _parseIntSafe(video['viewCount']);
+      
+      // Track privacy settings for own videos
+      _videoVisibility[videoId] = video['visibility']?.toString() ?? 'public';
+      _videoAllowComments[videoId] = video['allowComments'] ?? true;
+      _videoAllowDuet[videoId] = video['allowDuet'] ?? true;
       
       // Set default values - NOT logged in defaults to false
       _likeStatus[videoId] = false;
@@ -494,6 +504,28 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     if (value is int) return value;
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
+  }
+
+  IconData _getVisibilityIcon(String visibility) {
+    switch (visibility.toLowerCase()) {
+      case 'private':
+        return Icons.lock_outline;
+      case 'friends':
+        return Icons.people_outline;
+      default:
+        return Icons.public;
+    }
+  }
+
+  String _getVisibilityLabel(String visibility) {
+    switch (visibility.toLowerCase()) {
+      case 'private':
+        return _localeService.isVietnamese ? 'Riêng tư' : 'Private';
+      case 'friends':
+        return _localeService.isVietnamese ? 'Bạn bè' : 'Friends';
+      default:
+        return _localeService.isVietnamese ? 'Công khai' : 'Public';
+    }
   }
 
   void _onTabChanged(int index) {
@@ -761,12 +793,19 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                 final video = _videos[index];
                                 if (video != null && video['id'] != null) {
                                   final videoId = video['id'].toString();
-                                  _videoService.incrementViewCount(videoId);
+                                  
+                                  // Only count view once per session
+                                  if (_analyticsService.shouldCountView(videoId)) {
+                                    _videoService.incrementViewCount(videoId);
+                                  }
                                   
                                   // Start tracking watch time for recommendation algorithm
                                   // Get video duration (usually in seconds from backend)
                                   final duration = video['duration'] as int? ?? 30;
                                   _startWatchTimeTracking(videoId, duration);
+                                  
+                                  // Start analytics tracking
+                                  _analyticsService.startWatching(videoId);
                                 }
                               },
                               itemBuilder: (context, index) {
@@ -849,6 +888,99 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
+                                                // Privacy button and view count for own videos
+                                                if (isOwnVideo)
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(bottom: 12),
+                                                    child: Row(
+                                                      children: [
+                                                        // Privacy settings button
+                                                        GestureDetector(
+                                                          onTap: () {
+                                                            showModalBottomSheet(
+                                                              context: context,
+                                                              backgroundColor: Colors.transparent,
+                                                              isScrollControlled: true,
+                                                              builder: (context) => VideoPrivacySheet(
+                                                                videoId: videoId,
+                                                                userId: userId!,
+                                                                currentVisibility: _videoVisibility[videoId] ?? 'public',
+                                                                allowComments: _videoAllowComments[videoId] ?? true,
+                                                                allowDuet: _videoAllowDuet[videoId] ?? true,
+                                                                onChanged: (visibility, allowComments, allowDuet) {
+                                                                  setState(() {
+                                                                    _videoVisibility[videoId] = visibility;
+                                                                    _videoAllowComments[videoId] = allowComments;
+                                                                    _videoAllowDuet[videoId] = allowDuet;
+                                                                    video['visibility'] = visibility;
+                                                                    video['allowComments'] = allowComments;
+                                                                    video['allowDuet'] = allowDuet;
+                                                                  });
+                                                                },
+                                                              ),
+                                                            );
+                                                          },
+                                                          child: Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                            decoration: BoxDecoration(
+                                                              color: Colors.black.withOpacity(0.5),
+                                                              borderRadius: BorderRadius.circular(20),
+                                                              border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Icon(
+                                                                  _getVisibilityIcon(_videoVisibility[videoId] ?? 'public'),
+                                                                  color: Colors.white,
+                                                                  size: 14,
+                                                                ),
+                                                                const SizedBox(width: 4),
+                                                                Text(
+                                                                  _getVisibilityLabel(_videoVisibility[videoId] ?? 'public'),
+                                                                  style: const TextStyle(
+                                                                    color: Colors.white,
+                                                                    fontSize: 12,
+                                                                    fontWeight: FontWeight.w500,
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(width: 4),
+                                                                const Icon(Icons.arrow_drop_down, color: Colors.white, size: 16),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        const SizedBox(width: 12),
+                                                        // View count with play icon
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                          decoration: BoxDecoration(
+                                                            color: Colors.black.withOpacity(0.5),
+                                                            borderRadius: BorderRadius.circular(20),
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              const Icon(
+                                                                Icons.play_arrow,
+                                                                color: Colors.white,
+                                                                size: 16,
+                                                              ),
+                                                              const SizedBox(width: 4),
+                                                              Text(
+                                                                _formatCount(_viewCounts[videoId] ?? 0),
+                                                                style: const TextStyle(
+                                                                  color: Colors.white,
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.w500,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
                                                 Row(
                                                   children: [
                                                     // Avatar - clickable to go to profile
@@ -954,9 +1086,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                               showModalBottomSheet(
                                                 context: context,
                                                 backgroundColor: Colors.transparent,
-                                                builder: (context) => VideoManagementSheet(
+                                                builder: (context) => VideoOwnerOptionsSheet(
                                                   videoId: videoId,
                                                   userId: userId!,
+                                                  title: video['title']?.toString(),
+                                                  description: video['description']?.toString(),
+                                                  visibility: _videoVisibility[videoId] ?? 'public',
+                                                  allowComments: _videoAllowComments[videoId] ?? true,
+                                                  allowDuet: _videoAllowDuet[videoId] ?? true,
                                                   isHidden: video['isHidden'] ?? false,
                                                   onDeleted: () {
                                                     Navigator.pop(context);
@@ -965,6 +1102,22 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                                   onHiddenChanged: (isHidden) {
                                                     setState(() {
                                                       video['isHidden'] = isHidden;
+                                                    });
+                                                  },
+                                                  onPrivacyChanged: (visibility, allowComments, allowDuet) {
+                                                    setState(() {
+                                                      _videoVisibility[videoId] = visibility;
+                                                      _videoAllowComments[videoId] = allowComments;
+                                                      _videoAllowDuet[videoId] = allowDuet;
+                                                      video['visibility'] = visibility;
+                                                      video['allowComments'] = allowComments;
+                                                      video['allowDuet'] = allowDuet;
+                                                    });
+                                                  },
+                                                  onEdited: (title, description) {
+                                                    setState(() {
+                                                      video['title'] = title;
+                                                      video['description'] = description;
                                                     });
                                                   },
                                                 ),
@@ -986,6 +1139,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                                                   ),
                                                   child: CommentSectionWidget(
                                                     videoId: videoId,
+                                                    allowComments: _videoAllowComments[videoId] ?? true,
                                                     onCommentAdded: () async {
                                                       final count = await _commentService.getCommentCount(videoId);
                                                       if (mounted) {

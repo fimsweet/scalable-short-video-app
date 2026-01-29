@@ -5,6 +5,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 class UserSettingsScreen extends StatefulWidget {
   const UserSettingsScreen({super.key});
@@ -87,7 +88,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       final token = await _authService.getToken();
       if (token == null) return;
 
-      await _apiService.updateUserSettings(token, {key: value});
+      final result = await _apiService.updateUserSettings(token, {key: value});
+      print('📝 Privacy setting updated: $key = $value, result: $result');
     } catch (e) {
       print('Error updating privacy setting: $e');
     }
@@ -321,7 +323,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -353,9 +355,9 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 title: _localeService.get('account_management'),
                 subtitle: _localeService.get('account_management_subtitle'),
                 onTap: () {
-                  Navigator.push(
+                  NavigationUtils.slideToScreen(
                     context,
-                    MaterialPageRoute(builder: (_) => const AccountManagementScreen()),
+                    const AccountManagementScreen(),
                   );
                 },
               ),

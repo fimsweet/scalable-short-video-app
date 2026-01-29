@@ -15,7 +15,7 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -25,18 +25,59 @@ class _LoginScreenState extends State<LoginScreen> {
   final _localeService = LocaleService();
   bool _isLoading = false;
   bool _isGoogleLoading = false;
+  bool _obscurePassword = true;
+  
+  // Animation controllers
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _buttonScaleAnimation;
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+    
+    // Initialize animations
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    ));
+    
+    _buttonScaleAnimation = Tween<double>(begin: 0.95, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.elasticOut),
+    );
+    
+    // Start animations
+    _fadeController.forward();
+    _slideController.forward();
   }
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -321,7 +362,20 @@ class _LoginScreenState extends State<LoginScreen> {
   void _navigateToRegister() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const RegistrationMethodScreen()),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const RegistrationMethodScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOutCubic;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
     );
     if (result == true) {
       Navigator.pop(context, true); // Đăng ký thành công -> tự động đăng nhập và quay lại
@@ -634,120 +688,371 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: _themeService.appBarBackground,
-        title: Text(_localeService.get('login'), style: TextStyle(color: _themeService.textPrimaryColor)),
-        iconTheme: IconThemeData(color: _themeService.iconColor),
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-                  TextFormField(
-                    controller: _usernameController,
-                    style: TextStyle(color: _themeService.textPrimaryColor),
-                    decoration: _inputDecoration(_localeService.get('email')),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return _localeService.get('please_enter_email');
-                      }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                        return _localeService.get('invalid_email');
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    style: TextStyle(color: _themeService.textPrimaryColor),
-                    decoration: _inputDecoration(_localeService.get('password')),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return _localeService.get('please_enter_password');
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _login,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : Text(_localeService.get('login'), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
-                      );
-                    }, 
-                    child: Text(_localeService.get('forgot_password'), style: TextStyle(color: _themeService.textSecondaryColor)),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(_localeService.get('or_login_with'), style: TextStyle(color: _themeService.textSecondaryColor)),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 12.0,
-                    runSpacing: 12.0,
-                    children: [
-                      _SocialButton(icon: Icons.facebook, label: _localeService.get('facebook'), onTap: () {}, themeService: _themeService),
-                      _SocialButton(
-                        icon: Icons.g_mobiledata, 
-                        label: _localeService.get('google'), 
-                        onTap: _isGoogleLoading ? () {} : _handleGoogleLogin, 
-                        themeService: _themeService,
-                        isLoading: _isGoogleLoading,
-                      ),
-                      _SocialButton(
-                        icon: Icons.phone, 
-                        label: _localeService.get('use_phone'), 
-                        onTap: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const PhoneRegisterScreen()),
-                          );
-                          if (result == true && mounted) {
-                            Navigator.pop(context, true);
-                          }
-                        }, 
-                        themeService: _themeService,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 40),
-                  GestureDetector(
-                    onTap: _navigateToRegister,
-                    child: Text.rich(
-                      TextSpan(children: [
-                        TextSpan(text: _localeService.get('no_account'), style: TextStyle(color: _themeService.textSecondaryColor)),
-                        TextSpan(text: _localeService.get('register'), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                      ]),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.chevron_left,
+            color: _themeService.iconColor,
+            size: 28,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Text(
+            _localeService.get('login'),
+            style: TextStyle(
+              color: _themeService.textPrimaryColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
             ),
           ),
-        ],
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 20),
+                        
+                        // Welcome text
+                        Text(
+                          _localeService.isVietnamese ? 'Chào mừng trở lại!' : 'Welcome back!',
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: _themeService.textPrimaryColor,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _localeService.isVietnamese 
+                              ? 'Đăng nhập để tiếp tục khám phá' 
+                              : 'Sign in to continue exploring',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: _themeService.textSecondaryColor,
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 40),
+                        
+                        // Email field
+                        _buildModernTextField(
+                          controller: _usernameController,
+                          hint: _localeService.get('email'),
+                          icon: Icons.email_outlined,
+                          keyboardType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return _localeService.get('please_enter_email');
+                            }
+                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                              return _localeService.get('invalid_email');
+                            }
+                            return null;
+                          },
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Password field
+                        _buildModernTextField(
+                          controller: _passwordController,
+                          hint: _localeService.get('password'),
+                          icon: Icons.lock_outline,
+                          obscureText: _obscurePassword,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: _themeService.textSecondaryColor,
+                              size: 22,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return _localeService.get('please_enter_password');
+                            }
+                            return null;
+                          },
+                        ),
+                        
+                        const SizedBox(height: 16),
+                        
+                        // Forgot password
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                              );
+                            },
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            child: Text(
+                              _localeService.get('forgot_password'),
+                              style: TextStyle(
+                                color: _themeService.textSecondaryColor,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 32),
+                        
+                        // Login button with animation
+                        ScaleTransition(
+                          scale: _buttonScaleAnimation,
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _login,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: ThemeService.accentColor,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: ThemeService.accentColor.withOpacity(0.6),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : Text(
+                                      _localeService.get('login'),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 17,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 32),
+                        
+                        // Divider
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                height: 1,
+                                color: _themeService.dividerColor,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Text(
+                                _localeService.get('or_login_with'),
+                                style: TextStyle(
+                                  color: _themeService.textSecondaryColor,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Container(
+                                height: 1,
+                                color: _themeService.dividerColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        
+                        // Social login buttons - Modern style
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ModernSocialButton(
+                                icon: Icons.facebook_rounded,
+                                iconColor: const Color(0xFF1877F2),
+                                label: 'Facebook',
+                                onTap: () {},
+                                themeService: _themeService,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ModernSocialButton(
+                                iconWidget: Image.network(
+                                  'https://www.google.com/favicon.ico',
+                                  width: 22,
+                                  height: 22,
+                                  errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.g_mobiledata,
+                                    size: 26,
+                                    color: Colors.red,
+                                  ),
+                                ),
+                                label: 'Google',
+                                onTap: _isGoogleLoading ? () {} : _handleGoogleLogin,
+                                isLoading: _isGoogleLoading,
+                                themeService: _themeService,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ModernSocialButton(
+                                icon: Icons.phone_android_rounded,
+                                iconColor: ThemeService.accentColor,
+                                label: _localeService.isVietnamese ? 'Điện thoại' : 'Phone',
+                                onTap: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const PhoneRegisterScreen()),
+                                  );
+                                  if (result == true && mounted) {
+                                    Navigator.pop(context, true);
+                                  }
+                                },
+                                themeService: _themeService,
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        const SizedBox(height: 40),
+                        
+                        // Register link
+                        Center(
+                          child: GestureDetector(
+                            onTap: _navigateToRegister,
+                            child: RichText(
+                              text: TextSpan(
+                                text: _localeService.get('no_account'),
+                                style: TextStyle(
+                                  color: _themeService.textSecondaryColor,
+                                  fontSize: 15,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: _localeService.get('register'),
+                                    style: const TextStyle(
+                                      color: ThemeService.accentColor,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    Widget? suffixIcon,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      style: TextStyle(
+        color: _themeService.textPrimaryColor,
+        fontSize: 16,
+      ),
+      validator: validator,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: _themeService.textSecondaryColor,
+          fontSize: 16,
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: _themeService.textSecondaryColor,
+          size: 22,
+        ),
+        suffixIcon: suffixIcon,
+        filled: true,
+        fillColor: _themeService.isLightMode 
+            ? Colors.grey[100] 
+            : Colors.white.withOpacity(0.08),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: _themeService.isLightMode 
+                ? Colors.grey[200]! 
+                : Colors.white.withOpacity(0.1),
+            width: 1,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: ThemeService.accentColor,
+            width: 2,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 1,
+          ),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: Colors.red,
+            width: 2,
+          ),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 18,
+        ),
       ),
     );
   }
@@ -765,14 +1070,19 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 }
 
-class _SocialButton extends StatelessWidget {
-  final IconData icon;
+class _ModernSocialButton extends StatelessWidget {
+  final IconData? icon;
+  final Widget? iconWidget;
+  final Color? iconColor;
   final String label;
   final VoidCallback onTap;
   final ThemeService themeService;
   final bool isLoading;
-  const _SocialButton({
-    required this.icon, 
+  
+  const _ModernSocialButton({
+    this.icon,
+    this.iconWidget,
+    this.iconColor,
     required this.label, 
     required this.onTap, 
     required this.themeService,
@@ -781,40 +1091,56 @@ class _SocialButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: isLoading ? null : onTap,
-      child: Container(
-        width: 90,
-        height: 80,
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: themeService.dividerColor),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isLoading)
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: themeService.textPrimaryColor,
-                ),
-              )
-            else
-              Icon(icon, color: themeService.textPrimaryColor, size: 22),
-            const SizedBox(height: 4),
-            Text(
-              label, 
-              style: TextStyle(color: themeService.textPrimaryColor, fontSize: 10),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: isLoading ? null : onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            color: themeService.isLightMode 
+                ? Colors.white 
+                : Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: themeService.isLightMode 
+                  ? Colors.grey[200]! 
+                  : Colors.white.withOpacity(0.1),
+              width: 1,
             ),
-          ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (isLoading)
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: themeService.textPrimaryColor,
+                  ),
+                )
+              else if (iconWidget != null)
+                iconWidget!
+              else
+                Icon(icon, color: iconColor ?? themeService.textPrimaryColor, size: 24),
+              const SizedBox(height: 6),
+              Text(
+                label, 
+                style: TextStyle(
+                  color: themeService.textPrimaryColor, 
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );

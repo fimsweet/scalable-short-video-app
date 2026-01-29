@@ -10,6 +10,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/activity_histo
 import 'package:scalable_short_video_app/src/presentation/screens/analytics_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/logged_devices_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/phone_management_screen.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 class AccountManagementScreen extends StatefulWidget {
   const AccountManagementScreen({super.key});
@@ -28,7 +29,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   bool _twoFactorEnabled = false;
   List<String> _twoFactorMethods = [];
   bool _biometricEnabled = false;
-  bool _loginAlertsEnabled = true;
+  bool _loginAlertsEnabled = false; // Default to false, will be loaded from API
+  bool _isLoadingLoginAlerts = true; // Loading state for toggle
   bool _hasPassword = true; // Default to true, will be updated from API
   bool _isLoadingPassword = true;
 
@@ -45,7 +47,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   Future<void> _loadLoginAlertsStatus() async {
     final enabled = await _fcmService.getLoginAlertsStatus();
     if (mounted) {
-      setState(() => _loginAlertsEnabled = enabled);
+      setState(() {
+        _loginAlertsEnabled = enabled;
+        _isLoadingLoginAlerts = false;
+      });
     }
   }
 
@@ -105,7 +110,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -170,10 +175,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
               _buildSettingSwitch(
                 icon: Icons.notifications_active_outlined,
                 iconColor: Colors.purple,
-                title: _localeService.get('push_notifications'),
-                subtitle: _localeService.get('push_notifications_desc'),
+                title: _localeService.get('login_alerts'),
+                subtitle: _localeService.get('login_alerts_desc'),
                 value: _loginAlertsEnabled,
-                onChanged: (value) async {
+                isLoading: _isLoadingLoginAlerts,
+                onChanged: _isLoadingLoginAlerts ? null : (value) async {
                   final previousValue = _loginAlertsEnabled;
                   setState(() => _loginAlertsEnabled = value);
                   
@@ -391,8 +397,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>? onChanged,
     bool showDivider = false,
+    bool isLoading = false,
   }) {
     return Column(
       children: [
@@ -432,14 +439,24 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ],
                 ),
               ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeColor: _themeService.switchActiveColor,
-                activeTrackColor: _themeService.switchActiveTrackColor,
-                inactiveThumbColor: _themeService.switchInactiveThumbColor,
-                inactiveTrackColor: _themeService.switchInactiveTrackColor,
-              ),
+              if (isLoading)
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _themeService.textSecondaryColor,
+                  ),
+                )
+              else
+                Switch(
+                  value: value,
+                  onChanged: onChanged,
+                  activeColor: _themeService.switchActiveColor,
+                  activeTrackColor: _themeService.switchActiveTrackColor,
+                  inactiveThumbColor: _themeService.switchInactiveThumbColor,
+                  inactiveTrackColor: _themeService.switchInactiveTrackColor,
+                ),
             ],
           ),
         ),
@@ -2268,37 +2285,37 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   }
 
   void _showAddPhoneDialog() {
-    Navigator.push(
+    NavigationUtils.slideToScreen(
       context,
-      MaterialPageRoute(builder: (context) => const PhoneManagementScreen()),
+      const PhoneManagementScreen(),
     );
   }
 
   void _showDevicesDialog() {
-    Navigator.push(
+    NavigationUtils.slideToScreen(
       context,
-      MaterialPageRoute(builder: (context) => const LoggedDevicesScreen()),
+      const LoggedDevicesScreen(),
     );
   }
 
   void _showAnalyticsScreen() {
-    Navigator.push(
+    NavigationUtils.slideToScreen(
       context,
-      MaterialPageRoute(builder: (context) => const AnalyticsScreen()),
+      const AnalyticsScreen(),
     );
   }
 
   void _showActivityHistoryDialog() {
-    Navigator.push(
+    NavigationUtils.slideToScreen(
       context,
-      MaterialPageRoute(builder: (context) => const ActivityHistoryScreen()),
+      const ActivityHistoryScreen(),
     );
   }
 
   void _showBlockedAccountsDialog() {
-    Navigator.push(
+    NavigationUtils.slideToScreen(
       context,
-      MaterialPageRoute(builder: (context) => const BlockedUsersScreen()),
+      const BlockedUsersScreen(),
     );
   }
 

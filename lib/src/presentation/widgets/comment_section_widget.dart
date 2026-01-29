@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 
 // Theme colors - matching TikTok/Instagram style
 class CommentTheme {
@@ -25,12 +26,14 @@ class CommentSectionWidget extends StatefulWidget {
   final String videoId;
   final VoidCallback? onCommentAdded;
   final VoidCallback? onCommentDeleted;
+  final bool allowComments;
 
   const CommentSectionWidget({
     super.key,
     required this.videoId,
     this.onCommentAdded,
     this.onCommentDeleted,
+    this.allowComments = true,
   });
 
   @override
@@ -57,12 +60,19 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   File? _selectedImage;
   
   final Set<String> _expandedCommentIds = {};
+  
+  // Pagination state
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
+  int _currentOffset = 0;
+  static const int _pageSize = 20;
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+    _scrollController.addListener(_onScroll);
     _loadComments();
     _textController.addListener(() {
       setState(() {});
@@ -85,23 +95,40 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   void dispose() {
     _textController.dispose();
     _focusNode.dispose();
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreComments();
+    }
+  }
+
   Future<void> _loadComments() async {
     if (!mounted) return;
     
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _currentOffset = 0;
+      _hasMore = true;
+    });
     
     try {
-      final comments = await _commentService.getCommentsByVideo(widget.videoId);
+      final result = await _commentService.getCommentsByVideoWithPagination(
+        widget.videoId,
+        limit: _pageSize,
+        offset: 0,
+      );
       
       if (mounted) {
         setState(() {
-          _comments = comments;
+          _comments = result['comments'] ?? [];
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset = _comments.length;
           _isLoading = false;
         });
       }
@@ -109,6 +136,35 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       print('Error loading comments: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadMoreComments() async {
+    if (!mounted || _isLoadingMore || !_hasMore) return;
+    
+    setState(() => _isLoadingMore = true);
+    
+    try {
+      final result = await _commentService.getCommentsByVideoWithPagination(
+        widget.videoId,
+        limit: _pageSize,
+        offset: _currentOffset,
+      );
+      
+      if (mounted) {
+        final newComments = result['comments'] ?? [];
+        setState(() {
+          _comments.addAll(newComments);
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset += (newComments.length as int);
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more comments: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
       }
     }
   }
@@ -334,7 +390,31 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
             
             // Comments list
             Expanded(
-              child: _isLoading
+              child: !widget.allowComments
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.comments_disabled_outlined,
+                            size: 56,
+                            color: _themeService.textSecondaryColor,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _localeService.isVietnamese 
+                                ? 'Chủ sở hữu đã tắt bình luận' 
+                                : 'Comments are turned off',
+                            style: TextStyle(
+                              color: _themeService.textSecondaryColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _isLoading
                   ? Center(
                       child: CircularProgressIndicator(
                         color: _themeService.textPrimaryColor,
@@ -375,8 +455,25 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                           controller: _scrollController,
                           padding: const EdgeInsets.only(top: 8, bottom: 8),
                           physics: const ClampingScrollPhysics(),
-                          itemCount: _comments.length,
+                          itemCount: _comments.length + (_isLoadingMore ? 1 : 0),
                           itemBuilder: (context, index) {
+                            // Show loading indicator at the end
+                            if (index == _comments.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(CommentTheme.primaryRed),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            
                             final comment = _comments[index];
                             return _CommentItem(
                               comment: comment,
@@ -448,9 +545,11 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
               ),
             
             // Input section - Different UI for logged in vs logged out
-            isLoggedIn 
-                ? _buildLoggedInInput(bottomPadding)
-                : _buildLoggedOutPrompt(bottomPadding),
+            // Don't show input if comments are disabled
+            if (widget.allowComments)
+              isLoggedIn 
+                  ? _buildLoggedInInput(bottomPadding)
+                  : _buildLoggedOutPrompt(bottomPadding),
           ],
         ),
       ),
@@ -835,6 +934,24 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
     }
   }
 
+  void _navigateToUserProfile(BuildContext context, dynamic userId) {
+    if (userId == null) return;
+    
+    final userIdInt = int.tryParse(userId.toString());
+    if (userIdInt == null) return;
+    
+    // Close the comment bottom sheet first
+    Navigator.pop(context);
+    
+    // Navigate to user profile
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: userIdInt),
+      ),
+    );
+  }
+
   void _showOptions() {
     final isOwnComment = widget.authService.user != null && 
                          widget.authService.user!['id'].toString() == widget.comment['userId'].toString();
@@ -935,15 +1052,18 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: CommentTheme.cardBackground,
-                    backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
-                        ? NetworkImage(widget.apiService.getAvatarUrl(userInfo['avatar']))
-                        : null,
-                    child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
-                        ? const Icon(Icons.person, size: 18, color: Colors.white54)
-                        : null,
+                  GestureDetector(
+                    onTap: () => _navigateToUserProfile(context, widget.comment['userId']),
+                    child: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: CommentTheme.cardBackground,
+                      backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
+                          ? NetworkImage(widget.apiService.getAvatarUrl(userInfo['avatar']))
+                          : null,
+                      child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
+                          ? const Icon(Icons.person, size: 18, color: Colors.white54)
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   
@@ -953,12 +1073,15 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                       children: [
                         Row(
                           children: [
-                            Text(
-                              userInfo['username'] ?? 'user',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                                color: CommentTheme.textSecondary,
+                            GestureDetector(
+                              onTap: () => _navigateToUserProfile(context, widget.comment['userId']),
+                              child: Text(
+                                userInfo['username'] ?? 'user',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: CommentTheme.textSecondary,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),

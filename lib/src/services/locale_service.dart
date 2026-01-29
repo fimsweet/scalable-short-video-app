@@ -288,6 +288,18 @@ class LocaleService extends ChangeNotifier {
     'update_success': 'Cập nhật thông tin thành công!',
     'update_failed': 'Cập nhật thất bại',
     'avatar_update_success': 'Cập nhật ảnh đại diện thành công!',
+    
+    // Friend Suggestions
+    'discover_people': 'Khám phá mọi người',
+    'see_all': 'Xem tất cả',
+    'mutual_friends': 'bạn chung',
+    'has_mutual_friend': 'Có bạn chung',
+    'popular_account': 'Tài khoản phổ biến',
+    'no_suggestions': 'Không có đề xuất nào',
+    'followed': 'Đã theo dõi',
+    'copy_link': 'Sao chép liên kết',
+    'link_copied': 'Đã sao chép liên kết',
+    'qr_code': 'Mã QR',
 
     // Settings
     'account': 'Tài khoản',
@@ -306,6 +318,8 @@ class LocaleService extends ChangeNotifier {
     'filter_comments_desc': 'Tự động ẩn các bình luận có thể gây khó chịu',
     'push_notifications': 'Thông báo đẩy',
     'push_notifications_desc': 'Nhận thông báo tin nhắn, theo dõi, bình luận...',
+    'login_alerts': 'Thông báo đăng nhập',
+    'login_alerts_desc': 'Nhận thông báo khi có thiết bị mới đăng nhập',
     'content_display': 'Nội dung và hiển thị',
     'light_mode': 'Chế độ sáng',
     'light_mode_desc': 'Chuyển đổi giữa giao diện sáng và tối',
@@ -438,7 +452,6 @@ class LocaleService extends ChangeNotifier {
     'search_users_to_chat': 'Tìm kiếm người dùng để nhắn tin',
     'no_users_found': 'Không tìm thấy người dùng nào',
     'suggested': 'Gợi ý',
-    'no_suggestions': 'Chưa có gợi ý',
     'follow_to_see_suggestions': 'Theo dõi người dùng để xem họ trong danh sách gợi ý',
     'online': 'Đang hoạt động',
     'offline': 'Ngoại tuyến',
@@ -1012,6 +1025,18 @@ class LocaleService extends ChangeNotifier {
     'update_success': 'Profile updated successfully!',
     'update_failed': 'Update failed',
     'avatar_update_success': 'Avatar updated successfully!',
+    
+    // Friend Suggestions
+    'discover_people': 'Discover People',
+    'see_all': 'See All',
+    'mutual_friends': 'mutual friends',
+    'has_mutual_friend': 'Has mutual friend',
+    'popular_account': 'Popular account',
+    'no_suggestions': 'No suggestions',
+    'followed': 'Followed',
+    'copy_link': 'Copy Link',
+    'link_copied': 'Link copied',
+    'qr_code': 'QR Code',
 
     // Settings
     'account': 'Account',
@@ -1030,6 +1055,8 @@ class LocaleService extends ChangeNotifier {
     'filter_comments_desc': 'Automatically hide potentially offensive comments',
     'push_notifications': 'Push Notifications',
     'push_notifications_desc': 'Get notified of messages, follows, comments...',
+    'login_alerts': 'Login Alerts',
+    'login_alerts_desc': 'Get notified when a new device logs in',
     'content_display': 'Content & Display',
     'light_mode': 'Light Mode',
     'light_mode_desc': 'Switch between light and dark theme',
@@ -1162,7 +1189,6 @@ class LocaleService extends ChangeNotifier {
     'search_users_to_chat': 'Search users to chat',
     'no_users_found': 'No users found',
     'suggested': 'Suggested',
-    'no_suggestions': 'No suggestions yet',
     'follow_to_see_suggestions': 'Follow users to see them in your suggestion list',
     'online': 'Online',
     'offline': 'Offline',

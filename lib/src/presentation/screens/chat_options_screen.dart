@@ -5,18 +5,39 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/blocked_users_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/chat_media_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/pinned_messages_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/chat_search_screen.dart';
+
+// Chat theme colors
+class ChatThemeColor {
+  final String id;
+  final String name;
+  final Color primaryColor;
+  final Color lightColor;
+  
+  const ChatThemeColor({
+    required this.id,
+    required this.name,
+    required this.primaryColor,
+    required this.lightColor,
+  });
+}
 
 class ChatOptionsScreen extends StatefulWidget {
   final String recipientId;
   final String recipientUsername;
   final String? recipientAvatar;
+  final Function(Color?)? onThemeColorChanged;
+  final Function(String?)? onNicknameChanged;
 
   const ChatOptionsScreen({
     super.key,
     required this.recipientId,
     required this.recipientUsername,
     this.recipientAvatar,
+    this.onThemeColorChanged,
+    this.onNicknameChanged,
   });
 
   @override
@@ -31,9 +52,24 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   final LocaleService _localeService = LocaleService();
   
   bool _isMuted = false;
-  bool _isPinned = false;
   bool _isBlocked = false;
   bool _isLoading = true;
+  
+  // Chat customization
+  Color? _selectedThemeColor;
+  String? _nickname;
+  
+  // Available theme colors
+  final List<ChatThemeColor> _themeColors = [
+    ChatThemeColor(id: 'default', name: 'Mặc định', primaryColor: Colors.blue, lightColor: Colors.blue.shade100),
+    ChatThemeColor(id: 'pink', name: 'Hồng', primaryColor: Colors.pink, lightColor: Colors.pink.shade100),
+    ChatThemeColor(id: 'purple', name: 'Tím', primaryColor: Colors.purple, lightColor: Colors.purple.shade100),
+    ChatThemeColor(id: 'green', name: 'Xanh lá', primaryColor: Colors.green, lightColor: Colors.green.shade100),
+    ChatThemeColor(id: 'orange', name: 'Cam', primaryColor: Colors.orange, lightColor: Colors.orange.shade100),
+    ChatThemeColor(id: 'red', name: 'Đỏ', primaryColor: Colors.red, lightColor: Colors.red.shade100),
+    ChatThemeColor(id: 'teal', name: 'Xanh ngọc', primaryColor: Colors.teal, lightColor: Colors.teal.shade100),
+    ChatThemeColor(id: 'indigo', name: 'Chàm', primaryColor: Colors.indigo, lightColor: Colors.indigo.shade100),
+  ];
 
   @override
   void initState() {
@@ -62,7 +98,6 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     try {
       final settings = await _messageService.getConversationSettings(widget.recipientId);
       
-      // Check blocked status
       final currentUser = await _authService.getCurrentUser();
       bool isBlocked = false;
       if (currentUser != null) {
@@ -72,108 +107,221 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
       if (mounted) {
         setState(() {
           _isMuted = settings['isMuted'] ?? false;
-          _isPinned = settings['isPinned'] ?? false;
           _isBlocked = isBlocked;
+          _nickname = settings['nickname'];
+          // Parse theme color if saved
+          final themeColorId = settings['themeColor'];
+          if (themeColorId != null) {
+            final theme = _themeColors.firstWhere(
+              (t) => t.id == themeColorId,
+              orElse: () => _themeColors.first,
+            );
+            _selectedThemeColor = theme.primaryColor;
+          }
           _isLoading = false;
         });
       }
     } catch (e) {
       print('Error loading settings: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _showSuccessDialog({required String title, required String message}) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _themeService.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.check_circle, color: Colors.green, size: 24),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(title, style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18)),
-            ),
-          ],
-        ),
-        content: Text(message, style: TextStyle(color: _themeService.textSecondaryColor)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK', style: TextStyle(color: Color(0xFFE84C3D))),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _themeService.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.error, color: Colors.red, size: 24),
-            const SizedBox(width: 8),
-            Text(_localeService.get('error'), style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18)),
-          ],
-        ),
-        content: Text(message, style: TextStyle(color: _themeService.textSecondaryColor)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_localeService.get('ok'), style: const TextStyle(color: Color(0xFFE84C3D))),
-          ),
-        ],
-      ),
-    );
   }
 
   void _viewProfile() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => UserProfileScreen(userId: int.parse(widget.recipientId)),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => 
+            UserProfileScreen(userId: int.parse(widget.recipientId)),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: Curves.easeInOut));
+          return SlideTransition(position: animation.drive(tween), child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
 
   Future<void> _toggleMuteNotification(bool value) async {
     setState(() => _isMuted = value);
-    
     try {
-      await _messageService.updateConversationSettings(
-        widget.recipientId,
-        isMuted: value,
-      );
-      // No dialog - toggle already shows the state
+      await _messageService.updateConversationSettings(widget.recipientId, isMuted: value);
     } catch (e) {
-      // Revert on error
       setState(() => _isMuted = !value);
-      _showErrorDialog(_localeService.get('settings_update_failed'));
+      _showSnackBar(_localeService.get('error_occurred'), Colors.red);
     }
   }
 
-  Future<void> _togglePinConversation(bool value) async {
-    setState(() => _isPinned = value);
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _showThemeColorPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: _themeService.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _themeService.dividerColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _localeService.isVietnamese ? 'Chọn màu chủ đề' : 'Choose Theme Color',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: _themeService.textPrimaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: _themeColors.map((theme) => GestureDetector(
+                onTap: () {
+                  setState(() => _selectedThemeColor = theme.primaryColor);
+                  widget.onThemeColorChanged?.call(theme.primaryColor);
+                  _messageService.updateConversationSettings(
+                    widget.recipientId,
+                    themeColor: theme.id,
+                  );
+                  Navigator.pop(context);
+                  _showSnackBar(
+                    _localeService.isVietnamese 
+                        ? 'Đã đổi màu chủ đề' 
+                        : 'Theme color changed',
+                    theme.primaryColor,
+                  );
+                },
+                child: Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    shape: BoxShape.circle,
+                    border: _selectedThemeColor == theme.primaryColor
+                        ? Border.all(color: _themeService.textPrimaryColor, width: 3)
+                        : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.primaryColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: _selectedThemeColor == theme.primaryColor
+                      ? const Icon(Icons.check, color: Colors.white, size: 28)
+                      : null,
+                ),
+              )).toList(),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showNicknameDialog() {
+    final controller = TextEditingController(text: _nickname ?? widget.recipientUsername);
     
-    try {
-      await _messageService.updateConversationSettings(
-        widget.recipientId,
-        isPinned: value,
-      );
-      // No dialog - toggle already shows the state
-    } catch (e) {
-      // Revert on error
-      setState(() => _isPinned = !value);
-      _showErrorDialog(_localeService.get('settings_update_failed'));
-    }
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _localeService.isVietnamese ? 'Đặt biệt danh' : 'Set Nickname',
+          style: TextStyle(color: _themeService.textPrimaryColor),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: _themeService.textPrimaryColor),
+          decoration: InputDecoration(
+            hintText: widget.recipientUsername,
+            hintStyle: TextStyle(color: _themeService.textSecondaryColor),
+            filled: true,
+            fillColor: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[800],
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(Icons.clear, color: _themeService.textSecondaryColor),
+              onPressed: () => controller.clear(),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              _localeService.get('cancel'),
+              style: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final newNickname = controller.text.trim();
+              setState(() => _nickname = newNickname.isEmpty ? null : newNickname);
+              widget.onNicknameChanged?.call(_nickname);
+              _messageService.updateConversationSettings(
+                widget.recipientId,
+                nickname: _nickname,
+              );
+              Navigator.pop(context);
+              _showSnackBar(
+                _localeService.isVietnamese 
+                    ? 'Đã cập nhật biệt danh' 
+                    : 'Nickname updated',
+                Colors.green,
+              );
+            },
+            child: Text(
+              _localeService.isVietnamese ? 'Lưu' : 'Save',
+              style: const TextStyle(color: Colors.blue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSearchInChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatSearchScreen(
+          recipientId: widget.recipientId,
+          recipientUsername: _nickname ?? widget.recipientUsername,
+          recipientAvatar: widget.recipientAvatar,
+        ),
+      ),
+    );
   }
 
   void _blockUser() {
@@ -185,8 +333,8 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         title: Text(_localeService.get('block_user'), style: TextStyle(color: _themeService.textPrimaryColor)),
         content: Text(
           _localeService.isVietnamese
-              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}?\n\nHọ sẽ không thể:\n• Gửi tin nhắn cho bạn\n• Xem trang cá nhân của bạn\n• Tìm thấy bạn trong tìm kiếm'
-              : 'Are you sure you want to block ${widget.recipientUsername}?\n\nThey will not be able to:\n• Send you messages\n• View your profile\n• Find you in search',
+              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}?'
+              : 'Are you sure you want to block ${widget.recipientUsername}?',
           style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
@@ -196,7 +344,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           ),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context); // Close dialog
+              Navigator.pop(context);
               await _performBlockUser();
             },
             child: Text(_localeService.get('block'), style: const TextStyle(color: Colors.red)),
@@ -209,189 +357,14 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   Future<void> _performBlockUser() async {
     try {
       final currentUser = await _authService.getCurrentUser();
-      final currentUserId = currentUser?['id']?.toString();
-      await _apiService.blockUser(widget.recipientId, currentUserId: currentUserId);
-      
+      await _apiService.blockUser(widget.recipientId, currentUserId: currentUser?['id']?.toString());
       if (mounted) {
-        setState(() {
-          _isBlocked = true;
-        });
-        
-        // Navigate back to chat screen directly after blocking
+        setState(() => _isBlocked = true);
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) {
-        _showErrorDialog(_localeService.get('block_failed'));
-      }
+      _showSnackBar(_localeService.get('error_occurred'), Colors.red);
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _themeService.backgroundColor,
-      appBar: AppBar(
-        backgroundColor: _themeService.appBarBackground,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          _localeService.get('chat_options'),
-          style: TextStyle(color: _themeService.textPrimaryColor, fontWeight: FontWeight.w600),
-        ),
-        centerTitle: true,
-      ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
-          : SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 20),
-                  
-                  // Profile header
-                  _buildProfileHeader(),
-                  
-                  const SizedBox(height: 32),
-                  
-                  // Settings section
-                  _buildSettingsSection(),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Danger zone
-                  _buildDangerSection(),
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildProfileHeader() {
-    return Column(
-      children: [
-        // Avatar
-        CircleAvatar(
-          radius: 50,
-          backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
-          backgroundImage: widget.recipientAvatar != null
-              ? NetworkImage(widget.recipientAvatar!)
-              : null,
-          child: widget.recipientAvatar == null
-              ? Icon(Icons.person, color: _themeService.textSecondaryColor, size: 50)
-              : null,
-        ),
-        const SizedBox(height: 16),
-        
-        // Username
-        Text(
-          widget.recipientUsername,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: _themeService.textPrimaryColor,
-          ),
-        ),
-        const SizedBox(height: 8),
-        
-        // View profile button
-        GestureDetector(
-          onTap: _viewProfile,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              _localeService.get('view_profile'),
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.blue,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingsSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          _buildOptionItem(
-            icon: Icons.notifications_off_outlined,
-            label: _localeService.get('mute_notifications'),
-            subtitle: _isMuted ? _localeService.get('muted') : _localeService.get('unmuted'),
-            hasSwitch: true,
-            switchValue: _isMuted,
-            onSwitchChanged: _toggleMuteNotification,
-          ),
-          Divider(color: _themeService.dividerColor, height: 1, indent: 56),
-          _buildOptionItem(
-            icon: Icons.push_pin_outlined,
-            label: _localeService.get('pin_conversation'),
-            subtitle: _isPinned ? _localeService.get('pinned') : _localeService.get('not_pinned'),
-            hasSwitch: true,
-            switchValue: _isPinned,
-            onSwitchChanged: _togglePinConversation,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDangerSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          if (_isBlocked)
-            _buildOptionItem(
-              icon: Icons.lock_open,
-              label: _localeService.get('unblock'),
-              subtitle: _localeService.get('allow_contact'),
-              textColor: Colors.green,
-              iconColor: Colors.green,
-              onTap: _unblockUser,
-            )
-          else
-            _buildOptionItem(
-              icon: Icons.block,
-              label: _localeService.get('block'),
-              subtitle: _localeService.get('block_user_desc'),
-              textColor: Colors.red,
-              iconColor: Colors.red,
-              onTap: _blockUser,
-            ),
-          Divider(color: _themeService.dividerColor, height: 1, indent: 56),
-          _buildOptionItem(
-            icon: Icons.list,
-            label: _localeService.get('blocked_list'),
-            subtitle: _localeService.get('blocked_list_subtitle'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
-              ).then((_) => _loadSettings());
-            },
-          ),
-        ],
-      ),
-    );
   }
 
   void _unblockUser() {
@@ -403,8 +376,8 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         title: Text(_localeService.get('unblock_user'), style: TextStyle(color: _themeService.textPrimaryColor)),
         content: Text(
           _localeService.isVietnamese
-              ? 'Bạn có chắc muốn bỏ chặn ${widget.recipientUsername}?\n\nHọ sẽ có thể gửi tin nhắn cho bạn.'
-              : 'Are you sure you want to unblock ${widget.recipientUsername}?\n\nThey will be able to send you messages.',
+              ? 'Bạn có chắc muốn bỏ chặn ${widget.recipientUsername}?'
+              : 'Are you sure you want to unblock ${widget.recipientUsername}?',
           style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
@@ -415,7 +388,9 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await _performUnblockUser();
+              final currentUser = await _authService.getCurrentUser();
+              await _apiService.unblockUser(widget.recipientId, currentUserId: currentUser?['id']?.toString());
+              if (mounted) setState(() => _isBlocked = false);
             },
             child: Text(_localeService.get('unblock'), style: const TextStyle(color: Colors.green)),
           ),
@@ -424,102 +399,353 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
     );
   }
 
-  Future<void> _performUnblockUser() async {
-    try {
-      final currentUser = await _authService.getCurrentUser();
-      final currentUserId = currentUser?['id']?.toString();
-      final success = await _apiService.unblockUser(widget.recipientId, currentUserId: currentUserId);
-      
-      if (success && mounted) {
-        setState(() {
-          _isBlocked = false;
-        });
-        
-        _showSuccessDialog(
-          title: _localeService.get('unblocked_success'),
-          message: _localeService.isVietnamese
-              ? 'Bạn đã bỏ chặn ${widget.recipientUsername}. Họ có thể gửi tin nhắn cho bạn.'
-              : 'You unblocked ${widget.recipientUsername}. They can send you messages now.',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        _showErrorDialog(_localeService.get('unblock_failed'));
-      }
-    }
+  void _showMediaGallery() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatMediaScreen(
+          recipientId: widget.recipientId,
+          recipientUsername: _nickname ?? widget.recipientUsername,
+        ),
+      ),
+    );
   }
 
-  Widget _buildOptionItem({
-    required IconData icon,
-    required String label,
-    String? subtitle,
-    bool hasSwitch = false,
-    bool switchValue = false,
-    ValueChanged<bool>? onSwitchChanged,
-    VoidCallback? onTap,
-    Color? textColor,
-    Color? iconColor,
-  }) {
-    final defaultTextColor = textColor ?? _themeService.textPrimaryColor;
-    final defaultIconColor = iconColor ?? _themeService.textPrimaryColor;
-    
-    return InkWell(
-      onTap: hasSwitch ? null : onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: (iconColor ?? _themeService.textSecondaryColor).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                size: 22,
-                color: defaultIconColor,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
+  void _showPinnedMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PinnedMessagesScreen(
+          recipientId: widget.recipientId,
+          recipientUsername: _nickname ?? widget.recipientUsername,
+          recipientAvatar: widget.recipientAvatar,
+        ),
+      ),
+    );
+  }
+
+  void _reportUser() {
+    _showSnackBar(
+      _localeService.isVietnamese ? 'Tính năng sắp ra mắt' : 'Feature coming soon',
+      _themeService.snackBarBackground,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _themeService.backgroundColor,
+      appBar: AppBar(
+        backgroundColor: _themeService.appBarBackground,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor, strokeWidth: 2))
+          : SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: defaultTextColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  if (subtitle != null)
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: _themeService.textSecondaryColor,
-                      ),
-                    ),
+                  const SizedBox(height: 10),
+                  _buildProfileHeader(),
+                  const SizedBox(height: 24),
+                  _buildQuickActions(),
+                  const SizedBox(height: 28),
+                  _buildCustomizeSection(),
+                  const SizedBox(height: 16),
+                  _buildOtherActionsSection(),
+                  const SizedBox(height: 16),
+                  _buildPrivacySection(),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
-            if (hasSwitch)
-              Switch(
-                value: switchValue,
-                onChanged: onSwitchChanged,
-                activeColor: _themeService.switchActiveColor,
-                activeTrackColor: _themeService.switchActiveTrackColor,
-                inactiveThumbColor: _themeService.switchInactiveThumbColor,
-                inactiveTrackColor: _themeService.switchInactiveTrackColor,
-              )
-            else
-              Icon(Icons.chevron_right, color: _themeService.textSecondaryColor),
+    );
+  }
+
+  Widget _buildProfileHeader() {
+    final avatarUrl = widget.recipientAvatar != null 
+        ? _apiService.getAvatarUrl(widget.recipientAvatar!)
+        : null;
+        
+    return Column(
+      children: [
+        Stack(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: [Colors.red.shade400, Colors.pink.shade400]),
+              ),
+              child: CircleAvatar(
+                radius: 52,
+                backgroundColor: _themeService.backgroundColor,
+                child: CircleAvatar(
+                  radius: 48,
+                  backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                  backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl == null
+                      ? Icon(Icons.person, color: _themeService.textSecondaryColor, size: 48)
+                      : null,
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 4,
+              right: 4,
+              child: Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _themeService.backgroundColor, width: 3),
+                ),
+              ),
+            ),
           ],
         ),
+        const SizedBox(height: 16),
+        Text(
+          _nickname ?? widget.recipientUsername,
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildQuickActionButton(
+            icon: Icons.person_outline,
+            label: _localeService.isVietnamese ? 'Trang\ncá nhân' : 'Profile',
+            onTap: _viewProfile,
+          ),
+          _buildQuickActionButton(
+            icon: _isMuted ? Icons.notifications_off_outlined : Icons.notifications_outlined,
+            label: _isMuted 
+                ? (_localeService.isVietnamese ? 'Bật thông\nbáo' : 'Unmute')
+                : (_localeService.isVietnamese ? 'Tắt thông\nbáo' : 'Mute'),
+            onTap: () => _toggleMuteNotification(!_isMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[850],
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: _themeService.textPrimaryColor, size: 24),
+          ),
+          const SizedBox(height: 8),
+          Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _themeService.textPrimaryColor, height: 1.3)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, bottom: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _themeService.textSecondaryColor)),
+      ),
+    );
+  }
+
+  Widget _buildCustomizeSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(_localeService.isVietnamese ? 'Tùy chỉnh' : 'Customize'),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              _buildMenuItem(
+                icon: Icons.palette_outlined, 
+                iconBgColor: _selectedThemeColor ?? Colors.deepPurple, 
+                label: _localeService.isVietnamese ? 'Chủ đề' : 'Theme', 
+                onTap: _showThemeColorPicker,
+                showChevron: true,
+              ),
+              _buildDivider(),
+              _buildMenuItem(
+                icon: Icons.edit_outlined, 
+                iconBgColor: Colors.blue, 
+                label: _localeService.isVietnamese ? 'Biệt danh' : 'Nicknames', 
+                onTap: _showNicknameDialog,
+                trailing: Text(
+                  _nickname ?? widget.recipientUsername, 
+                  style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
+                ),
+                showChevron: true,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOtherActionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(_localeService.isVietnamese ? 'Hành động khác' : 'More Actions'),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              _buildMenuItem(
+                icon: Icons.photo_library_outlined, 
+                iconBgColor: Colors.pink, 
+                label: _localeService.isVietnamese ? 'Xem file phương tiện' : 'View Media', 
+                onTap: _showMediaGallery, 
+                showChevron: true,
+              ),
+              _buildDivider(),
+              _buildMenuItem(
+                icon: Icons.push_pin_outlined, 
+                iconBgColor: Colors.amber, 
+                label: _localeService.isVietnamese ? 'Tin nhắn đã ghim' : 'Pinned Messages', 
+                onTap: _showPinnedMessages, 
+                showChevron: true,
+              ),
+              _buildDivider(),
+              _buildMenuItem(
+                icon: Icons.search, 
+                iconBgColor: Colors.indigo, 
+                label: _localeService.isVietnamese ? 'Tìm kiếm trong trò chuyện' : 'Search in Chat', 
+                onTap: _showSearchInChat,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrivacySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle(_localeService.isVietnamese ? 'Quyền riêng tư' : 'Privacy'),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            children: [
+              if (_isBlocked)
+                _buildMenuItem(
+                  icon: Icons.lock_open, 
+                  iconBgColor: Colors.green, 
+                  label: _localeService.get('unblock'), 
+                  onTap: _unblockUser, 
+                  textColor: Colors.green,
+                )
+              else
+                _buildMenuItem(
+                  icon: Icons.block, 
+                  iconBgColor: Colors.red.shade400, 
+                  label: _localeService.get('block'), 
+                  onTap: _blockUser, 
+                  textColor: Colors.red,
+                ),
+              _buildDivider(),
+              _buildMenuItem(
+                icon: Icons.report_outlined, 
+                iconBgColor: Colors.orange, 
+                label: _localeService.isVietnamese ? 'Báo cáo' : 'Report', 
+                onTap: _reportUser,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDivider() => Divider(color: _themeService.dividerColor, height: 1, indent: 56);
+
+  Widget _buildMenuItem({required IconData icon, required Color iconBgColor, required String label, required VoidCallback onTap, Widget? trailing, bool showChevron = false, Color? textColor}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: iconBgColor.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, size: 20, color: iconBgColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: TextStyle(fontSize: 15, color: textColor ?? _themeService.textPrimaryColor, fontWeight: FontWeight.w500))),
+            if (trailing != null) trailing,
+            if (showChevron) Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchItem({required IconData icon, required Color iconBgColor, required String label, required bool value, required ValueChanged<bool> onChanged}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(color: iconBgColor.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+            child: Icon(icon, size: 20, color: iconBgColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label, style: TextStyle(fontSize: 15, color: _themeService.textPrimaryColor, fontWeight: FontWeight.w500))),
+          Transform.scale(
+            scale: 0.85,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              activeColor: _themeService.switchActiveColor,
+              activeTrackColor: _themeService.switchActiveTrackColor,
+              inactiveThumbColor: _themeService.switchInactiveThumbColor,
+              inactiveTrackColor: _themeService.switchInactiveTrackColor,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -119,6 +119,32 @@ class FollowService {
     }
   }
 
+  /// Get followers with pagination support
+  Future<Map<String, dynamic>> getFollowersWithStatusPaginated(
+    int userId, {
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/followers-with-status/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'data': List<Map<String, dynamic>>.from(data['data'] ?? []),
+          'hasMore': data['hasMore'] ?? false,
+          'total': data['total'] ?? 0,
+        };
+      }
+      return {'data': [], 'hasMore': false, 'total': 0};
+    } catch (e) {
+      print('❌ Error getting followers with status (paginated): $e');
+      return {'data': [], 'hasMore': false, 'total': 0};
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getFollowingWithStatus(int userId) async {
     try {
       final response = await http.get(
@@ -136,6 +162,32 @@ class FollowService {
     }
   }
 
+  /// Get following with pagination support
+  Future<Map<String, dynamic>> getFollowingWithStatusPaginated(
+    int userId, {
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/following-with-status/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'data': List<Map<String, dynamic>>.from(data['data'] ?? []),
+          'hasMore': data['hasMore'] ?? false,
+          'total': data['total'] ?? 0,
+        };
+      }
+      return {'data': [], 'hasMore': false, 'total': 0};
+    } catch (e) {
+      print('❌ Error getting following with status (paginated): $e');
+      return {'data': [], 'hasMore': false, 'total': 0};
+    }
+  }
+
   Future<bool> isMutualFollow(int userId1, int userId2) async {
     try {
       final response = await http.get(
@@ -150,6 +202,77 @@ class FollowService {
     } catch (e) {
       print('❌ Error checking mutual follow: $e');
       return false;
+    }
+  }
+
+  /// Get suggested users to follow
+  /// Returns users based on mutual friends, popularity, etc.
+  Future<List<SuggestedUser>> getSuggestions(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/suggestions/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          return (data['data'] as List)
+              .map((item) => SuggestedUser.fromJson(item))
+              .toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      print('❌ Error getting suggestions: $e');
+      return [];
+    }
+  }
+}
+
+/// Model for suggested user
+class SuggestedUser {
+  final int id;
+  final String username;
+  final String? fullName;
+  final String? avatar;
+  final int followerCount;
+  final int mutualFriendsCount;
+  final String reason;
+
+  SuggestedUser({
+    required this.id,
+    required this.username,
+    this.fullName,
+    this.avatar,
+    required this.followerCount,
+    required this.mutualFriendsCount,
+    required this.reason,
+  });
+
+  factory SuggestedUser.fromJson(Map<String, dynamic> json) {
+    return SuggestedUser(
+      id: json['id'] as int,
+      username: json['username'] as String,
+      fullName: json['fullName'] as String?,
+      avatar: json['avatar'] as String?,
+      followerCount: json['followerCount'] as int? ?? 0,
+      mutualFriendsCount: json['mutualFriendsCount'] as int? ?? 0,
+      reason: json['reason'] as String? ?? 'suggested',
+    );
+  }
+
+  /// Get localized reason text
+  String getReasonText(String Function(String) localize) {
+    switch (reason) {
+      case 'mutual_friends':
+        if (mutualFriendsCount == 1) {
+          return localize('has_mutual_friend');
+        }
+        return '$mutualFriendsCount ${localize('mutual_friends')}';
+      case 'popular':
+        return localize('popular_account');
+      default:
+        return localize('suggested_for_you');
     }
   }
 }
