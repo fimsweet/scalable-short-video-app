@@ -8,11 +8,15 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/fcm_service.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   print('🚀 App starting - initializing services...');
+  
+  // Add Vietnamese locale for timeago
+  timeago.setLocaleMessages('vi', timeago.ViMessages());
   
   // Initialize Firebase first
   await Firebase.initializeApp(

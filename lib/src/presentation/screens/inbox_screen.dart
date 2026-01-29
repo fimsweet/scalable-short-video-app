@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class InboxScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _InboxScreenState extends State<InboxScreen> {
   List<Map<String, dynamic>> _conversations = [];
   Map<String, Map<String, dynamic>> _userCache = {};
   Map<String, bool> _onlineStatusCache = {};
+  Map<String, String?> _nicknameCache = {};
   bool _isLoading = true;
   
   StreamSubscription? _newMessageSubscription;
@@ -120,21 +122,35 @@ class _InboxScreenState extends State<InboxScreen> {
     }
   }
 
+  Future<String?> _getNickname(String recipientId) async {
+    if (_nicknameCache.containsKey(recipientId)) {
+      return _nicknameCache[recipientId];
+    }
+
+    try {
+      final settings = await _messageService.getConversationSettings(recipientId);
+      final nickname = settings['nickname'] as String?;
+      _nicknameCache[recipientId] = nickname;
+      return nickname;
+    } catch (e) {
+      print('❌ Error fetching nickname: $e');
+      return null;
+    }
+  }
+
   void _navigateToChat(Map<String, dynamic> conversation) async {
     final otherUserId = conversation['otherUserId']?.toString() ?? '';
     final userInfo = await _getUserInfo(otherUserId);
 
     if (mounted) {
-      Navigator.push(
+      NavigationUtils.slideToScreen(
         context,
-        MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            recipientId: otherUserId,
-            recipientUsername: userInfo['username'] ?? 'User',
-            recipientAvatar: userInfo['avatar'] != null 
-                ? _apiService.getAvatarUrl(userInfo['avatar']) 
-                : null,
-          ),
+        ChatScreen(
+          recipientId: otherUserId,
+          recipientUsername: userInfo['username'] ?? 'User',
+          recipientAvatar: userInfo['avatar'] != null 
+              ? _apiService.getAvatarUrl(userInfo['avatar']) 
+              : null,
         ),
       ).then((_) {
         _loadConversations();
@@ -241,7 +257,7 @@ class _InboxScreenState extends State<InboxScreen> {
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -257,9 +273,9 @@ class _InboxScreenState extends State<InboxScreen> {
           IconButton(
             icon: Icon(Icons.person_add_alt_1_outlined, color: _themeService.iconColor, size: 24),
             onPressed: () {
-              Navigator.push(
+              NavigationUtils.slideToScreen(
                 context,
-                MaterialPageRoute(builder: (context) => const SearchUserScreen()),
+                const SearchUserScreen(),
               );
             },
           ),
@@ -322,11 +338,16 @@ class _InboxScreenState extends State<InboxScreen> {
                             final lastMessageSenderId = conversation['lastMessageSenderId']?.toString() ?? '';
                             final isMe = lastMessageSenderId == _currentUserId;
 
-                            return FutureBuilder<Map<String, dynamic>>(
-                              future: _getUserInfo(otherUserId),
+                            return FutureBuilder<List<dynamic>>(
+                              future: Future.wait([
+                                _getUserInfo(otherUserId),
+                                _getNickname(otherUserId),
+                              ]),
                               builder: (context, snapshot) {
-                                final userInfo = snapshot.data ?? {'username': 'User', 'avatar': null};
+                                final userInfo = (snapshot.data?[0] as Map<String, dynamic>?) ?? {'username': 'User', 'avatar': null};
+                                final nickname = snapshot.data?[1] as String?;
                                 final otherUsername = userInfo['username'] ?? 'User';
+                                final displayName = nickname ?? otherUsername;
 
                                 return InkWell(
                                   onTap: () => _navigateToChat(conversation),
@@ -379,7 +400,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                 children: [
                                                   Expanded(
                                                     child: Text(
-                                                      userInfo['username'] ?? 'User',
+                                                      displayName,
                                                       style: TextStyle(
                                                         color: _themeService.textPrimaryColor,
                                                         fontWeight: unreadCount > 0 ? FontWeight.bold : FontWeight.w500,

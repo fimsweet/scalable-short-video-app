@@ -62,7 +62,7 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new, color: _themeService.iconColor, size: 20),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
@@ -137,9 +137,14 @@ class _ModernUserListState extends State<_ModernUserList> {
   final FollowService _followService = FollowService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
+  final ScrollController _scrollController = ScrollController();
   
   List<Map<String, dynamic>> _users = []; // Changed to include mutual status
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentOffset = 0;
+  final int _pageSize = 20;
   Map<int, bool> _followStatus = {};
   Map<int, bool> _mutualStatus = {}; // NEW: Track mutual status
   Map<int, bool> _isProcessing = {};
@@ -147,7 +152,59 @@ class _ModernUserListState extends State<_ModernUserList> {
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreUsers();
+    }
+  }
+
+  Future<void> _loadMoreUsers() async {
+    if (_isLoadingMore || !_hasMore) return;
+    
+    setState(() => _isLoadingMore = true);
+    
+    final userId = _authService.user!['id'] as int;
+    
+    try {
+      final result = widget.type == 'follower'
+          ? await _followService.getFollowersWithStatusPaginated(userId, limit: _pageSize, offset: _currentOffset)
+          : await _followService.getFollowingWithStatusPaginated(userId, limit: _pageSize, offset: _currentOffset);
+      
+      final newUsers = result['data'] as List<Map<String, dynamic>>;
+      
+      for (var user in newUsers) {
+        final id = user['userId'] as int;
+        final isMutual = user['isMutual'] as bool? ?? false;
+        
+        _mutualStatus[id] = isMutual;
+        _followStatus[id] = widget.type == 'following' ? true : isMutual;
+      }
+      
+      if (mounted) {
+        setState(() {
+          _users.addAll(newUsers);
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset += newUsers.length;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading more users: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
   }
 
   Future<void> _loadUsers() async {
@@ -157,13 +214,22 @@ class _ModernUserListState extends State<_ModernUserList> {
     }
 
     final userId = _authService.user!['id'] as int;
+    
+    // Reset pagination state
+    _currentOffset = 0;
+    _hasMore = true;
+    _users.clear();
+    _followStatus.clear();
+    _mutualStatus.clear();
 
     try {
-      // Use new API that includes mutual status
-      final users = widget.type == 'follower'
-          ? await _followService.getFollowersWithStatus(userId)
-          : await _followService.getFollowingWithStatus(userId);
+      // Use new paginated API
+      final result = widget.type == 'follower'
+          ? await _followService.getFollowersWithStatusPaginated(userId, limit: _pageSize, offset: 0)
+          : await _followService.getFollowingWithStatusPaginated(userId, limit: _pageSize, offset: 0);
 
+      final users = result['data'] as List<Map<String, dynamic>>;
+      
       for (var user in users) {
         final id = user['userId'] as int;
         final isMutual = user['isMutual'] as bool? ?? false;
@@ -176,6 +242,8 @@ class _ModernUserListState extends State<_ModernUserList> {
       if (mounted) {
         setState(() {
           _users = users;
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset = users.length;
           _isLoading = false;
         });
       }
@@ -258,9 +326,24 @@ class _ModernUserListState extends State<_ModernUserList> {
     }
 
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _users.length,
+      itemCount: _users.length + (_isLoadingMore ? 1 : 0),
       itemBuilder: (context, index) {
+        // Show loading indicator at the end
+        if (index == _users.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        
         final user = _users[index];
         final userId = user['userId'] as int;
         final isFollowing = _followStatus[userId] ?? false;

@@ -697,7 +697,7 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () {
             if (_showUsernameScreen) {
               _animController.reset();

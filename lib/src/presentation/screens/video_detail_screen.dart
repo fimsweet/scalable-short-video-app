@@ -381,9 +381,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         shadowColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(
-            Icons.arrow_back,
+            Icons.chevron_left,
             color: Colors.white,
-            size: 28,
+            size: 32,
             shadows: [
               Shadow(
                 blurRadius: 12.0,

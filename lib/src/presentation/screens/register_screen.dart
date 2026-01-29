@@ -36,6 +36,12 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
   
   late AnimationController _additionalInfoController;
   late Animation<double> _additionalInfoAnimation;
+  
+  // New animation controllers
+  late AnimationController _fadeController;
+  late AnimationController _slideController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -51,6 +57,33 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
       parent: _additionalInfoController,
       curve: Curves.easeInOut,
     );
+    
+    // Initialize fade and slide animations
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    ));
+    
+    // Start animations
+    _fadeController.forward();
+    _slideController.forward();
   }
 
   @override
@@ -62,6 +95,8 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
     _fullNameController.dispose();
     _phoneController.dispose();
     _additionalInfoController.dispose();
+    _fadeController.dispose();
+    _slideController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -235,45 +270,89 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
     return Scaffold(
       backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
-        backgroundColor: _themeService.appBarBackground,
-        title: Text(_localeService.get('register'), style: TextStyle(color: _themeService.textPrimaryColor)),
-        iconTheme: IconThemeData(color: _themeService.iconColor),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(
+            Icons.chevron_left,
+            color: _themeService.iconColor,
+            size: 28,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Text(
+            _localeService.get('register'),
+            style: TextStyle(
+              color: _themeService.textPrimaryColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+        ),
+        centerTitle: true,
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
+      body: SafeArea(
+        child: Stack(
+          children: [
+            SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Birthday Section (TikTok style - required first)
-                  Text(
-                    _localeService.get('whats_your_birthday'),
-                    style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _localeService.get('birthday_description'),
-                    style: TextStyle(
-                      color: _themeService.textSecondaryColor,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildDatePicker(),
-                  const SizedBox(height: 24),
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Welcome text
+                      Text(
+                        _localeService.isVietnamese ? 'Tạo tài khoản mới' : 'Create new account',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: _themeService.textPrimaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _localeService.isVietnamese 
+                            ? 'Điền thông tin để bắt đầu' 
+                            : 'Fill in your details to get started',
+                        style: TextStyle(
+                          fontSize: 15,
+                          color: _themeService.textSecondaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      
+                      // Birthday Section (TikTok style - required first)
+                      Text(
+                        _localeService.get('whats_your_birthday'),
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _localeService.get('birthday_description'),
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildDatePicker(),
+                      const SizedBox(height: 24),
 
-                  // Username Section
-                  Text(
-                    _localeService.get('create_username'),
-                    style: TextStyle(
+                      // Username Section
+                      Text(
+                        _localeService.get('create_username'),
+                        style: TextStyle(
                       color: _themeService.textPrimaryColor,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -621,11 +700,14 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                     ),
                   ),
                   const SizedBox(height: 24),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
         ],
+        ),
       ),
     );
   }

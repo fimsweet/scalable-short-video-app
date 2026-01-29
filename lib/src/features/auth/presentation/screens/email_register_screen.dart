@@ -313,7 +313,7 @@ class _EmailRegisterScreenState extends State<EmailRegisterScreen>
         backgroundColor: _themeService.appBarBackground,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
+          icon: Icon(Icons.chevron_left, color: _themeService.iconColor, size: 28),
           onPressed: () {
             if (_showEmailPasswordScreen) {
               _animController.reset();

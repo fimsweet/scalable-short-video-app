@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/activity_history_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/user_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hidden_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/saved_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/liked_video_grid.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_bottom_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_grid_section.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
@@ -20,6 +24,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/notifications_
 import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/help_screen.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
@@ -45,6 +50,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   // Animation controller for message icon - Changed from late to nullable to fix Hot Reload error
   AnimationController? _messageIconController;
   Animation<double>? _messageIconScale;
+  
+  // Animation controller for suggestions section
+  AnimationController? _suggestionsAnimController;
+  Animation<double>? _suggestionsAnimation;
+  bool _showSuggestions = false;
 
   bool _isUploading = false;
   int _followerCount = 0;
@@ -110,22 +120,36 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _initAnimations() {
-    if (_messageIconController != null) return;
+    // Initialize message icon animation
+    if (_messageIconController == null) {
+      _messageIconController = AnimationController(
+        duration: const Duration(milliseconds: 150),
+        vsync: this,
+      );
+      _messageIconScale = Tween<double>(begin: 1.0, end: 0.8).animate(
+        CurvedAnimation(parent: _messageIconController!, curve: Curves.easeInOut),
+      );
+    }
     
-    _messageIconController = AnimationController(
-      duration: const Duration(milliseconds: 150),
-      vsync: this,
-    );
-    _messageIconScale = Tween<double>(begin: 1.0, end: 0.8).animate(
-      CurvedAnimation(parent: _messageIconController!, curve: Curves.easeInOut),
-    );
+    // Initialize suggestions section animation
+    if (_suggestionsAnimController == null) {
+      _suggestionsAnimController = AnimationController(
+        duration: const Duration(milliseconds: 300),
+        vsync: this,
+      );
+      _suggestionsAnimation = CurvedAnimation(
+        parent: _suggestionsAnimController!,
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _notificationService.stopPolling();
-    _messageIconController?.dispose(); // Safe dispose
+    _messageIconController?.dispose();
+    _suggestionsAnimController?.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -339,9 +363,108 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       ),
     );
     
-    if (result == true) {
-      setState(() {});
+    // Always refresh the screen when returning from edit profile
+    // This ensures bio, username, and other changes are reflected immediately
+    if (mounted) {
+      setState(() {
+        _videoGridKey++; // Force rebuild if needed
+      });
     }
+  }
+
+  void _showSuggestionsBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const SuggestionsBottomSheet(),
+    );
+  }
+
+  void _toggleSuggestionsSection() {
+    setState(() {
+      _showSuggestions = !_showSuggestions;
+    });
+    
+    if (_showSuggestions) {
+      _suggestionsAnimController?.forward();
+    } else {
+      _suggestionsAnimController?.reverse();
+    }
+  }
+
+  void _navigateToActivityHistory() {
+    NavigationUtils.slideToScreen(
+      context,
+      const ActivityHistoryScreen(),
+    );
+  }
+
+  void _shareProfile() {
+    final username = _authService.username ?? '';
+    final profileUrl = 'https://yourapp.com/@$username';
+    
+    // Show share options or copy link
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _themeService.backgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _themeService.textSecondaryColor.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _localeService.get('share_profile'),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: _themeService.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Icon(Icons.copy, color: _themeService.textPrimaryColor),
+                title: Text(
+                  _localeService.get('copy_link'),
+                  style: TextStyle(color: _themeService.textPrimaryColor),
+                ),
+                onTap: () {
+                  // Copy profile link
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_localeService.get('link_copied'))),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.qr_code, color: _themeService.textPrimaryColor),
+                title: Text(
+                  _localeService.get('qr_code'),
+                  style: TextStyle(color: _themeService.textPrimaryColor),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Show QR code
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickAndUploadAvatar() async {
@@ -483,11 +606,11 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       await _messageIconController!.reverse();
     }
 
-    // Always navigate
+    // Always navigate with slide animation
     if (mounted) {
-      await Navigator.push(
+      await NavigationUtils.slideToScreen(
         context,
-        MaterialPageRoute(builder: (_) => const InboxScreen()),
+        const InboxScreen(),
       );
       
       // Refresh unread message count after returning from inbox
@@ -628,11 +751,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
               // Notification icon
               IconButton(
                 onPressed: () {
-                  Navigator.push(
+                  NavigationUtils.slideToScreen(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationsScreen(),
-                    ),
+                    const NotificationsScreen(),
                   ).then((_) {
                     // Refresh unread count after returning
                     if (_authService.isLoggedIn && _authService.user != null) {
@@ -651,7 +772,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   children: [
                     Icon(
                       Icons.notifications_outlined,
-                      size: 28,
+                      size: 26,
                       color: _themeService.iconColor,
                     ),
                     if (_unreadCount > 0)
@@ -699,8 +820,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                           clipBehavior: Clip.none,
                           children: [
                             Icon(
-                              Icons.mail_outline,
-                              size: 30,
+                              Icons.forum_outlined,
+                              size: 26,
                               color: _themeService.iconColor,
                             ),
                             if (_unreadMessageCount > 0)
@@ -736,7 +857,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 ) : Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Icon(Icons.mail_outline, color: _themeService.iconColor, size: 30),
+                    Icon(Icons.forum_outlined, color: _themeService.iconColor, size: 26),
                     if (_unreadMessageCount > 0)
                       Positioned(
                         right: -6,
@@ -778,15 +899,15 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 onSelected: (v) {
                   if (v == 'logout') _showLogoutDialog();
                   if (v == 'settings') {
-                    Navigator.push(
+                    NavigationUtils.slideToScreen(
                       context,
-                      MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
+                      const UserSettingsScreen(),
                     );
                   }
                   if (v == 'help') {
-                    Navigator.push(
+                    NavigationUtils.slideToScreen(
                       context,
-                      MaterialPageRoute(builder: (_) => const HelpScreen()),
+                      const HelpScreen(),
                     );
                   }
                 },
@@ -929,12 +1050,27 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                        Expanded(child: _ActionButton(text: _localeService.get('edit'), onTap: _navigateToEditProfile)),
+                          Expanded(child: _ActionButton(text: _localeService.get('edit'), onTap: _navigateToEditProfile)),
                           const SizedBox(width: 8),
-                          Expanded(child: _ActionButton(text: _localeService.get('share_profile'))),
+                          Expanded(child: _ActionButton(text: _localeService.get('activity_history'), onTap: _navigateToActivityHistory)),
+                          const SizedBox(width: 8),
+                          _DiscoverPeopleButton(
+                            onTap: _toggleSuggestionsSection,
+                            isActive: _showSuggestions,
+                            themeService: _themeService,
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                      
+                      // Animated suggestions section (Instagram-style)
+                      if (_showSuggestions || (_suggestionsAnimController?.isAnimating ?? false))
+                        SizeTransition(
+                          sizeFactor: _suggestionsAnimation ?? const AlwaysStoppedAnimation(0.0),
+                          axisAlignment: -1.0,
+                          child: const SuggestionsGridSection(),
+                        ),
+                      
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
@@ -1085,3 +1221,43 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+/// Instagram-style person+ icon button for discovering new people
+class _DiscoverPeopleButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool isActive;
+  final ThemeService themeService;
+
+  const _DiscoverPeopleButton({
+    required this.onTap,
+    this.isActive = false,
+    required this.themeService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 40,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isActive 
+              ? ThemeService.accentColor
+              : (themeService.isLightMode ? Colors.white : Colors.grey[800]),
+          border: themeService.isLightMode && !isActive
+              ? Border.all(color: const Color(0xFFE0E0E0), width: 1)
+              : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Icon(
+            isActive ? Icons.person_add : Icons.person_add_outlined,
+            size: 20,
+            color: isActive ? Colors.white : themeService.textPrimaryColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
