@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/upload_video_screen_v2.dart';
@@ -73,7 +73,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   }
 
   void _onAuthStateChanged() {
-    print('🔔 MainScreen: Auth state changed - forcing rebuild');
+    print('MainScreen: Auth state changed - forcing rebuild');
     print('   isLoggedIn: ${_authService.isLoggedIn}');
     
     // Force rebuild all screens by changing the key

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -7,10 +7,10 @@ class ThemeService extends ChangeNotifier {
   static final ThemeService _instance = ThemeService._internal();
   factory ThemeService() => _instance;
   ThemeService._internal() {
-    print('🎨 ThemeService._internal() constructor called - registering listeners');
+    print('ThemeService._internal() constructor called - registering listeners');
     _authService.addLogoutListener(_onLogout);
     _authService.addLoginListener(_onLogin);
-    print('✅ ThemeService listeners registered');
+    print('ThemeService listeners registered');
   }
 
   final ApiService _apiService = ApiService();
@@ -23,25 +23,25 @@ class ThemeService extends ChangeNotifier {
 
   void _onLogin() {
     // Load settings from backend when user logs in
-    print('👤 Login detected in ThemeService - loading settings from backend');
+    print('Login detected in ThemeService - loading settings from backend');
     print('   Current isLoggedIn: ${_authService.isLoggedIn}');
     // Use Future to avoid blocking but handle errors
     _loadSettingsFromBackend().catchError((error) {
-      print('❌ Error in _onLogin while loading settings: $error');
+      print('Error in _onLogin while loading settings: $error');
       print('   Stack trace: ${StackTrace.current}');
     });
   }
 
   void _onLogout() {
     // Reset to dark mode when user logs out
-    print('🌙 Logout detected - resetting to dark mode');
+    print('Logout detected - resetting to dark mode');
     _isLightMode = false;
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.setBool(_themeKey, false);
-      print('💾 Dark mode saved to storage');
+      print('Dark mode saved to storage');
     });
     notifyListeners();
-    print('📢 Theme listeners notified - isLightMode: $_isLightMode');
+    print('Theme listeners notified - isLightMode: $_isLightMode');
   }
 
   // Colors for Dark Mode
@@ -99,7 +99,7 @@ class ThemeService extends ChangeNotifier {
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _isLightMode = prefs.getBool(_themeKey) ?? false;
-    print('🎨 ThemeService initialized - local theme: ${_isLightMode ? "light" : "dark"}');
+    print('ThemeService initialized - local theme: ${_isLightMode ? "light" : "dark"}');
     
     // Don't load from backend here - let the login listener handle it
     // This ensures settings are loaded AFTER authentication is complete
@@ -111,13 +111,13 @@ class ThemeService extends ChangeNotifier {
     try {
       final token = await _authService.getToken();
       if (token == null) {
-        print('⚠️ No token found, skipping backend settings load');
+        print('No token found, skipping backend settings load');
         return;
       }
 
-      print('🔄 Loading settings from backend...');
+      print('Loading settings from backend...');
       final response = await _apiService.getUserSettings(token);
-      print('📦 Backend response: $response');
+      print('Backend response: $response');
       
       if (response['success'] == true && response['settings'] != null) {
         final theme = response['settings']['theme'] ?? 'dark';
@@ -128,21 +128,21 @@ class ThemeService extends ChangeNotifier {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_themeKey, _isLightMode);
         
-        print('✅ Settings loaded from backend: theme=$theme (changed from ${wasLightMode ? "light" : "dark"} to ${_isLightMode ? "light" : "dark"})');
+        print('Settings loaded from backend: theme=$theme (changed from ${wasLightMode ? "light" : "dark"} to ${_isLightMode ? "light" : "dark"})');
         print('   Current _isLightMode value: $_isLightMode');
         
         // Notify listeners if theme changed
         if (wasLightMode != _isLightMode) {
-          print('📢 Theme changed - notifying listeners');
+          print('Theme changed - notifying listeners');
           notifyListeners();
         } else {
-          print('ℹ️ Theme unchanged - no notification needed');
+          print('Theme unchanged - no notification needed');
         }
       } else {
-        print('⚠️ Backend response missing success or settings: $response');
+        print('Backend response missing success or settings: $response');
       }
     } catch (e, stackTrace) {
-      print('⚠️ Failed to load settings from backend: $e');
+      print('Failed to load settings from backend: $e');
       print('Stack trace: $stackTrace');
       // Fall back to local storage
     }
@@ -171,9 +171,9 @@ class ThemeService extends ChangeNotifier {
       await _apiService.updateUserSettings(token, {
         'theme': theme,
       });
-      print('✅ Theme synced to backend: $theme');
+      print('Theme synced to backend: $theme');
     } catch (e) {
-      print('⚠️ Failed to sync theme to backend: $e');
+      print('Failed to sync theme to backend: $e');
     }
   }
 

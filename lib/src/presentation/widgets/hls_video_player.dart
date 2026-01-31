@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
 import 'web_video_player_stub.dart'
     if (dart.library.html) 'web_video_player.dart';
 
@@ -10,6 +11,10 @@ class HLSVideoPlayer extends StatefulWidget {
   final bool autoPlay;
   final bool isTabVisible; // Whether the parent tab is currently visible
   final ValueChanged<HLSVideoPlayerState?>? onPlayerCreated;
+  final int tabIndex; // Tab index for saving state (0=Following, 1=Friends, 2=ForYou)
+  final String videoId; // Video ID for saving state
+  final Duration? initialPosition; // Initial position to seek to
+  final String? thumbnailUrl; // Thumbnail to show while loading
 
   const HLSVideoPlayer({
     super.key,
@@ -17,6 +22,10 @@ class HLSVideoPlayer extends StatefulWidget {
     this.autoPlay = true,
     this.isTabVisible = true,
     this.onPlayerCreated,
+    this.tabIndex = 2,
+    this.videoId = '',
+    this.initialPosition,
+    this.thumbnailUrl,
   });
 
   @override
@@ -26,15 +35,23 @@ class HLSVideoPlayer extends StatefulWidget {
 // Export state class so it can be accessed from outside
 class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObserver, AutomaticKeepAliveClientMixin {
   VideoPlayerController? _controller;
+  final VideoPlaybackService _playbackService = VideoPlaybackService();
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
   bool _isMuted = false;
   bool _isFullscreen = false;
   bool _isDisposed = false;
+  bool _hasRestoredPosition = false; // Track if we've already restored position
 
   @override
-  bool get wantKeepAlive => false; // Don't keep state alive
+  bool get wantKeepAlive => true; // Keep state alive when switching tabs
+  
+  /// Get current playback position
+  Duration get currentPosition => _controller?.value.position ?? Duration.zero;
+  
+  /// Check if video is currently playing
+  bool get isPlaying => _controller?.value.isPlaying ?? false;
 
   // Check if video needs fullscreen button (has black bars)
   bool get _needsFullscreenButton {
@@ -108,9 +125,44 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
           _isInitialized = true;
         });
 
-        // Only auto-play if autoPlay is true AND tab is visible
-        if (widget.autoPlay && widget.isTabVisible) {
+        // Restore position if we have initial position or saved state
+        if (!_hasRestoredPosition) {
+          Duration? positionToRestore;
+          bool? wasManuallyPaused;
+          
+          // Check for initial position passed directly
+          if (widget.initialPosition != null && widget.initialPosition!.inMilliseconds > 0) {
+            positionToRestore = widget.initialPosition;
+            print('HLSVideoPlayer: Restoring from initialPosition: $positionToRestore');
+          } else if (widget.videoId.isNotEmpty) {
+            // Check for saved state in VideoPlaybackService
+            final savedState = _playbackService.getVideoState(widget.tabIndex, widget.videoId);
+            if (savedState != null) {
+              positionToRestore = savedState.position;
+              wasManuallyPaused = savedState.wasManuallyPaused;
+              print('HLSVideoPlayer: Restoring from saved state: position=$positionToRestore, paused=$wasManuallyPaused');
+            }
+          }
+          
+          if (positionToRestore != null && positionToRestore.inMilliseconds > 0) {
+            await _controller?.seekTo(positionToRestore);
+            print('HLSVideoPlayer: Seeked to position $positionToRestore');
+          }
+          
+          // Update manual pause state if we have it from saved state
+          if (wasManuallyPaused != null) {
+            _playbackService.setManuallyPaused(wasManuallyPaused);
+          }
+          
+          _hasRestoredPosition = true;
+        }
+
+        // Only auto-play if autoPlay is true AND tab is visible AND not manually paused
+        if (widget.autoPlay && widget.isTabVisible && !_playbackService.wasManuallyPaused) {
           await _controller?.play();
+          await _controller?.setLooping(true);
+        } else if (_playbackService.wasManuallyPaused) {
+          print('HLSVideoPlayer: Not auto-playing because video was manually paused');
           await _controller?.setLooping(true);
         }
       }
@@ -138,6 +190,14 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
 
   @override
   void dispose() {
+    // Save video state before disposing
+    if (_isInitialized && widget.videoId.isNotEmpty && _controller != null) {
+      final position = _controller!.value.position;
+      final isPaused = !_controller!.value.isPlaying;
+      _playbackService.saveVideoState(widget.tabIndex, widget.videoId, position, isPaused);
+      print('HLSVideoPlayer: Saved state on dispose - position=$position, paused=$isPaused');
+    }
+    
     _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     
@@ -166,8 +226,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       // Pause video when app goes to background
       _controller?.pause();
     } else if (state == AppLifecycleState.resumed) {
-      // Resume video ONLY if autoPlay is true AND tab is visible
-      if (widget.autoPlay && widget.isTabVisible && mounted) {
+      // Resume video ONLY if autoPlay is true AND tab is visible AND user didn't manually pause
+      if (widget.autoPlay && widget.isTabVisible && mounted && !_playbackService.wasManuallyPaused) {
         _controller?.play();
       }
     }
@@ -177,32 +237,48 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   void didUpdateWidget(HLSVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     
-    // Handle isTabVisible changes (when switching tabs)
-    if (widget.isTabVisible != oldWidget.isTabVisible) {
+    final isTabVisibleChanged = widget.isTabVisible != oldWidget.isTabVisible;
+    final autoPlayChanged = widget.autoPlay != oldWidget.autoPlay;
+    
+    print('HLSVideoPlayer.didUpdateWidget: isTabVisibleChanged=$isTabVisibleChanged, autoPlayChanged=$autoPlayChanged');
+    print('HLSVideoPlayer.didUpdateWidget: isTabVisible=${widget.isTabVisible}, autoPlay=${widget.autoPlay}, wasManuallyPaused=${_playbackService.wasManuallyPaused}');
+    
+    // CASE 1: Tab visibility changed (switching tabs in bottom nav)
+    // This takes priority - we handle the visibility change and return
+    if (isTabVisibleChanged) {
       if (!widget.isTabVisible) {
-        // Tab became invisible - pause immediately
+        // Tab became invisible - pause immediately but DON'T change manual pause state
         _controller?.pause();
-        print('⏸️ Video paused (tab became invisible)');
-      } else if (widget.autoPlay) {
-        // Tab became visible and this is current video - resume with volume
-        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
-        _controller?.play();
-        print('▶️ Video resumed (tab became visible)');
+        print('HLSVideoPlayer: Video paused (tab became invisible)');
+      } else {
+        // Tab became visible - only resume if not manually paused
+        if (widget.autoPlay && !_playbackService.wasManuallyPaused) {
+          _controller?.setVolume(_isMuted ? 0.0 : 1.0);
+          _controller?.play();
+          print('HLSVideoPlayer: Video resumed (tab became visible, not manually paused)');
+        } else if (_playbackService.wasManuallyPaused) {
+          print('HLSVideoPlayer: Video NOT resumed (was manually paused by user)');
+        }
       }
+      // Don't process autoPlay changes if tab visibility changed
+      // because the autoPlay change is just a side effect of setState rebuild
+      return;
     }
     
-    // Handle autoPlay changes (when swiping between videos)
-    if (widget.autoPlay != oldWidget.autoPlay) {
+    // CASE 2: Only autoPlay changed (swiping between videos within same tab)
+    // This happens when user swipes to a different video while staying on the same tab
+    if (autoPlayChanged && !isTabVisibleChanged) {
       if (widget.autoPlay && widget.isTabVisible) {
-        // Only play if tab is visible - ensure volume is set
+        // Swiping to a new video - reset manual pause state and play
+        _playbackService.resetManualPauseState();
         _controller?.setVolume(_isMuted ? 0.0 : 1.0);
         _controller?.play();
         _controller?.setLooping(true);
-        print('▶️ Video resumed (now active)');
+        print('HLSVideoPlayer: Video started playing (swiped to this video, reset manual pause)');
       } else {
-        // Pause IMMEDIATELY when scrolling away or tab invisible
+        // Pause when scrolling away
         _controller?.pause();
-        print('⏸️ Video paused immediately (scrolled away or tab invisible)');
+        print('HLSVideoPlayer: Video paused (scrolled away)');
       }
     }
   }
@@ -213,8 +289,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
     setState(() {
       if (_controller!.value.isPlaying) {
         _controller!.pause();
+        _playbackService.setManuallyPaused(true); // Track manual pause
+        print('HLSVideoPlayer: User manually paused video');
       } else {
         _controller!.play();
+        _playbackService.setManuallyPaused(false); // User manually resumed
+        print('HLSVideoPlayer: User manually resumed video');
       }
     });
   }
@@ -287,6 +367,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
     }
 
     if (!_isInitialized) {
+      // Simple loading state: black screen with centered spinner (no thumbnail)
       return Container(
         color: Colors.black,
         child: const Center(

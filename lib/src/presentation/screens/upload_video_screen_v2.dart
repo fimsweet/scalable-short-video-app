@@ -34,6 +34,7 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
   // State
   int _currentStage = 0; // 0: Pick video, 1: Details, 2: Uploading/Success
   XFile? _selectedVideo;
+  XFile? _selectedThumbnail; // Custom thumbnail
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   bool _uploadSuccess = false;
@@ -183,6 +184,30 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     }
   }
 
+  Future<void> _pickCustomThumbnail() async {
+    try {
+      HapticFeedback.selectionClick();
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1080,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      
+      if (image != null) {
+        HapticFeedback.mediumImpact();
+        setState(() => _selectedThumbnail = image);
+      }
+    } catch (e) {
+      _showSnackBar('${_localeService.get('error_occurred')}: $e', Colors.red);
+    }
+  }
+
+  void _removeCustomThumbnail() {
+    HapticFeedback.lightImpact();
+    setState(() => _selectedThumbnail = null);
+  }
+
   void _goToNextStage() {
     if (_currentStage < 2) {
       setState(() => _currentStage++);
@@ -303,14 +328,29 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
       _startProgressSimulation();
 
       final description = _descriptionController.text.trim();
-      final result = await _videoService.uploadVideo(
-        videoFile: _selectedVideo!,
-        userId: user['id'].toString(),
-        title: description,
-        description: description,
-        token: token,
-        categoryIds: _selectedCategoryIds.isNotEmpty ? _selectedCategoryIds.toList() : null,
-      );
+      
+      // Use upload with thumbnail if custom thumbnail is selected
+      final Map<String, dynamic> result;
+      if (_selectedThumbnail != null) {
+        result = await _videoService.uploadVideoWithThumbnail(
+          videoFile: _selectedVideo!,
+          thumbnailFile: _selectedThumbnail,
+          userId: user['id'].toString(),
+          title: description,
+          description: description,
+          token: token,
+          categoryIds: _selectedCategoryIds.isNotEmpty ? _selectedCategoryIds.toList() : null,
+        );
+      } else {
+        result = await _videoService.uploadVideo(
+          videoFile: _selectedVideo!,
+          userId: user['id'].toString(),
+          title: description,
+          description: description,
+          token: token,
+          categoryIds: _selectedCategoryIds.isNotEmpty ? _selectedCategoryIds.toList() : null,
+        );
+      }
 
       if (mounted) {
         setState(() {
@@ -604,6 +644,42 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
           if (_selectedVideo != null) _buildVideoPreview(isDark),
           const SizedBox(height: 24),
 
+          // Custom thumbnail section
+          Row(
+            children: [
+              Text(
+                _localeService.isVietnamese ? 'Ảnh bìa' : 'Cover image',
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _localeService.isVietnamese ? '(tuỳ chọn)' : '(optional)',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _localeService.isVietnamese 
+                ? 'Chọn ảnh bìa tùy chỉnh hoặc để hệ thống tự động tạo'
+                : 'Select a custom cover or let the system auto-generate',
+            style: TextStyle(
+              color: _themeService.textSecondaryColor,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildThumbnailPicker(isDark),
+          const SizedBox(height: 24),
+
           // Description
           Text(
             _localeService.isVietnamese ? 'Mô tả' : 'Description',
@@ -648,6 +724,15 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                 ),
               ),
               const SizedBox(width: 8),
+              Text(
+                _localeService.isVietnamese ? '(tuỳ chọn)' : '(optional)',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+              const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -668,6 +753,208 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
           // Upload button
           _buildUploadButtonStage2(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildThumbnailPicker(bool isDark) {
+    return GestureDetector(
+      onTap: _pickCustomThumbnail,
+      child: Container(
+        height: 140,
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _selectedThumbnail != null
+                ? ThemeService.accentColor
+                : (isDark ? Colors.grey[800]! : Colors.grey[300]!),
+            width: _selectedThumbnail != null ? 2 : 1,
+          ),
+        ),
+        child: _selectedThumbnail != null
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(
+                      File(_selectedThumbnail!.path),
+                      fit: BoxFit.cover,
+                    ),
+                    // Gradient overlay
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.4),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Custom badge
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: ThemeService.accentColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _localeService.isVietnamese ? 'Tùy chỉnh' : 'Custom',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Remove & Change buttons
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: _removeCustomThumbnail,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.close, color: Colors.white, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _localeService.isVietnamese ? 'Xóa' : 'Remove',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _localeService.isVietnamese ? 'Đổi' : 'Change',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : Row(
+                children: [
+                  // Auto-generated preview
+                  ClipRRect(
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
+                    child: SizedBox(
+                      width: 100,
+                      height: 138,
+                      child: _thumbnailController?.value.isInitialized == true
+                          ? Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                FittedBox(
+                                  fit: BoxFit.cover,
+                                  child: SizedBox(
+                                    width: _thumbnailController!.value.size.width,
+                                    height: _thumbnailController!.value.size.height,
+                                    child: VideoPlayer(_thumbnailController!),
+                                  ),
+                                ),
+                                Positioned(
+                                  bottom: 4,
+                                  left: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.6),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      _localeService.isVietnamese ? 'Tự động' : 'Auto',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Container(
+                              color: isDark ? Colors.grey[800] : Colors.grey[300],
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
+                    ),
+                  ),
+                  // Select custom thumbnail
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: ThemeService.accentColor.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.add_photo_alternate_rounded,
+                            size: 28,
+                            color: ThemeService.accentColor,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _localeService.isVietnamese ? 'Chọn ảnh bìa' : 'Choose cover',
+                          style: TextStyle(
+                            color: _themeService.textPrimaryColor,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

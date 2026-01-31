@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
 
 class FollowerFollowingScreen extends StatefulWidget {
   final int initialIndex;
@@ -105,7 +106,7 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
               tabs: [
                 Tab(text: _localeService.get('followers')),
                 Tab(text: _localeService.get('following')),
-                Tab(text: _localeService.get('posts')),
+                Tab(text: _localeService.get('friends')),
               ],
             ),
           ),
@@ -116,7 +117,7 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
         children: [
           _ModernUserList(key: const PageStorageKey('followers'), type: 'follower', themeService: _themeService, localeService: _localeService),
           _ModernUserList(key: const PageStorageKey('following'), type: 'following', themeService: _themeService, localeService: _localeService),
-          _ModernPostGrid(key: const PageStorageKey('posts'), themeService: _themeService, localeService: _localeService),
+          _FriendsList(key: const PageStorageKey('friends'), themeService: _themeService, localeService: _localeService),
         ],
       ),
     );
@@ -200,7 +201,7 @@ class _ModernUserListState extends State<_ModernUserList> {
         });
       }
     } catch (e) {
-      print('❌ Error loading more users: $e');
+      print('Error loading more users: $e');
       if (mounted) {
         setState(() => _isLoadingMore = false);
       }
@@ -248,7 +249,7 @@ class _ModernUserListState extends State<_ModernUserList> {
         });
       }
     } catch (e) {
-      print('❌ Error loading users: $e');
+      print('Error loading users: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -420,10 +421,10 @@ class _UserListItem extends StatelessWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: themeService.isLightMode ? Colors.grey[300] : Colors.grey[850],
-                  backgroundImage: avatar != null && avatar.toString().isNotEmpty
+                  backgroundImage: avatar != null && avatar.toString().isNotEmpty && apiService.getAvatarUrl(avatar).isNotEmpty
                       ? NetworkImage(apiService.getAvatarUrl(avatar))
                       : null,
-                  child: avatar == null || avatar.toString().isEmpty
+                  child: avatar == null || avatar.toString().isEmpty || apiService.getAvatarUrl(avatar).isEmpty
                       ? Icon(Icons.person, color: themeService.textSecondaryColor, size: 24)
                       : null,
                 ),
@@ -519,6 +520,319 @@ class _ModernPostGrid extends StatelessWidget {
             style: TextStyle(color: themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Friends list - shows users who follow each other (mutual follows)
+class _FriendsList extends StatefulWidget {
+  final ThemeService themeService;
+  final LocaleService localeService;
+  const _FriendsList({super.key, required this.themeService, required this.localeService});
+
+  @override
+  State<_FriendsList> createState() => _FriendsListState();
+}
+
+class _FriendsListState extends State<_FriendsList> {
+  final FollowService _followService = FollowService();
+  final AuthService _authService = AuthService();
+  final ApiService _apiService = ApiService();
+  final ScrollController _scrollController = ScrollController();
+  
+  List<Map<String, dynamic>> _friends = [];
+  bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+  int _currentOffset = 0;
+  final int _pageSize = 20;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+    _loadFriends();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreFriends();
+    }
+  }
+
+  Future<void> _loadMoreFriends() async {
+    if (_isLoadingMore || !_hasMore) return;
+    
+    setState(() => _isLoadingMore = true);
+    
+    final userId = _authService.user!['id'] as int;
+    
+    try {
+      final result = await _followService.getMutualFriendsPaginated(
+        userId, 
+        limit: _pageSize, 
+        offset: _currentOffset
+      );
+      
+      final newFriends = result['data'] as List<Map<String, dynamic>>;
+      
+      if (mounted) {
+        setState(() {
+          _friends.addAll(newFriends);
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset += newFriends.length;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more friends: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  Future<void> _loadFriends() async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final userId = _authService.user!['id'] as int;
+    
+    // Reset pagination state
+    _currentOffset = 0;
+    _hasMore = true;
+    _friends.clear();
+
+    try {
+      final result = await _followService.getMutualFriendsPaginated(
+        userId, 
+        limit: _pageSize, 
+        offset: 0
+      );
+
+      final friends = result['data'] as List<Map<String, dynamic>>;
+
+      if (mounted) {
+        setState(() {
+          _friends = friends;
+          _hasMore = result['hasMore'] ?? false;
+          _currentOffset = friends.length;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading friends: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _navigateToProfile(int userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: userId),
+      ),
+    );
+  }
+
+  void _navigateToChat(int userId, String username, String? avatar) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          recipientId: userId.toString(),
+          recipientUsername: username,
+          recipientAvatar: avatar,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Center(
+        child: CircularProgressIndicator(color: widget.themeService.textPrimaryColor, strokeWidth: 2),
+      );
+    }
+
+    if (_friends.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_alt_outlined,
+              size: 64,
+              color: widget.themeService.textSecondaryColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.localeService.get('no_friends'),
+              style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              widget.localeService.get('follow_each_other_to_be_friends'),
+              style: TextStyle(color: widget.themeService.textSecondaryColor.withOpacity(0.7), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _friends.length + (_isLoadingMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        // Show loading indicator at the end
+        if (index == _friends.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        
+        final friend = _friends[index];
+        final userId = friend['userId'] as int;
+        final username = friend['username'] as String? ?? 'user';
+        final fullName = friend['fullName'] as String?;
+        final avatar = friend['avatar'] as String?;
+        
+        return _FriendListItem(
+          userId: userId,
+          username: username,
+          fullName: fullName,
+          avatar: avatar,
+          apiService: _apiService,
+          themeService: widget.themeService,
+          localeService: widget.localeService,
+          onTap: () => _navigateToProfile(userId),
+          onMessage: () => _navigateToChat(userId, username, avatar),
+        );
+      },
+    );
+  }
+}
+
+class _FriendListItem extends StatelessWidget {
+  final int userId;
+  final String username;
+  final String? fullName;
+  final String? avatar;
+  final ApiService apiService;
+  final ThemeService themeService;
+  final LocaleService localeService;
+  final VoidCallback onTap;
+  final VoidCallback onMessage;
+
+  const _FriendListItem({
+    required this.userId,
+    required this.username,
+    this.fullName,
+    this.avatar,
+    required this.apiService,
+    required this.themeService,
+    required this.localeService,
+    required this.onTap,
+    required this.onMessage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // Avatar
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: themeService.isLightMode ? Colors.grey[300] : Colors.grey[850],
+              backgroundImage: avatar != null && avatar!.isNotEmpty && apiService.getAvatarUrl(avatar!).isNotEmpty
+                  ? NetworkImage(apiService.getAvatarUrl(avatar!))
+                  : null,
+              child: avatar == null || avatar!.isEmpty || apiService.getAvatarUrl(avatar!).isEmpty
+                  ? Icon(Icons.person, color: themeService.textSecondaryColor, size: 24)
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            
+            // User info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fullName ?? username,
+                    style: TextStyle(
+                      color: themeService.textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '@$username',
+                    style: TextStyle(color: themeService.textSecondaryColor, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Message button
+            GestureDetector(
+              onTap: onMessage,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF2D55),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.chat_bubble_outline,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      localeService.get('message'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hls_video_player.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_controls_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/comment_section_widget.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/options_menu_widget.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -16,7 +15,11 @@ import 'package:scalable_short_video_app/src/presentation/screens/main_screen.da
 import 'package:scalable_short_video_app/src/presentation/widgets/share_video_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/expandable_caption.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/video_management_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_privacy_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_more_options_sheet.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/search_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/edit_video_screen.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
@@ -58,13 +61,14 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Map<String, int> _commentCounts = {};
   Map<String, int> _saveCounts = {};
   Map<String, int> _shareCounts = {};
+  Map<String, int> _viewCounts = {}; // Track view counts
   Map<String, Map<String, dynamic>> _userCache = {};
   Map<String, bool> _saveStatus = {};
 
   @override
   void initState() {
     super.initState();
-    print('🎬 VideoDetailScreen.initState');
+    print('VideoDetailScreen.initState');
     print('   Initial videos count: ${widget.videos.length}');
     print('   Initial index: ${widget.initialIndex}');
     
@@ -135,12 +139,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   // ADD THIS METHOD
   void _onLogin() {
-    print('🔔 VideoDetailScreen: Login event received - reloading statuses');
+    print('VideoDetailScreen: Login event received - reloading statuses');
     _initializeVideoData();
   }
 
   void _onLogout() {
-    print('🔔 VideoDetailScreen: Logout event received - resetting statuses');
+    print('VideoDetailScreen: Logout event received - resetting statuses');
     
     // Clear all statuses
     _likeStatus.clear();
@@ -175,6 +179,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     _saveStatus.clear();
     _saveCounts.clear();
     _shareCounts.clear();
+    _viewCounts.clear();
     
     // Initialize counts first
     for (var video in _videos) {
@@ -185,6 +190,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       _commentCounts[videoId] = _parseIntSafe(video['commentCount']);
       _saveCounts[videoId] = _parseIntSafe(video['saveCount']);
       _shareCounts[videoId] = _parseIntSafe(video['shareCount']);
+      _viewCounts[videoId] = _parseIntSafe(video['viewCount']);
       
       // Set default values
       _likeStatus[videoId] = false;
@@ -217,7 +223,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
           statusFutures.add(
             _likeService.isLikedByUser(videoId, userId).then((isLiked) {
               _likeStatus[videoId] = isLiked;
-              print('📌 Detail - Video $videoId liked: $isLiked');
+              print('Detail - Video $videoId liked: $isLiked');
             }).catchError((e) {
               _likeStatus[videoId] = false;
             })
@@ -227,7 +233,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
           statusFutures.add(
             _savedVideoService.isSavedByUser(videoId, userId).then((isSaved) {
               _saveStatus[videoId] = isSaved;
-              print('📌 Detail - Video $videoId saved: $isSaved');
+              print('Detail - Video $videoId saved: $isSaved');
             }).catchError((e) {
               _saveStatus[videoId] = false;
             })
@@ -237,7 +243,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         // Wait for all status checks
         await Future.wait(statusFutures);
         
-        print('✅ Detail screen - All statuses loaded');
+        print('Detail screen - All statuses loaded');
       }
     }
 
@@ -309,6 +315,54 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     );
   }
 
+  // Quick emoji comment
+  Future<void> _sendQuickEmojiComment(String videoId, String emoji) async {
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      LoginRequiredDialog.show(context, 'comment');
+      return;
+    }
+
+    final userId = _authService.user!['id']?.toString();
+    if (userId == null) return;
+
+    try {
+      final result = await _commentService.createComment(videoId, userId, emoji);
+      if (result != null && mounted) {
+        // Update comment count
+        final count = await _commentService.getCommentCount(videoId);
+        setState(() {
+          _commentCounts[videoId] = count;
+        });
+        
+        // Show success feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese 
+                  ? 'Đã gửi bình luận $emoji'
+                  : 'Sent comment $emoji',
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 1),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error sending emoji comment: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_localeService.get('error_occurred')),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<Map<String, dynamic>> _getUserInfo(String? userId) async {
     if (userId == null || userId.isEmpty) {
       return {'username': 'user', 'avatar': null};
@@ -325,7 +379,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         return userInfo;
       }
     } catch (e) {
-      print('❌ Error fetching user info: $e');
+      print('Error fetching user info: $e');
     }
 
     return {'username': 'user', 'avatar': null};
@@ -369,8 +423,221 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     return 0;
   }
 
+  // Get visibility icon based on visibility value
+  IconData _getVisibilityIcon(String visibility) {
+    switch (visibility) {
+      case 'private':
+        return Icons.lock_outline;
+      case 'friends':
+        return Icons.people_outline;
+      default:
+        return Icons.public;
+    }
+  }
+
+  // Build search box for AppBar (like TikTok search)
+  Widget _buildSearchBox() {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const SearchScreen(),
+          ),
+        );
+      },
+      child: Container(
+        height: 36,
+        margin: const EdgeInsets.only(right: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.search,
+              color: Colors.white.withOpacity(0.7),
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                widget.screenTitle ?? _localeService.get('search_hint'),
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 14,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _localeService.get('search'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Show privacy settings bottom sheet
+  void _showPrivacySettings(dynamic video) {
+    final videoId = video['id']?.toString() ?? '';
+    final userId = video['userId']?.toString() ?? '';
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => VideoPrivacySheet(
+        videoId: videoId,
+        userId: userId,
+        currentVisibility: video['visibility'] ?? 'public',
+        allowComments: video['allowComments'] ?? true,
+        allowDuet: video['allowDuet'] ?? true,
+        onChanged: (visibility, allowComments, allowDuet) {
+          if (mounted) {
+            setState(() {
+              video['visibility'] = visibility;
+              video['allowComments'] = allowComments;
+              video['allowDuet'] = allowDuet;
+            });
+          }
+        },
+      ),
+    );
+  }
+
+  // Show owner options menu (delete, hide, etc.) - TikTok style "More" sheet
+  void _showOwnerOptionsMenu(dynamic video) {
+    final videoId = video['id']?.toString() ?? '';
+    final userId = video['userId']?.toString() ?? '';
+    
+    // Save navigator before showing modal
+    final screenNavigator = Navigator.of(context);
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => VideoMoreOptionsSheet(
+        videoId: videoId,
+        userId: userId,
+        isHidden: video['isHidden'] ?? false,
+        onEditTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => EditVideoScreen(
+                videoId: videoId,
+                userId: userId,
+                currentTitle: video['title']?.toString(),
+                currentDescription: video['description']?.toString(),
+                currentThumbnailUrl: video['thumbnailUrl']?.toString(),
+                onSaved: (description, thumbnailUrl) {
+                  if (mounted) {
+                    setState(() {
+                      video['description'] = description;
+                      if (thumbnailUrl != null) {
+                        video['thumbnailUrl'] = thumbnailUrl;
+                      }
+                    });
+                  }
+                },
+              ),
+            ),
+          );
+        },
+        onPrivacyTap: () {
+          _showPrivacySettings(video);
+        },
+        onHideTap: () async {
+          final isHidden = video['isHidden'] ?? false;
+          try {
+            final result = await _videoService.toggleHideVideo(videoId, userId);
+            if (result['success'] == true && mounted) {
+              setState(() {
+                video['isHidden'] = result['isHidden'] ?? !isHidden;
+              });
+              AppSnackBar.showSuccess(
+                context,
+                result['isHidden'] == true
+                    ? (_localeService.isVietnamese ? 'Đã ẩn video' : 'Video hidden')
+                    : (_localeService.isVietnamese ? 'Đã hiện video' : 'Video visible'),
+              );
+            }
+          } catch (e) {
+            print('Error toggling video visibility: $e');
+          }
+        },
+        onDeleteTap: () {
+          // Show delete confirmation dialog
+          _showDeleteConfirmation(video, screenNavigator);
+        },
+      ),
+    );
+  }
+
+  // Show delete confirmation dialog - Modern style
+  void _showDeleteConfirmation(dynamic video, NavigatorState screenNavigator) async {
+    final videoId = video['id']?.toString() ?? '';
+    final userId = video['userId']?.toString() ?? '';
+    
+    final confirmed = await AppDialog.showDeleteConfirmation(
+      context,
+      title: _localeService.isVietnamese ? 'Xóa video?' : 'Delete video?',
+      message: _localeService.isVietnamese 
+          ? 'Video sẽ bị xóa vĩnh viễn. Bạn không thể hoàn tác hành động này.'
+          : 'This video will be permanently deleted. You cannot undo this action.',
+    );
+    
+    if (confirmed == true && mounted) {
+      try {
+        final success = await _videoService.deleteVideo(videoId, userId);
+        if (success) {
+          AppSnackBar.showSuccess(
+            context, 
+            _localeService.isVietnamese ? 'Đã xóa video' : 'Video deleted',
+          );
+          // Call parent callback first to refresh the grid
+          widget.onVideoDeleted?.call();
+          
+          // Pop VideoDetailScreen
+          if (screenNavigator.canPop()) {
+            screenNavigator.pop();
+          }
+        } else {
+          if (mounted) {
+            AppSnackBar.showError(context, _localeService.get('error_occurred'));
+          }
+        }
+      } catch (e) {
+        print('Error deleting video: $e');
+        if (mounted) {
+          AppSnackBar.showError(context, _localeService.get('error_occurred'));
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Check if current video belongs to the logged-in user
+    final currentVideo = _videos.isNotEmpty && _currentPage < _videos.length 
+        ? _videos[_currentPage] 
+        : null;
+    final currentVideoUserId = currentVideo?['userId']?.toString();
+    final isOwnVideo = _authService.isLoggedIn && 
+        _authService.user != null && 
+        currentVideoUserId != null &&
+        _authService.user!['id'].toString() == currentVideoUserId;
+    
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -394,23 +661,33 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          widget.screenTitle ?? 'Video',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            shadows: [
-              Shadow(
-                blurRadius: 12.0,
-                color: Colors.black87,
-                offset: Offset(0, 2),
-              ),
-            ],
+        title: isOwnVideo ? null : _buildSearchBox(),
+        titleSpacing: 0,
+        centerTitle: false,
+        actions: isOwnVideo ? [
+          IconButton(
+            icon: const Icon(
+              Icons.search,
+              color: Colors.white,
+              size: 24,
+              shadows: [
+                Shadow(
+                  blurRadius: 12.0,
+                  color: Colors.black87,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SearchScreen(),
+                ),
+              );
+            },
           ),
-        ),
-        titleSpacing: 0, // Remove spacing between leading and title
-        centerTitle: false, // Align title to the left, close to back button
+        ] : null,
       ),
       body: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
@@ -481,9 +758,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   ),
                 ),
 
-              // User info and caption
+              // User info and caption - position higher to make room for bottom bar
               Positioned(
-                bottom: 10,
+                bottom: 60, // Always higher since both owner and viewer have bottom bar
                 left: 12,
                 right: 90,
                 child: SafeArea(
@@ -505,10 +782,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                 child: CircleAvatar(
                                   radius: 18,
                                   backgroundColor: Colors.grey[800],
-                                  backgroundImage: userInfo['avatar'] != null
+                                  backgroundImage: userInfo['avatar'] != null && _apiService.getAvatarUrl(userInfo['avatar']).isNotEmpty
                                       ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
                                       : null,
-                                  child: userInfo['avatar'] == null
+                                  child: userInfo['avatar'] == null || _apiService.getAvatarUrl(userInfo['avatar']).isEmpty
                                       ? const Icon(Icons.person, color: Colors.white, size: 20)
                                       : null,
                                 ),
@@ -549,10 +826,214 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                 ),
               ),
 
-              // Controls - NOW WITH SAVE COUNT
-              if (videoId.isNotEmpty)
+              // Owner bottom bar - show view count and privacy settings for video owner
+              if (_authService.isLoggedIn && 
+                  _authService.user != null && 
+                  userId != null &&
+                  _authService.user!['id'].toString() == userId)
                 Positioned(
                   bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.7),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // View count with play icon
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${_formatCount(_viewCounts[videoId] ?? video['viewCount'] ?? 0)} ${_localeService.isVietnamese ? 'lượt xem' : 'views'}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          
+                          const Spacer(),
+                          
+                          // Privacy settings button
+                          GestureDetector(
+                            onTap: () => _showPrivacySettings(video),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _getVisibilityIcon(video['visibility'] ?? 'public'),
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _localeService.isVietnamese ? 'Cài đặt quyền riêng tư' : 'Privacy settings',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Viewer bottom bar - comment input and search (when viewing other's video)
+              if (userId != null && 
+                  (!_authService.isLoggedIn || 
+                   _authService.user == null || 
+                   _authService.user!['id'].toString() != userId))
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.8),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // Comment input field
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                final allowComments = video['allowComments'] ?? true;
+                                if (allowComments) {
+                                  // Open comment section
+                                  showModalBottomSheet(
+                                    context: context,
+                                    builder: (context) => CommentSectionWidget(
+                                      videoId: videoId,
+                                      autoFocus: true,
+                                      onCommentAdded: () async {
+                                        final count = await _commentService.getCommentCount(videoId);
+                                        if (mounted) {
+                                          setState(() {
+                                            _commentCounts[videoId] = count;
+                                          });
+                                        }
+                                      },
+                                      onCommentDeleted: () async {
+                                        final count = await _commentService.getCommentCount(videoId);
+                                        if (mounted) {
+                                          setState(() {
+                                            _commentCounts[videoId] = count;
+                                          });
+                                        }
+                                      },
+                                    ),
+                                    isScrollControlled: true,
+                                    backgroundColor: Colors.transparent,
+                                    useSafeArea: false,
+                                  );
+                                } else {
+                                  // Show disabled message
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        _localeService.isVietnamese 
+                                            ? 'Chủ video đã tắt bình luận cho video này'
+                                            : 'The video owner has disabled comments for this video',
+                                      ),
+                                      backgroundColor: Colors.grey[800],
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        (video['allowComments'] ?? true)
+                                            ? (_localeService.isVietnamese ? 'Thêm bình luận...' : 'Add a comment...')
+                                            : (_localeService.isVietnamese ? 'Bình luận đã bị tắt' : 'Comments are disabled'),
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.7),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    // Emoji icons like TikTok - tappable to send quick comments
+                                    if (video['allowComments'] ?? true) ...[
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () => _sendQuickEmojiComment(videoId, '😊'),
+                                        child: const Text('😊', style: TextStyle(fontSize: 18)),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      GestureDetector(
+                                        onTap: () => _sendQuickEmojiComment(videoId, '😂'),
+                                        child: const Text('😂', style: TextStyle(fontSize: 18)),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      GestureDetector(
+                                        onTap: () => _sendQuickEmojiComment(videoId, '🥰'),
+                                        child: const Text('🥰', style: TextStyle(fontSize: 18)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              // Controls - position higher when there's bottom bar
+              if (videoId.isNotEmpty)
+                Positioned(
+                  bottom: 50, // Always position higher to make room for bottom bar
                   right: 0,
                   child: GestureDetector(
                     onTap: () {},
@@ -564,46 +1045,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                       commentCount: _formatCount(_commentCounts[videoId] ?? 0),
                       saveCount: _formatCount(_saveCounts[videoId] ?? 0),
                       shareCount: _formatCount(_shareCounts[videoId] ?? 0),
-                      showManageButton: _authService.isLoggedIn && 
+                      showManageButton: false,
+                      showMoreButton: _authService.isLoggedIn && 
                           _authService.user != null && 
                           userId != null &&
                           _authService.user!['id'].toString() == userId,
-                      onManageTap: () {
-                        // Save navigator before showing modal
-                        final screenNavigator = Navigator.of(context);
-                        
-                        showModalBottomSheet(
-                          context: context,
-                          backgroundColor: Colors.transparent,
-                          builder: (modalContext) => VideoManagementSheet(
-                            videoId: videoId,
-                            userId: userId!,
-                            isHidden: video['isHidden'] ?? false,
-                            onDeleted: () {
-                              print('📱 VideoDetailScreen.onDeleted called');
-                              
-                              // Call parent callback first to refresh the grid
-                              widget.onVideoDeleted?.call();
-                              print('   ✅ Parent callback called');
-                              
-                              // Pop VideoDetailScreen using saved navigator
-                              // The management sheet and confirmation dialog are already closed
-                              print('   📤 Popping VideoDetailScreen...');
-                              if (screenNavigator.canPop()) {
-                                screenNavigator.pop();
-                                print('   ✅ Navigation complete');
-                              }
-                            },
-                            onHiddenChanged: (isHidden) {
-                              if (mounted) {
-                                setState(() {
-                                  video['isHidden'] = isHidden;
-                                });
-                              }
-                            },
-                          ),
-                        );
-                      },
+                      onMoreTap: () => _showOwnerOptionsMenu(video),
+                      onManageTap: () {},
                       onLikeTap: () => _handleLike(videoId),
                       onCommentTap: () {
                         showModalBottomSheet(

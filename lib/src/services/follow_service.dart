@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+﻿import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
 
@@ -11,7 +11,7 @@ class FollowService {
 
   Future<Map<String, dynamic>> toggleFollow(int followerId, int followingId) async {
     try {
-      print('📤 Toggle follow: followerId=$followerId, followingId=$followingId');
+      print('Toggle follow: followerId=$followerId, followingId=$followingId');
       
       final response = await http.post(
         Uri.parse('$_baseUrl/follows/toggle'),
@@ -19,14 +19,14 @@ class FollowService {
         body: json.encode({'followerId': followerId, 'followingId': followingId}),
       );
 
-      print('📥 Toggle follow response: ${response.statusCode} - ${response.body}');
+      print('Toggle follow response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         return json.decode(response.body);
       }
       return {'following': false, 'followerCount': 0};
     } catch (e) {
-      print('❌ Error toggling follow: $e');
+      print('Error toggling follow: $e');
       return {'following': false, 'followerCount': 0};
     }
   }
@@ -43,7 +43,7 @@ class FollowService {
       }
       return false;
     } catch (e) {
-      print('❌ Error checking follow: $e');
+      print('Error checking follow: $e');
       return false;
     }
   }
@@ -63,7 +63,7 @@ class FollowService {
       }
       return {'followerCount': 0, 'followingCount': 0};
     } catch (e) {
-      print('❌ Error getting stats: $e');
+      print('Error getting stats: $e');
       return {'followerCount': 0, 'followingCount': 0};
     }
   }
@@ -80,7 +80,7 @@ class FollowService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting followers: $e');
+      print('Error getting followers: $e');
       return [];
     }
   }
@@ -97,7 +97,7 @@ class FollowService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting following: $e');
+      print('Error getting following: $e');
       return [];
     }
   }
@@ -114,7 +114,7 @@ class FollowService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting followers with status: $e');
+      print('Error getting followers with status: $e');
       return [];
     }
   }
@@ -140,7 +140,7 @@ class FollowService {
       }
       return {'data': [], 'hasMore': false, 'total': 0};
     } catch (e) {
-      print('❌ Error getting followers with status (paginated): $e');
+      print('Error getting followers with status (paginated): $e');
       return {'data': [], 'hasMore': false, 'total': 0};
     }
   }
@@ -157,7 +157,7 @@ class FollowService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting following with status: $e');
+      print('Error getting following with status: $e');
       return [];
     }
   }
@@ -183,7 +183,7 @@ class FollowService {
       }
       return {'data': [], 'hasMore': false, 'total': 0};
     } catch (e) {
-      print('❌ Error getting following with status (paginated): $e');
+      print('Error getting following with status (paginated): $e');
       return {'data': [], 'hasMore': false, 'total': 0};
     }
   }
@@ -200,17 +200,44 @@ class FollowService {
       }
       return false;
     } catch (e) {
-      print('❌ Error checking mutual follow: $e');
+      print('Error checking mutual follow: $e');
       return false;
     }
   }
 
-  /// Get suggested users to follow
-  /// Returns users based on mutual friends, popularity, etc.
-  Future<List<SuggestedUser>> getSuggestions(int userId) async {
+  /// Get mutual friends (users who follow each other)
+  /// This represents the "Friends" relationship like TikTok
+  Future<Map<String, dynamic>> getMutualFriendsPaginated(
+    int userId, {
+    int limit = 20,
+    int offset = 0,
+  }) async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/follows/suggestions/$userId'),
+        Uri.parse('$_baseUrl/follows/mutual-friends/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'data': List<Map<String, dynamic>>.from(data['data'] ?? []),
+          'hasMore': data['hasMore'] ?? false,
+          'total': data['total'] ?? 0,
+        };
+      }
+      return {'data': [], 'hasMore': false, 'total': 0};
+    } catch (e) {
+      print('Error getting mutual friends: $e');
+      return {'data': [], 'hasMore': false, 'total': 0};
+    }
+  }
+
+  /// Get suggested users to follow
+  /// Returns users based on mutual friends, similar taste, liked content, popularity, etc.
+  Future<List<SuggestedUser>> getSuggestions(int userId, {int limit = 15}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/suggestions/$userId?limit=$limit'),
       );
 
       if (response.statusCode == 200) {
@@ -223,7 +250,7 @@ class FollowService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting suggestions: $e');
+      print('Error getting suggestions: $e');
       return [];
     }
   }
@@ -271,6 +298,12 @@ class SuggestedUser {
         return '$mutualFriendsCount ${localize('mutual_friends')}';
       case 'popular':
         return localize('popular_account');
+      case 'similar_taste':
+        return localize('similar_taste');
+      case 'liked_their_content':
+        return localize('liked_their_content');
+      case 'friends_and_similar_taste':
+        return localize('friends_and_similar_taste');
       default:
         return localize('suggested_for_you');
     }

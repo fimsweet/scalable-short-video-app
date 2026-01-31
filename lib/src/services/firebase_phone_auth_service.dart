@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
@@ -37,7 +37,7 @@ class FirebasePhoneAuthService extends ChangeNotifier {
         
         // Called when verification is completed automatically (auto-retrieve on Android)
         verificationCompleted: (PhoneAuthCredential credential) async {
-          print('📱 Auto-verification completed');
+          print('Auto-verification completed');
           // Auto sign-in (Android only)
           try {
             await _auth.signInWithCredential(credential);
@@ -45,7 +45,7 @@ class FirebasePhoneAuthService extends ChangeNotifier {
             notifyListeners();
             if (!completer.isCompleted) completer.complete(true);
           } catch (e) {
-            print('❌ Auto sign-in failed: $e');
+            print('Auto sign-in failed: $e');
             _errorMessage = 'Auto sign-in failed';
             _isLoading = false;
             notifyListeners();
@@ -55,7 +55,7 @@ class FirebasePhoneAuthService extends ChangeNotifier {
         
         // Called when verification fails
         verificationFailed: (FirebaseAuthException e) {
-          print('❌ Verification failed: ${e.message}');
+          print('Verification failed: ${e.message}');
           _errorMessage = _getErrorMessage(e.code);
           _isLoading = false;
           notifyListeners();
@@ -64,7 +64,7 @@ class FirebasePhoneAuthService extends ChangeNotifier {
         
         // Called when OTP is sent successfully
         codeSent: (String verificationId, int? resendToken) {
-          print('📱 OTP sent! Verification ID: $verificationId');
+          print('OTP sent! Verification ID: $verificationId');
           _verificationId = verificationId;
           _resendToken = resendToken;
           _isLoading = false;
@@ -74,14 +74,14 @@ class FirebasePhoneAuthService extends ChangeNotifier {
         
         // Called when auto-retrieval timeout
         codeAutoRetrievalTimeout: (String verificationId) {
-          print('⏰ Auto-retrieval timeout');
+          print('Auto-retrieval timeout');
           _verificationId = verificationId;
         },
       );
       
       return completer.future;
     } catch (e) {
-      print('❌ Send OTP error: $e');
+      print('Send OTP error: $e');
       _errorMessage = 'Failed to send OTP. Please try again.';
       _isLoading = false;
       notifyListeners();
@@ -111,20 +111,20 @@ class FirebasePhoneAuthService extends ChangeNotifier {
       final userCredential = await _auth.signInWithCredential(credential);
       final idToken = await userCredential.user?.getIdToken();
       
-      print('✅ Phone auth successful! UID: ${userCredential.user?.uid}');
+      print('Phone auth successful! UID: ${userCredential.user?.uid}');
       
       _isLoading = false;
       notifyListeners();
       
       return idToken;
     } on FirebaseAuthException catch (e) {
-      print('❌ Verify OTP error: ${e.code} - ${e.message}');
+      print('Verify OTP error: ${e.code} - ${e.message}');
       _errorMessage = _getErrorMessage(e.code);
       _isLoading = false;
       notifyListeners();
       return null;
     } catch (e) {
-      print('❌ Verify OTP error: $e');
+      print('Verify OTP error: $e');
       _errorMessage = 'Failed to verify OTP. Please try again.';
       _isLoading = false;
       notifyListeners();
@@ -137,7 +137,7 @@ class FirebasePhoneAuthService extends ChangeNotifier {
     try {
       return await _auth.currentUser?.getIdToken();
     } catch (e) {
-      print('❌ Get ID token error: $e');
+      print('Get ID token error: $e');
       return null;
     }
   }

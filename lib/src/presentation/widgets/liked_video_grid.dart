@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -34,7 +34,7 @@ class _LikedVideoGridState extends State<LikedVideoGrid> {
 
         final userIdValue = _authService.user!['id'];
         if (userIdValue == null) {
-          print('❌ User ID is null');
+          print('User ID is null');
           setState(() {
             _likedVideos = [];
             _isLoadingLikedVideos = false;
@@ -50,10 +50,10 @@ class _LikedVideoGridState extends State<LikedVideoGrid> {
             _likedVideos = videos;
             _isLoadingLikedVideos = false;
           });
-          print('✅ Loaded ${videos.length} liked videos');
+          print('Loaded ${videos.length} liked videos');
         }
       } catch (e) {
-        print('❌ Error loading liked videos: $e');
+        print('Error loading liked videos: $e');
         if (mounted) {
           setState(() {
             _likedVideos = [];

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
@@ -89,7 +89,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       if (token == null) return;
 
       final result = await _apiService.updateUserSettings(token, {key: value});
-      print('📝 Privacy setting updated: $key = $value, result: $result');
+      print('Privacy setting updated: $key = $value, result: $result');
     } catch (e) {
       print('Error updating privacy setting: $e');
     }

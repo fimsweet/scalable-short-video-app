@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+﻿import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
 
@@ -18,7 +18,7 @@ class AnalyticsTrackingService {
   /// Start tracking when user begins watching a video
   void startWatching(String videoId) {
     _viewStartTimes[videoId] = DateTime.now();
-    print('📊 Started tracking watch time for video: $videoId');
+    print('Started tracking watch time for video: $videoId');
   }
 
   /// Stop tracking and calculate watch duration
@@ -30,7 +30,7 @@ class AnalyticsTrackingService {
     _watchDurations[videoId] = (_watchDurations[videoId] ?? 0) + duration;
     _viewStartTimes.remove(videoId);
 
-    print('📊 Stopped tracking video: $videoId, duration: ${duration}s, total: ${_watchDurations[videoId]}s');
+    print('Stopped tracking video: $videoId, duration: ${duration}s, total: ${_watchDurations[videoId]}s');
     return duration;
   }
 
@@ -48,7 +48,7 @@ class AnalyticsTrackingService {
     _trackedViews.clear();
     _viewStartTimes.clear();
     _watchDurations.clear();
-    print('📊 Analytics tracking reset');
+    print('Analytics tracking reset');
   }
 
   /// Track video interaction (like, comment, share)
@@ -70,11 +70,11 @@ class AnalyticsTrackingService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print('📊 Tracked ${type.name} interaction for video: $videoId');
+        print('Tracked ${type.name} interaction for video: $videoId');
       }
     } catch (e) {
       // Silent fail - don't disrupt user experience
-      print('⚠️ Failed to track interaction: $e');
+      print('Failed to track interaction: $e');
     }
   }
 
@@ -104,11 +104,11 @@ class AnalyticsTrackingService {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print('📊 Tracked completion: ${completionRate.toStringAsFixed(1)}% for video: $videoId');
+        print('Tracked completion: ${completionRate.toStringAsFixed(1)}% for video: $videoId');
       }
     } catch (e) {
       // Silent fail
-      print('⚠️ Failed to track completion: $e');
+      print('Failed to track completion: $e');
     }
   }
 

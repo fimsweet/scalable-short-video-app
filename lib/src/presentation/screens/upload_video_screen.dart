@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
@@ -262,7 +262,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
         final isValidFormat = validExtensions.contains(extension);
 
         // Debug log for web
-        print('🎬 Video selected:');
+        print('Video selected:');
         print('   Name: ${video.name}');
         print('   Path: ${video.path}');
         print('   Extension: $extension');

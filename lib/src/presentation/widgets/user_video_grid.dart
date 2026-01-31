@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
@@ -17,6 +18,10 @@ class _UserVideoGridState extends State<UserVideoGrid> {
   List<dynamic> _videos = [];
   bool _isLoading = true;
   String? _error;
+  
+  // Auto-refresh for processing videos
+  Timer? _processingRefreshTimer;
+  static const _processingRefreshInterval = Duration(seconds: 5);
 
   @override
   void initState() {
@@ -24,17 +29,70 @@ class _UserVideoGridState extends State<UserVideoGrid> {
     _loadUserVideos();
   }
 
+  @override
+  void dispose() {
+    _stopProcessingRefreshTimer();
+    super.dispose();
+  }
 
+  void _startProcessingRefreshTimer() {
+    _stopProcessingRefreshTimer();
+    _processingRefreshTimer = Timer.periodic(_processingRefreshInterval, (_) {
+      _checkProcessingVideos();
+    });
+    print('Started auto-refresh timer for processing videos');
+  }
 
+  void _stopProcessingRefreshTimer() {
+    _processingRefreshTimer?.cancel();
+    _processingRefreshTimer = null;
+    print('Stopped auto-refresh timer');
+  }
 
+  bool _hasProcessingVideos() {
+    return _videos.any((v) => v['status'] != 'ready');
+  }
 
+  Future<void> _checkProcessingVideos() async {
+    if (!mounted) return;
+    
+    // Only refresh if we still have processing videos
+    if (!_hasProcessingVideos()) {
+      _stopProcessingRefreshTimer();
+      return;
+    }
 
-
-
-
-
-
-
+    try {
+      final userId = _authService.user?['id'].toString();
+      if (userId == null) return;
+      
+      final videos = await _videoService.getUserVideos(userId);
+      
+      // Filter hidden videos
+      final allVideos = videos.where((v) => v != null && v['isHidden'] != true).toList();
+      
+      if (mounted) {
+        // Check if any video changed status from processing to ready
+        final oldProcessingCount = _videos.where((v) => v['status'] != 'ready').length;
+        final newProcessingCount = allVideos.where((v) => v['status'] != 'ready').length;
+        
+        if (newProcessingCount < oldProcessingCount) {
+          print('${oldProcessingCount - newProcessingCount} video(s) finished processing!');
+        }
+        
+        setState(() {
+          _videos = allVideos;
+        });
+        
+        // Stop timer if no more processing videos
+        if (!_hasProcessingVideos()) {
+          _stopProcessingRefreshTimer();
+        }
+      }
+    } catch (e) {
+      print('Error checking processing videos: $e');
+    }
+  }
 
   Future<void> _loadUserVideos() async {
     if (!_authService.isLoggedIn || _authService.user == null) {
@@ -54,7 +112,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
       final videos = await _videoService.getUserVideos(userId);
       
       // Debug: Log all videos data including status
-      print('🔍 UserVideoGrid: Loaded ${videos.length} videos from backend');
+      print('UserVideoGrid: Loaded ${videos.length} videos from backend');
       for (var i = 0; i < videos.length; i++) {
         final video = videos[i];
         print('   Video $i: ID=${video['id']}, status=${video['status']}, isHidden=${video['isHidden']}');
@@ -62,16 +120,23 @@ class _UserVideoGridState extends State<UserVideoGrid> {
       
       // Show only non-hidden videos (include all statuses including processing)
       final allVideos = videos.where((v) => v != null && v['isHidden'] != true).toList();
-      print('📹 UserVideoGrid: ${allVideos.length} videos after filtering hidden');
+      print('UserVideoGrid: ${allVideos.length} videos after filtering hidden');
 
       if (mounted) {
         setState(() {
           _videos = allVideos;
           _isLoading = false;
         });
+        
+        // Start auto-refresh timer if there are processing videos
+        if (_hasProcessingVideos()) {
+          _startProcessingRefreshTimer();
+        } else {
+          _stopProcessingRefreshTimer();
+        }
       }
     } catch (e) {
-      print('❌ Error loading user videos: $e');
+      print('Error loading user videos: $e');
       if (mounted) {
         setState(() {
           _error = 'Không thể tải video';

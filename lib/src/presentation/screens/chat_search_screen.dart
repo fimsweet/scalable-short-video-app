@@ -3,7 +3,7 @@ import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
-import 'package:scalable_short_video_app/src/config/app_config.dart';
+import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
 
@@ -32,6 +32,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final AuthService _authService = AuthService();
+  final ApiService _apiService = ApiService();
   
   List<Map<String, dynamic>> _searchResults = [];
   bool _isSearching = false;
@@ -39,6 +40,7 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
   Timer? _debounceTimer;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
+  String? get _currentUserAvatar => _authService.user?['avatar']?.toString();
 
   @override
   void initState() {
@@ -116,15 +118,21 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
       final date = DateTime.parse(dateStr);
       final now = DateTime.now();
       final diff = now.difference(date);
+      final timeStr = DateFormat('HH:mm').format(date);
       
       if (diff.inDays == 0) {
-        return DateFormat('HH:mm').format(date);
+        // Today - show just time
+        return timeStr;
       } else if (diff.inDays == 1) {
-        return _localeService.isVietnamese ? 'Hôm qua' : 'Yesterday';
+        // Yesterday - show yesterday + time
+        return _localeService.isVietnamese ? 'Hôm qua $timeStr' : 'Yesterday $timeStr';
       } else if (diff.inDays < 7) {
-        return DateFormat('EEEE', _localeService.isVietnamese ? 'vi' : 'en').format(date);
+        // Within a week - show day name + time
+        final dayName = DateFormat('EEEE', _localeService.isVietnamese ? 'vi' : 'en').format(date);
+        return '$dayName $timeStr';
       } else {
-        return DateFormat('dd/MM/yyyy').format(date);
+        // Older - show full date + time
+        return '${DateFormat('dd/MM/yyyy').format(date)} $timeStr';
       }
     } catch (e) {
       return '';
@@ -280,10 +288,19 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
         final isMyMessage = message['senderId']?.toString() == _currentUserId;
         final content = message['content']?.toString() ?? '';
         
+        // Get avatar URL for the message sender
+        final avatarUrl = isMyMessage 
+            ? (_currentUserAvatar != null ? _apiService.getAvatarUrl(_currentUserAvatar!) : null)
+            : (widget.recipientAvatar != null ? _apiService.getAvatarUrl(widget.recipientAvatar!) : null);
+        
         return InkWell(
           onTap: () {
-            widget.onMessageTap?.call(message['id']?.toString() ?? '');
-            Navigator.pop(context);
+            final messageId = message['id']?.toString() ?? '';
+            print('DEBUG: Search result tapped: $messageId');
+            // Call callback
+            widget.onMessageTap?.call(messageId);
+            // Pop with result
+            Navigator.pop(context, {'scrollToMessageId': messageId});
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -298,18 +315,16 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Search icon
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.chat_bubble_outline,
-                    color: Colors.blue,
-                    size: 20,
-                  ),
+                // Avatar instead of icon
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: _themeService.isLightMode 
+                      ? Colors.grey[300] 
+                      : Colors.grey[800],
+                  backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl == null 
+                      ? Icon(Icons.person, size: 22, color: _themeService.textSecondaryColor)
+                      : null,
                 ),
                 const SizedBox(width: 12),
                 // Message content

@@ -3,6 +3,7 @@ import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:intl/intl.dart';
 
 class PinnedMessagesScreen extends StatefulWidget {
@@ -28,11 +29,13 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final AuthService _authService = AuthService();
+  final ApiService _apiService = ApiService();
   
   List<Map<String, dynamic>> _pinnedMessages = [];
   bool _isLoading = true;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
+  String? get _currentUserAvatar => _authService.user?['avatar']?.toString();
 
   @override
   void initState() {
@@ -107,15 +110,21 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
       final date = DateTime.parse(dateStr);
       final now = DateTime.now();
       final diff = now.difference(date);
+      final timeStr = DateFormat('HH:mm').format(date);
       
       if (diff.inDays == 0) {
-        return DateFormat('HH:mm').format(date);
+        // Today - show time only
+        return timeStr;
       } else if (diff.inDays == 1) {
-        return _localeService.isVietnamese ? 'Hôm qua' : 'Yesterday';
+        // Yesterday - show yesterday + time
+        return _localeService.isVietnamese ? 'Hôm qua $timeStr' : 'Yesterday $timeStr';
       } else if (diff.inDays < 7) {
-        return DateFormat('EEEE', _localeService.isVietnamese ? 'vi' : 'en').format(date);
+        // Within a week - show day name + time
+        final dayName = DateFormat('EEEE', _localeService.isVietnamese ? 'vi' : 'en').format(date);
+        return '$dayName $timeStr';
       } else {
-        return DateFormat('dd/MM/yyyy').format(date);
+        // Older - show full date + time
+        return '${DateFormat('dd/MM/yyyy').format(date)} $timeStr';
       }
     } catch (e) {
       return '';
@@ -191,6 +200,11 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
                     final hasImages = message['imageUrls'] != null && 
                         (message['imageUrls'] is List ? (message['imageUrls'] as List).isNotEmpty : message['imageUrls'].toString().isNotEmpty);
                     
+                    // Get avatar URL for the message sender
+                    final avatarUrl = isMyMessage 
+                        ? (_currentUserAvatar != null ? _apiService.getAvatarUrl(_currentUserAvatar!) : null)
+                        : (widget.recipientAvatar != null ? _apiService.getAvatarUrl(widget.recipientAvatar!) : null);
+                    
                     return Dismissible(
                       key: Key(message['id']?.toString() ?? index.toString()),
                       direction: DismissDirection.endToStart,
@@ -239,8 +253,12 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
                       },
                       child: InkWell(
                         onTap: () {
-                          widget.onMessageTap?.call(message['id']?.toString() ?? '');
-                          Navigator.pop(context);
+                          final messageId = message['id']?.toString() ?? '';
+                          print('DEBUG: Pinned message tapped: $messageId');
+                          // Call callback first
+                          widget.onMessageTap?.call(messageId);
+                          // Then pop with result
+                          Navigator.pop(context, {'scrollToMessageId': messageId});
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -255,18 +273,42 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Pin icon
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.push_pin,
-                                  color: Colors.amber,
-                                  size: 20,
-                                ),
+                              // Avatar with pin badge
+                              Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: _themeService.isLightMode 
+                                        ? Colors.grey[300] 
+                                        : Colors.grey[800],
+                                    backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                                    child: avatarUrl == null 
+                                        ? Icon(Icons.person, size: 22, color: _themeService.textSecondaryColor)
+                                        : null,
+                                  ),
+                                  // Small pin badge
+                                  Positioned(
+                                    bottom: -2,
+                                    right: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.amber,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: _themeService.cardColor,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.push_pin,
+                                        color: Colors.white,
+                                        size: 10,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(width: 12),
                               // Message content

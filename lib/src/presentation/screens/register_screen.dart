@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../services/api_service.dart';
@@ -224,7 +224,7 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
                 Map<String, dynamic>.from(userData),
                 token.toString(),
               );
-              print('✅ Auto-login after registration successful');
+              print('Auto-login after registration successful');
             }
           }
           

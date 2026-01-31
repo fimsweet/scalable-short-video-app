@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+﻿import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 /// Environment configuration for the app
@@ -28,6 +28,9 @@ class AppConfig {
   // ============================================
   // Option 1: Single API Gateway (recommended)
   static const String _prodApiBaseUrl = 'https://api.your-domain.com';
+  
+  // CloudFront CDN for video/image delivery (optional but recommended)
+  static const String? _prodCloudFrontUrl = null; // e.g., 'https://d123456.cloudfront.net'
   
   // All services behind API Gateway
   static String get _prodUserServiceUrl => _prodApiBaseUrl;
@@ -91,6 +94,12 @@ class AppConfig {
     }
   }
 
+  /// CloudFront CDN URL for video/image delivery (production only)
+  /// Returns null in development (use videoServiceUrl instead)
+  static String? get cloudFrontUrl {
+    return isProduction ? _prodCloudFrontUrl : null;
+  }
+
   // ============================================
   // 📱 APP INFO
   // ============================================
@@ -108,15 +117,15 @@ class AppConfig {
   // ============================================
   static void printConfig() {
     print('');
-    print('╔════════════════════════════════════════╗');
-    print('║       📱 APP CONFIGURATION             ║');
-    print('╠════════════════════════════════════════╣');
-    print('║ Environment: ${isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"}');
-    print('║ Force Prod:  $_forceProduction');
-    print('║ User API:    $userServiceUrl');
-    print('║ Video API:   $videoServiceUrl');
-    print('║ WebSocket:   $webSocketUrl');
-    print('╚════════════════════════════════════════╝');
+    print('');
+    print(' APP CONFIGURATION             ║');
+    print('');
+    print('Environment: ${isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"}');
+    print('Force Prod:  $_forceProduction');
+    print('User API:    $userServiceUrl');
+    print('Video API:   $videoServiceUrl');
+    print('WebSocket:   $webSocketUrl');
+    print('');
     print('');
   }
 }

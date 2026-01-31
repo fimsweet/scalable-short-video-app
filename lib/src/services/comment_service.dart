@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+﻿import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -45,20 +45,20 @@ class CommentService {
           contentType: MediaType.parse(mimeType),
         ));
         
-        print('📤 Sending multipart request to ${request.url}');
-        print('📤 Fields: ${request.fields}');
-        print('📤 Files: ${request.files.map((f) => '${f.field}: ${f.filename} (${f.contentType})').toList()}');
+        print('Sending multipart request to ${request.url}');
+        print('Fields: ${request.fields}');
+        print('Files: ${request.files.map((f) => '${f.field}: ${f.filename} (${f.contentType})').toList()}');
         
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
         
-        print('📥 Response status: ${response.statusCode}');
-        print('📥 Response body: ${response.body}');
+        print('Response status: ${response.statusCode}');
+        print('Response body: ${response.body}');
         
         if (response.statusCode == 201 || response.statusCode == 200) {
           return json.decode(response.body);
         }
-        print('❌ Failed to create comment with image: ${response.statusCode}');
+        print('Failed to create comment with image: ${response.statusCode}');
         return null;
       } else {
         // Regular JSON request without image
@@ -79,7 +79,7 @@ class CommentService {
         return null;
       }
     } catch (e) {
-      print('❌ Error creating comment: $e');
+      print('Error creating comment: $e');
       return null;
     }
   }
@@ -106,7 +106,7 @@ class CommentService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting comments: $e');
+      print('Error getting comments: $e');
       return [];
     }
   }
@@ -139,7 +139,7 @@ class CommentService {
       }
       return {'comments': [], 'hasMore': false, 'total': 0};
     } catch (e) {
-      print('❌ Error getting comments with pagination: $e');
+      print('Error getting comments with pagination: $e');
       return {'comments': [], 'hasMore': false, 'total': 0};
     }
   }
@@ -155,7 +155,7 @@ class CommentService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting replies: $e');
+      print('Error getting replies: $e');
       return [];
     }
   }
@@ -172,7 +172,7 @@ class CommentService {
       }
       return 0;
     } catch (e) {
-      print('❌ Error getting comment count: $e');
+      print('Error getting comment count: $e');
       return 0;
     }
   }
@@ -189,7 +189,7 @@ class CommentService {
       }
       return false;
     } catch (e) {
-      print('❌ Error deleting comment: $e');
+      print('Error deleting comment: $e');
       return false;
     }
   }
@@ -207,7 +207,7 @@ class CommentService {
       }
       return {'liked': false, 'likeCount': 0};
     } catch (e) {
-      print('❌ Error toggling comment like: $e');
+      print('Error toggling comment like: $e');
       return {'liked': false, 'likeCount': 0};
     }
   }
@@ -224,7 +224,7 @@ class CommentService {
       }
       return false;
     } catch (e) {
-      print('❌ Error checking comment like: $e');
+      print('Error checking comment like: $e');
       return false;
     }
   }
