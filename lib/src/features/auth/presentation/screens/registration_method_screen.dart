@@ -351,19 +351,6 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
     );
   }
 
-
-
-  void _navigateToBirthday(BuildContext context, String method) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BirthdayPickerScreen(
-          registrationMethod: method,
-        ),
-      ),
-    );
-  }
-
   void _navigateToEmailRegister(BuildContext context) {
     Navigator.push(
       context,

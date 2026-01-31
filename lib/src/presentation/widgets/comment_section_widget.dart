@@ -58,7 +58,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   bool _isLoading = true;
   bool _isSending = false;
   String? _replyingTo;
-  String? _replyingToUsername;
+  String? _replyingToUsername; // ignore: unused_field
   String? _replyingToCommentId;
   File? _selectedImage;
   

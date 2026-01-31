@@ -18,7 +18,7 @@ class WebVideoPlayer extends StatefulWidget {
 class _WebVideoPlayerState extends State<WebVideoPlayer> {
   final String _viewId = 'video-player-${DateTime.now().millisecondsSinceEpoch}';
   bool _isPlaying = true;
-  bool _isMuted = false;
+  bool _isMuted = false; // ignore: unused_field
 
   @override
   void initState() {
@@ -41,22 +41,6 @@ class _WebVideoPlayerState extends State<WebVideoPlayer> {
           } else {
             video.pause();
           }
-        }
-      })();
-    ''']);
-  }
-
-  void _toggleMute() {
-    setState(() {
-      _isMuted = !_isMuted;
-    });
-    
-    // Control video mute via JavaScript
-    js.context.callMethod('eval', ['''
-      (function() {
-        var video = document.getElementById('video-$_viewId');
-        if (video) {
-          video.muted = $_isMuted;
         }
       })();
     ''']);

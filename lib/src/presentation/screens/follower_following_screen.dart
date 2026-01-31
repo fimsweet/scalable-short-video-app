@@ -502,29 +502,6 @@ class _UserListItem extends StatelessWidget {
   }
 }
 
-class _ModernPostGrid extends StatelessWidget {
-  final ThemeService themeService;
-  final LocaleService localeService;
-  const _ModernPostGrid({super.key, required this.themeService, required this.localeService});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.grid_on_outlined, size: 64, color: themeService.textSecondaryColor),
-          const SizedBox(height: 16),
-          Text(
-            localeService.get('no_posts'),
-            style: TextStyle(color: themeService.textSecondaryColor, fontSize: 16, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Friends list - shows users who follow each other (mutual follows)
 class _FriendsList extends StatefulWidget {
   final ThemeService themeService;

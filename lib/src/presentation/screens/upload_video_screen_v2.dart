@@ -1238,6 +1238,7 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                 onPressed: () => Navigator.pop(context, true),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ThemeService.accentColor,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),

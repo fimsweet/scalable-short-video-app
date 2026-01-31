@@ -702,65 +702,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildEditField({
-    required String label,
-    required String hint,
-    required TextEditingController controller,
-    int maxLines = 1,
-    bool enabled = true,
-    bool showDivider = false,
-  }) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            crossAxisAlignment: maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 80,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: _themeService.textPrimaryColor,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  enabled: enabled,
-                  maxLines: maxLines,
-                  style: TextStyle(
-                    color: enabled ? _themeService.textPrimaryColor : _themeService.textSecondaryColor,
-                    fontSize: 16,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: hint,
-                    hintStyle: TextStyle(
-                      color: _themeService.textSecondaryColor,
-                      fontSize: 16,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (showDivider)
-          Container(
-            margin: const EdgeInsets.only(left: 16),
-            height: 0.5,
-            color: _themeService.dividerColor,
-          ),
-      ],
-    );
-  }
-
   Widget _buildUsernameTapField({bool showDivider = false}) {
     final currentUsername = _authService.username ?? '';
     
@@ -1045,7 +986,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 Expanded(
                   child: Text(
-                    hasValue ? value! : _localeService.get('not_linked'),
+                    hasValue ? value : _localeService.get('not_linked'),
                     style: TextStyle(
                       color: hasValue 
                           ? _themeService.textPrimaryColor 
@@ -1092,7 +1033,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     // - Google user changing email -> no password needed (they login via Google)
     // - Anyone editing existing email -> no password needed (keep existing password)
     final needsPasswordStep = _authProvider == 'phone' && !isEditing;
-    final totalSteps = needsPasswordStep ? 3 : 2;
 
     showModalBottomSheet(
       context: context,

@@ -299,15 +299,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
     });
   }
 
-  void _toggleMute() {
-    if (_isDisposed || _controller == null) return;
-    
-    setState(() {
-      _isMuted = !_isMuted;
-      _controller!.setVolume(_isMuted ? 0.0 : 1.0);
-    });
-  }
-
   void _toggleFullscreen() {
     setState(() {
       _isFullscreen = !_isFullscreen;

@@ -24,7 +24,7 @@ class _EditUsernameScreenState extends State<EditUsernameScreen> {
   bool _isCheckingAvailability = false;
   bool _canChangeUsername = true;
   int _daysUntilChange = 0;
-  DateTime? _nextChangeDate;
+  DateTime? _nextChangeDate; // ignore: unused_field
   
   String? _errorMessage;
   String? _successMessage;

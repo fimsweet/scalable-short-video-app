@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' show Platform;
 import '../config/app_config.dart';
 
 class VideoService {

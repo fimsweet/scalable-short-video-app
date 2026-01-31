@@ -46,7 +46,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
   late AnimationController _uploadButtonController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _borderAnimation;
-  late Animation<double> _uploadButtonAnimation;
+  late Animation<double> _uploadButtonAnimation; // ignore: unused_field
 
   // Check if form has unsaved changes
   bool get _hasUnsavedChanges =>
@@ -413,24 +413,25 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
       builder: (context) => Container(
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.green.shade500,
-              Colors.teal.shade500,
-            ],
-          ),
+          color: _themeService.backgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Success checkmark with gradient circle
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.green.shade400,
+                      Colors.teal.shade500,
+                    ],
+                  ),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -442,8 +443,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
               const SizedBox(height: 24),
               Text(
                 _localeService.get('video_uploaded'),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
@@ -453,7 +454,7 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
               Text(
                 _localeService.get('video_processing'),
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: _themeService.textSecondaryColor,
                   fontSize: 15,
                 ),
                 textAlign: TextAlign.center,
@@ -468,8 +469,8 @@ class _UploadVideoScreenState extends State<UploadVideoScreen>
                     Navigator.pop(context, true);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.green.shade600,
+                    backgroundColor: ThemeService.accentColor,
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),

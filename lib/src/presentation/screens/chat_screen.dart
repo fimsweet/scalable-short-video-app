@@ -13,7 +13,6 @@ import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
-import 'dart:io';
 
 class ChatScreen extends StatefulWidget {
   final String recipientId;
@@ -63,7 +62,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Safe getters
   List<XFile> get _selectedImages => _selectedImagesList ??= [];
-  Map<String, Uint8List> get _imagePreviewCache => _imagePreviewCacheMap ??= {};
 
   // Safe getter for checking if images are selected
   bool get _hasSelectedImages {
@@ -103,6 +101,10 @@ class _ChatScreenState extends State<ChatScreen> {
   // Chat customization: theme color and nickname
   Color? _chatThemeColor; // Custom theme color for chat bubbles
   String? _recipientNickname; // Custom nickname for recipient
+  
+  // Translation state management
+  final Map<String, bool> _translatingMessages = {}; // messageId -> isTranslating
+  final Map<String, String> _translatedMessages = {}; // messageId -> translated text
   
   // Pinned message at top of chat
   Map<String, dynamic>? _pinnedMessage;
@@ -856,44 +858,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _takePhoto() async {
-    try {
-      final XFile? photo = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: 85,
-        preferredCameraDevice: CameraDevice.rear,
-      );
-
-      if (photo != null && mounted) {
-        try {
-          final bytes = await photo.readAsBytes();
-          final key = _getImageKey(photo);
-          _imagePreviewCacheMap ??= {};
-          _imagePreviewCacheMap![key] = bytes;
-          
-          setState(() {
-            _selectedImagesList ??= [];
-            _selectedImagesList!.add(photo);
-          });
-        } catch (e) {
-          print('Error loading photo preview: $e');
-        }
-      }
-    } catch (e) {
-      print('Error taking photo: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể chụp ảnh: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
   String _getImageKey(XFile image) {
     if (image.path.isNotEmpty) {
       return image.path;
@@ -1212,111 +1176,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Translate message
+  // Translate message - now shows inline translation below bubble
   Future<void> _translateMessage(Map<String, dynamic> message) async {
+    final messageId = message['id']?.toString() ?? '';
     final content = message['content']?.toString() ?? '';
-    if (content.isEmpty || content.startsWith('[')) return;
+    if (content.isEmpty || content.startsWith('[') || messageId.isEmpty) return;
 
-    // Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => Center(
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: _themeService.cardColor,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const CircularProgressIndicator(),
-        ),
-      ),
-    );
+    // Set translating state
+    setState(() {
+      _translatingMessages[messageId] = true;
+      _translatedMessages.remove(messageId); // Clear any previous translation
+    });
 
     try {
       final targetLang = _localeService.isVietnamese ? 'vi' : 'en';
       final result = await _messageService.translateMessage(content, targetLang);
       
       if (!mounted) return;
-      Navigator.pop(context); // Close loading
       
       if (result['success'] == true && result['translatedText'] != null) {
         final translated = result['translatedText'] as String;
-        
-        // Show translated text in a dialog
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            backgroundColor: _themeService.cardColor,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(Icons.translate, color: _chatThemeColor ?? Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  _localeService.isVietnamese ? 'Bản dịch' : 'Translation',
-                  style: TextStyle(
-                    color: _themeService.textPrimaryColor,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Original text
-                Text(
-                  _localeService.isVietnamese ? 'Gốc:' : 'Original:',
-                  style: TextStyle(
-                    color: _themeService.textSecondaryColor,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  content,
-                  style: TextStyle(
-                    color: _themeService.textPrimaryColor,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Divider(color: _themeService.dividerColor),
-                const SizedBox(height: 12),
-                // Translated text
-                Text(
-                  _localeService.isVietnamese ? 'Dịch:' : 'Translated:',
-                  style: TextStyle(
-                    color: _themeService.textSecondaryColor,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  translated,
-                  style: TextStyle(
-                    color: _chatThemeColor ?? Colors.blue,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'OK',
-                  style: TextStyle(color: _chatThemeColor ?? Colors.blue),
-                ),
-              ),
-            ],
-          ),
-        );
+        setState(() {
+          _translatingMessages[messageId] = false;
+          _translatedMessages[messageId] = translated;
+        });
       } else {
+        setState(() {
+          _translatingMessages[messageId] = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result['error'] ?? 'Translation failed'),
@@ -1326,7 +1213,9 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // Close loading
+      setState(() {
+        _translatingMessages[messageId] = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_localeService.isVietnamese ? 'Lỗi dịch tin nhắn' : 'Translation error'),
@@ -1367,16 +1256,6 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: _chatThemeColor ?? Colors.blue,
       ),
     );
-  }
-
-  String _formatTimeRemaining(int seconds) {
-    if (seconds <= 0) return '0s';
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
-    if (minutes > 0) {
-      return '${minutes}m ${secs}s';
-    }
-    return '${secs}s';
   }
 
   Future<void> _deleteMessageForMe(String messageId) async {
@@ -1585,17 +1464,6 @@ class _ChatScreenState extends State<ChatScreen> {
       );
     } else {
       print('DEBUG: Cannot scroll - index: $index, hasClients: ${_scrollController.hasClients}');
-    }
-  }
-
-  void _scrollToPinnedMessage() {
-    if (_pinnedMessage == null) return;
-    final messageId = _pinnedMessage!['id']?.toString();
-    if (messageId == null) return;
-    
-    final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
-    if (index != -1) {
-      _scrollToMessageByIndex(index);
     }
   }
 
@@ -1975,6 +1843,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               onLongPressWithPosition: (tapPosition, bubbleSize, isMe) {
                                 _showMessageOptions(message, tapPosition: tapPosition, bubbleSize: bubbleSize, isMe: isMe);
                               },
+                              // Translation support
+                              isTranslating: _translatingMessages[message['id']?.toString()] ?? false,
+                              translatedText: _translatedMessages[message['id']?.toString()],
                             );
                           },
                         ),
@@ -2475,32 +2346,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required Color backgroundColor,
-    required Color iconColor,
-    VoidCallback? onTap,
-    double size = 44,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          icon,
-          color: iconColor,
-          size: size * 0.5,
-        ),
-      ),
-    );
-  }
-
   Widget _buildEmojiPicker() {
     return Container(
       height: 280,
@@ -2590,6 +2435,9 @@ class _MessageBubble extends StatefulWidget {
   final String? recipientName;
   final LocaleService localeService;
   final VoidCallback? onAvatarTap; // Callback when avatar is tapped
+  // Translation support
+  final bool isTranslating;
+  final String? translatedText;
 
   const _MessageBubble({
     required this.message,
@@ -2613,6 +2461,9 @@ class _MessageBubble extends StatefulWidget {
     this.recipientName,
     required this.localeService,
     this.onAvatarTap,
+    // Translation support
+    this.isTranslating = false,
+    this.translatedText,
   });
 
   @override
@@ -2654,7 +2505,6 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   Widget _buildReplyBubble() {
     final replyContent = widget.replyToContent ?? '';
     final replySenderId = widget.replyToSenderId ?? '';
-    final isReplyToSelf = replySenderId == widget.currentUserId;
     
     // Get preview text
     String previewText = replyContent;
@@ -2904,13 +2754,71 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                                       bottomRight: Radius.circular(widget.isMe ? 4 : 18),
                                     ),
                                   ),
-                                  child: Text(
-                                    widget.message, 
-                                    style: TextStyle(
-                                      color: widget.isMe ? Colors.white : widget.themeService.textPrimaryColor, 
-                                      fontSize: 15, 
-                                      height: 1.3,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Show translated text if available, otherwise show original
+                                      Text(
+                                        widget.translatedText ?? widget.message, 
+                                        style: TextStyle(
+                                          color: widget.isMe ? Colors.white : widget.themeService.textPrimaryColor, 
+                                          fontSize: 15, 
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                      // Show "Đang dịch..." indicator when translating
+                                      if (widget.isTranslating)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 6),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              SizedBox(
+                                                width: 12,
+                                                height: 12,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                  color: widget.isMe ? Colors.white70 : widget.themeService.textSecondaryColor,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                widget.localeService.isVietnamese ? 'Đang dịch sang tiếng Việt...' : 'Translating to English...',
+                                                style: TextStyle(
+                                                  color: widget.isMe ? Colors.white70 : widget.themeService.textSecondaryColor,
+                                                  fontSize: 11,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      // Show translation indicator if message has been translated
+                                      if (widget.translatedText != null && !widget.isTranslating)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 4),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.translate,
+                                                size: 12,
+                                                color: widget.isMe ? Colors.white60 : widget.themeService.textSecondaryColor,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                widget.localeService.isVietnamese ? 'Đã dịch' : 'Translated',
+                                                style: TextStyle(
+                                                  color: widget.isMe ? Colors.white60 : widget.themeService.textSecondaryColor,
+                                                  fontSize: 10,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                                 // Pin indicator
@@ -4582,7 +4490,6 @@ class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
                               !widget.content.startsWith('[STACKED_IMAGE:') &&
                               !widget.content.startsWith('[STICKER:') &&
                               !widget.content.startsWith('[VOICE:');
-  bool get _canUnsend => widget.messageService.canUnsendMessage(widget.message, widget.currentUserId);
   
   @override
   Widget build(BuildContext context) {

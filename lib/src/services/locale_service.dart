@@ -879,6 +879,12 @@ class LocaleService extends ChangeNotifier {
     'activity_comment_deleted': 'Đã xóa bình luận',
     'activity_follow': 'Đã theo dõi người dùng',
     'activity_unfollow': 'Đã bỏ theo dõi người dùng',
+    
+    // Notification Permission
+    'notification_permission_title': 'Bật thông báo',
+    'notification_permission_message': 'Cho phép ứng dụng gửi thông báo để nhận cảnh báo về tin nhắn mới, lượt thích, bình luận và các hoạt động quan trọng khác.',
+    'not_now': 'Để sau',
+    'enable_notifications': 'Bật thông báo',
   };
 
   // English translations
@@ -1623,6 +1629,12 @@ class LocaleService extends ChangeNotifier {
     'activity_comment_deleted': 'Deleted a comment',
     'activity_follow': 'Followed a user',
     'activity_unfollow': 'Unfollowed a user',
+    
+    // Notification Permission
+    'notification_permission_title': 'Enable Notifications',
+    'notification_permission_message': 'Allow the app to send notifications to receive alerts about new messages, likes, comments and other important activities.',
+    'not_now': 'Not Now',
+    'enable_notifications': 'Enable Notifications',
   };
 }
 

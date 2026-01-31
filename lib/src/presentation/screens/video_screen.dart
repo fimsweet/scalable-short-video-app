@@ -47,8 +47,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   final VideoPrefetchService _prefetchService = VideoPrefetchService();
   
   List<dynamic> _videos = [];
-  bool _isLoading = true;
-  String? _error;
   
   // Store reference to current video player state
   HLSVideoPlayerState? _currentVideoPlayerState;
@@ -330,8 +328,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     try {
       if (mounted) {
         setState(() {
-          _isLoading = true;
-          _error = null;
           // Set loading state for current tab
           if (_selectedFeedTab == 2) _isLoadingForYou = true;
           else if (_selectedFeedTab == 1) _isLoadingFriends = true;
@@ -352,7 +348,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
 
       if (mounted) {
         setState(() {
-          _isLoading = false;
           // Clear loading state for current tab
           if (_selectedFeedTab == 2) _isLoadingForYou = false;
           else if (_selectedFeedTab == 1) _isLoadingFriends = false;
@@ -363,8 +358,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       print('Error loading videos: $e');
       if (mounted) {
         setState(() {
-          _error = _localeService.get('cannot_load_video');
-          _isLoading = false;
+          // Clear loading state on error
+          if (_selectedFeedTab == 2) _isLoadingForYou = false;
+          else if (_selectedFeedTab == 1) _isLoadingFriends = false;
+          else _isLoadingFollowing = false;
         });
       }
     }
@@ -826,54 +823,6 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         },
       ),
     );
-  }
-
-  // Quick emoji comment
-  Future<void> _sendQuickEmojiComment(String videoId, String emoji) async {
-    if (!_authService.isLoggedIn || _authService.user == null) {
-      LoginRequiredDialog.show(context, 'comment');
-      return;
-    }
-
-    final userId = _authService.user!['id']?.toString();
-    if (userId == null) return;
-
-    try {
-      final result = await _commentService.createComment(videoId, userId, emoji);
-      if (result != null && mounted) {
-        // Update comment count
-        final count = await _commentService.getCommentCount(videoId);
-        setState(() {
-          _commentCounts[videoId] = count;
-        });
-        
-        // Show success feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _localeService.isVietnamese 
-                  ? 'Đã gửi bình luận $emoji'
-                  : 'Sent comment $emoji',
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 1),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error sending emoji comment: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('error_occurred')),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
   }
 
   String _formatCount(int count) {

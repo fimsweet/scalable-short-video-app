@@ -139,10 +139,6 @@ class _ChatSearchScreenState extends State<ChatSearchScreen> {
     }
   }
 
-  String _highlightQuery(String text, String query) {
-    return text;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(

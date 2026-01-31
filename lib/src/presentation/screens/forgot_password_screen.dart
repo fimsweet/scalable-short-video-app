@@ -199,17 +199,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         // The actual verification will happen when resetting password
         if (_verificationId != null) {
           try {
-            final credential = PhoneAuthProvider.credential(
-              verificationId: _verificationId!,
-              smsCode: _codeController.text,
-            );
-            // Create a test to validate the credential without signing in
-            // We'll verify again when resetting password
-            setState(() {
-              _codeVerified = true;
-              _isLoading = false;
-              _otpError = null;
-            });
+            // Validate the OTP format (6 digits)
+            final smsCode = _codeController.text;
+            if (smsCode.length == 6 && RegExp(r'^\d{6}$').hasMatch(smsCode)) {
+              // Store the verification info for later use when resetting password
+              setState(() {
+                _codeVerified = true;
+                _isLoading = false;
+                _otpError = null;
+              });
+            } else {
+              setState(() {
+                _isLoading = false;
+                _otpError = _localeService.get('invalid_code');
+              });
+            }
           } catch (e) {
             setState(() {
               _isLoading = false;
