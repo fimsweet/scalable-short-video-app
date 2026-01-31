@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
@@ -27,7 +27,7 @@ class NotificationService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting notifications: $e');
+      print('Error getting notifications: $e');
       return [];
     }
   }
@@ -44,7 +44,7 @@ class NotificationService {
       }
       return 0;
     } catch (e) {
-      print('❌ Error getting unread count: $e');
+      print('Error getting unread count: $e');
       return 0;
     }
   }
@@ -59,7 +59,7 @@ class NotificationService {
 
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('❌ Error marking notification as read: $e');
+      print('Error marking notification as read: $e');
       return false;
     }
   }
@@ -72,7 +72,7 @@ class NotificationService {
 
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('❌ Error marking all as read: $e');
+      print('Error marking all as read: $e');
       return false;
     }
   }
@@ -87,7 +87,7 @@ class NotificationService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('❌ Error deleting notification: $e');
+      print('Error deleting notification: $e');
       return false;
     }
   }

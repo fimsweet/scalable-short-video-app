@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_username_screen.dart';
+import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
@@ -103,7 +104,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             _linkedPhone = phone;
           }
         });
-        print('📱 Account info loaded: email=$_linkedEmail, phone=$_linkedPhone, provider=$_authProvider');
+        print('Account info loaded: email=$_linkedEmail, phone=$_linkedPhone, provider=$_authProvider');
       }
     } catch (e) {
       print('Error loading account info: $e');
@@ -506,18 +507,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: _themeService.textPrimaryColor,
+                        color: ThemeService.accentColor,
                       ),
                     )
                   : Text(
                       _localeService.get('save'),
-                      style: TextStyle(
-                        color: _themeService.textPrimaryColor,
+                      style: const TextStyle(
+                        color: ThemeService.accentColor,
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                     ),
                   ),
-          ),
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -767,9 +768,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       children: [
         InkWell(
           onTap: () async {
-            final result = await Navigator.push(
+            final result = await NavigationUtils.slideToScreen(
               context,
-              MaterialPageRoute(builder: (_) => const EditUsernameScreen()),
+              const EditUsernameScreen(),
             );
             if (result == true && mounted) {
               // Username was changed, update the controller
@@ -801,7 +802,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ? _themeService.textSecondaryColor 
                           : _themeService.textPrimaryColor,
                       fontSize: 16,
-                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -855,7 +855,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     style: TextStyle(
                       color: _themeService.textPrimaryColor,
                       fontSize: 16,
-                      fontWeight: FontWeight.w500,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

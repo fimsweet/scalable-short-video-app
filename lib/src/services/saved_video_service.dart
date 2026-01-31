@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+﻿import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/app_config.dart';
 
@@ -22,17 +22,17 @@ class SavedVideoService {
       }
       return {'saved': false};
     } catch (e) {
-      print('❌ Error toggling save: $e');
+      print('Error toggling save: $e');
       return {'saved': false};
     }
   }
 
   Future<bool> isSavedByUser(String videoId, String userId) async {
     try {
-      print('🔍 Check saved status: videoId=$videoId, userId=$userId');
+      print('Check saved status: videoId=$videoId, userId=$userId');
       
       final url = '$_baseUrl/saved-videos/check/$videoId/$userId';
-      print('📡 Request URL: $url');
+      print('Request URL: $url');
       
       final response = await http.get(
         Uri.parse(url),
@@ -43,40 +43,40 @@ class SavedVideoService {
         },
       );
 
-      print('📥 Check saved response: ${response.statusCode} - ${response.body}');
+      print('Check saved response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final saved = data['saved'] ?? false;
-        print('✅ isSavedByUser result: $saved');
+        print('isSavedByUser result: $saved');
         return saved;
       }
       
-      print('⚠️ Unexpected status code: ${response.statusCode}');
+      print('Unexpected status code: ${response.statusCode}');
       return false;
     } catch (e) {
-      print('❌ Error checking saved status: $e');
+      print('Error checking saved status: $e');
       return false;
     }
   }
 
   Future<List<dynamic>> getSavedVideos(String userId) async {
     try {
-      print('📥 Fetching saved videos for user $userId');
+      print('Fetching saved videos for user $userId');
       
       final response = await http.get(
         Uri.parse('$_baseUrl/saved-videos/user/$userId'),
       );
 
-      print('📥 Saved videos response: ${response.statusCode}');
+      print('Saved videos response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as List;
-        print('✅ Found ${data.length} saved videos');
+        print('Found ${data.length} saved videos');
         
         // Log để kiểm tra data structure
         if (data.isNotEmpty) {
-          print('📊 First saved video data: ${data[0]}');
+          print('First saved video data: ${data[0]}');
           print('   Keys: ${data[0].keys.toList()}');
           print('   likeCount: ${data[0]['likeCount']}');
           print('   commentCount: ${data[0]['commentCount']}');
@@ -85,10 +85,10 @@ class SavedVideoService {
         return data;
       }
       
-      print('❌ Failed to fetch saved videos: ${response.statusCode}');
+      print('Failed to fetch saved videos: ${response.statusCode}');
       return [];
     } catch (e) {
-      print('❌ Error getting saved videos: $e');
+      print('Error getting saved videos: $e');
       return [];
     }
   }

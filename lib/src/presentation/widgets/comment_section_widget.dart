@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
@@ -8,6 +8,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 // Theme colors - matching TikTok/Instagram style
 class CommentTheme {
@@ -27,6 +28,7 @@ class CommentSectionWidget extends StatefulWidget {
   final VoidCallback? onCommentAdded;
   final VoidCallback? onCommentDeleted;
   final bool allowComments;
+  final bool autoFocus;
 
   const CommentSectionWidget({
     super.key,
@@ -34,6 +36,7 @@ class CommentSectionWidget extends StatefulWidget {
     this.onCommentAdded,
     this.onCommentDeleted,
     this.allowComments = true,
+    this.autoFocus = false,
   });
 
   @override
@@ -77,6 +80,13 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     _textController.addListener(() {
       setState(() {});
     });
+    
+    // Auto focus input if requested
+    if (widget.autoFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _focusNode.requestFocus();
+      });
+    }
   }
 
   void _onThemeChanged() {
@@ -175,14 +185,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     
     if (!_authService.isLoggedIn || _authService.user == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('please_login_to_comment')),
-            backgroundColor: CommentTheme.cardBackground,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        AppSnackBar.showInfo(context, _localeService.get('please_login_to_comment'));
       }
       return;
     }
@@ -217,13 +220,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     } catch (e) {
       print('Error sending comment: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('comment_error')}: $e'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppSnackBar.showError(context, '${_localeService.get('comment_error')}: $e');
       }
     } finally {
       if (mounted) {
@@ -247,7 +244,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         });
       }
     } catch (e) {
-      print('❌ Error picking image: $e');
+      print('Error picking image: $e');
     }
   }
 
@@ -624,10 +621,10 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
               CircleAvatar(
                 radius: 16,
                 backgroundColor: _themeService.inputBackground,
-                backgroundImage: _authService.avatarUrl != null
+                backgroundImage: _authService.avatarUrl != null && _authService.avatarUrl!.isNotEmpty && _apiService.getAvatarUrl(_authService.avatarUrl!).isNotEmpty
                     ? NetworkImage(_apiService.getAvatarUrl(_authService.avatarUrl!))
                     : null,
-                child: _authService.avatarUrl == null
+                child: _authService.avatarUrl == null || _authService.avatarUrl!.isEmpty || _apiService.getAvatarUrl(_authService.avatarUrl!).isEmpty
                     ? Icon(Icons.person, size: 16, color: _themeService.textSecondaryColor)
                     : null,
               ),
@@ -898,9 +895,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
 
   Future<void> _toggleLike() async {
     if (!widget.authService.isLoggedIn) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(widget.localeService.get('please_login'))),
-      );
+      AppSnackBar.showInfo(context, widget.localeService.get('please_login'));
       return;
     }
 
@@ -955,10 +950,11 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
   void _showOptions() {
     final isOwnComment = widget.authService.user != null && 
                          widget.authService.user!['id'].toString() == widget.comment['userId'].toString();
+    final isLightMode = widget.themeService.isLightMode;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: CommentTheme.cardBackground,
+      backgroundColor: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -971,7 +967,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[600],
+                color: isLightMode ? Colors.grey[400] : Colors.grey[600],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1005,7 +1001,10 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                 ),
                 child: const Icon(Icons.flag_outlined, color: Colors.orange),
               ),
-              title: Text(widget.localeService.get('report'), style: const TextStyle(color: Colors.white)),
+              title: Text(
+                widget.localeService.get('report'), 
+                style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+              ),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -1057,10 +1056,10 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                     child: CircleAvatar(
                       radius: 18,
                       backgroundColor: CommentTheme.cardBackground,
-                      backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
+                      backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty && widget.apiService.getAvatarUrl(userInfo['avatar']).isNotEmpty
                           ? NetworkImage(widget.apiService.getAvatarUrl(userInfo['avatar']))
                           : null,
-                      child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
+                      child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty || widget.apiService.getAvatarUrl(userInfo['avatar']).isEmpty
                           ? const Icon(Icons.person, size: 18, color: Colors.white54)
                           : null,
                     ),
@@ -1424,10 +1423,11 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
   void _showOptions() {
     final isOwnComment = widget.authService.user != null && 
                          widget.authService.user!['id'].toString() == widget.reply['userId'].toString();
+    final isLightMode = widget.themeService.isLightMode;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: CommentTheme.cardBackground,
+      backgroundColor: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -1440,7 +1440,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[600],
+                color: isLightMode ? Colors.grey[400] : Colors.grey[600],
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1474,7 +1474,10 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                 ),
                 child: const Icon(Icons.flag_outlined, color: Colors.orange),
               ),
-              title: const Text('Báo cáo', style: TextStyle(color: Colors.white)),
+              title: Text(
+                widget.localeService.get('report'), 
+                style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+              ),
               onTap: () => Navigator.pop(context),
             ),
             const SizedBox(height: 16),
@@ -1499,10 +1502,10 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
               CircleAvatar(
                 radius: 14,
                 backgroundColor: CommentTheme.cardBackground,
-                backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
+                backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty && widget.apiService.getAvatarUrl(userInfo['avatar']).isNotEmpty
                     ? NetworkImage(widget.apiService.getAvatarUrl(userInfo['avatar']))
                     : null,
-                child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
+                child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty || widget.apiService.getAvatarUrl(userInfo['avatar']).isEmpty
                     ? const Icon(Icons.person, size: 14, color: Colors.white54)
                     : null,
               ),

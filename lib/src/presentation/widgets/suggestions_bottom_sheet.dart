@@ -277,10 +277,10 @@ class _SuggestionCard extends StatelessWidget {
                       backgroundColor: themeService.isLightMode
                           ? Colors.grey[200]
                           : Colors.grey[700],
-                      backgroundImage: user.avatar != null && user.avatar!.isNotEmpty
+                      backgroundImage: user.avatar != null && user.avatar!.isNotEmpty && _getAvatarUrl(user.avatar).isNotEmpty
                           ? NetworkImage(_getAvatarUrl(user.avatar))
                           : null,
-                      child: user.avatar == null || user.avatar!.isEmpty
+                      child: user.avatar == null || user.avatar!.isEmpty || _getAvatarUrl(user.avatar).isEmpty
                           ? Icon(
                               Icons.person,
                               size: 32,

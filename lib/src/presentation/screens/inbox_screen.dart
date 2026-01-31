@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/search_user_screen.dart';
@@ -31,6 +31,7 @@ class _InboxScreenState extends State<InboxScreen> {
   bool _isLoading = true;
   
   StreamSubscription? _newMessageSubscription;
+  StreamSubscription? _onlineStatusSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
 
@@ -63,6 +64,17 @@ class _InboxScreenState extends State<InboxScreen> {
     _newMessageSubscription = _messageService.newMessageStream.listen((message) {
       _loadConversations();
     });
+
+    // Listen to online status updates from WebSocket
+    _onlineStatusSubscription = _messageService.onlineStatusStream.listen((data) {
+      final userId = data['userId']?.toString();
+      final isOnline = data['isOnline'] == true;
+      if (userId != null && mounted) {
+        setState(() {
+          _onlineStatusCache[userId] = isOnline;
+        });
+      }
+    });
   }
 
   Future<void> _loadConversations() async {
@@ -79,9 +91,12 @@ class _InboxScreenState extends State<InboxScreen> {
           _conversations = conversations.map((c) => Map<String, dynamic>.from(c)).toList();
           _isLoading = false;
         });
+        
+        // Subscribe to online status for all users in conversations
+        _subscribeToOnlineStatus();
       }
     } catch (e) {
-      print('❌ Error loading conversations: $e');
+      print('Error loading conversations: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -100,25 +115,59 @@ class _InboxScreenState extends State<InboxScreen> {
         return userInfo;
       }
     } catch (e) {
-      print('❌ Error fetching user info: $e');
+      print('Error fetching user info: $e');
     }
 
     return {'username': 'User', 'avatar': null};
   }
 
   Future<bool> _getOnlineStatus(String userId) async {
+    // First check cache (updated by WebSocket)
     if (_onlineStatusCache.containsKey(userId)) {
       return _onlineStatusCache[userId]!;
     }
 
+    // If not in cache, fetch via WebSocket and subscribe
     try {
-      final status = await _apiService.getOnlineStatus(userId);
+      final status = await _messageService.getOnlineStatus(userId);
       final isOnline = status['isOnline'] == true;
       _onlineStatusCache[userId] = isOnline;
+      // Subscribe to updates for this user
+      _messageService.subscribeOnlineStatus(userId);
       return isOnline;
     } catch (e) {
-      print('❌ Error fetching online status: $e');
+      print('Error fetching online status: $e');
       return false;
+    }
+  }
+
+  // Subscribe to online status for all users in conversations
+  void _subscribeToOnlineStatus() {
+    final userIds = _conversations
+        .map((c) => c['otherUserId']?.toString())
+        .where((id) => id != null && id.isNotEmpty)
+        .cast<String>()
+        .toList();
+    
+    // Subscribe to each user's online status
+    for (final userId in userIds) {
+      _messageService.subscribeOnlineStatus(userId);
+    }
+    
+    // Fetch initial status for all users via WebSocket
+    if (userIds.isNotEmpty) {
+      _messageService.getMultipleOnlineStatus(userIds).then((statuses) {
+        if (mounted) {
+          setState(() {
+            for (final status in statuses) {
+              final userId = status['userId']?.toString();
+              if (userId != null) {
+                _onlineStatusCache[userId] = status['isOnline'] == true;
+              }
+            }
+          });
+        }
+      });
     }
   }
 
@@ -133,7 +182,7 @@ class _InboxScreenState extends State<InboxScreen> {
       _nicknameCache[recipientId] = nickname;
       return nickname;
     } catch (e) {
-      print('❌ Error fetching nickname: $e');
+      print('Error fetching nickname: $e');
       return null;
     }
   }
@@ -161,6 +210,11 @@ class _InboxScreenState extends State<InboxScreen> {
   @override
   void dispose() {
     _newMessageSubscription?.cancel();
+    _onlineStatusSubscription?.cancel();
+    // Unsubscribe from all online status updates
+    for (final userId in _onlineStatusCache.keys) {
+      _messageService.unsubscribeOnlineStatus(userId);
+    }
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -367,7 +421,7 @@ class _InboxScreenState extends State<InboxScreen> {
                                                   radius: 28,
                                                   backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
                                                   backgroundImage: userInfo['avatar'] != null
-                                                      ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                                      ? (userInfo['avatar'] != null && _apiService.getAvatarUrl(userInfo['avatar']).isNotEmpty ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar'])) : null)
                                                       : null,
                                                   child: userInfo['avatar'] == null
                                                       ? Icon(Icons.person, color: _themeService.textPrimaryColor, size: 28)

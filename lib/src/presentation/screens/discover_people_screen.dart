@@ -6,41 +6,63 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/config/app_config.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 
-/// Instagram-style horizontal grid suggestions section
-class SuggestionsGridSection extends StatefulWidget {
-  final VoidCallback? onSeeAll;
-  
-  const SuggestionsGridSection({super.key, this.onSeeAll});
+/// Full screen page showing all suggested users to follow
+/// Implements TikTok-style discovery with slide animation
+class DiscoverPeopleScreen extends StatefulWidget {
+  const DiscoverPeopleScreen({super.key});
 
   @override
-  State<SuggestionsGridSection> createState() => _SuggestionsGridSectionState();
+  State<DiscoverPeopleScreen> createState() => _DiscoverPeopleScreenState();
 }
 
-class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
+class _DiscoverPeopleScreenState extends State<DiscoverPeopleScreen> {
   final FollowService _followService = FollowService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final AuthService _authService = AuthService();
+  final ScrollController _scrollController = ScrollController();
 
   List<SuggestedUser> _suggestions = [];
-  Set<int> _followedIds = {};
-  Set<int> _dismissedIds = {};
+  final Set<int> _followedIds = {};
+  final Set<int> _dismissedIds = {};
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadSuggestions();
   }
 
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _loadSuggestions() async {
-    if (!_authService.isLoggedIn || _authService.user == null) return;
+    if (!_authService.isLoggedIn || _authService.user == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
       final userId = _authService.user!['id'] as int;
-      final suggestions = await _followService.getSuggestions(userId);
+      // Get more suggestions for the full page
+      final suggestions = await _followService.getSuggestions(userId, limit: 50);
 
       if (mounted) {
         setState(() {
@@ -100,127 +122,6 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final visibleSuggestions = _suggestions
-        .where((s) => !_dismissedIds.contains(s.id))
-        .toList();
-
-    if (_isLoading) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: _themeService.textSecondaryColor,
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (visibleSuggestions.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Text(
-            _localeService.get('no_suggestions'),
-            style: TextStyle(
-              color: _themeService.textSecondaryColor,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header: "Khám phá mọi người" + "Xem tất cả"
-        // No horizontal padding here - parent already has padding: 16
-        Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                _localeService.get('discover_people'),
-                style: TextStyle(
-                  color: _themeService.textPrimaryColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              GestureDetector(
-                onTap: widget.onSeeAll,
-                child: Text(
-                  _localeService.get('see_all'),
-                  style: TextStyle(
-                    color: ThemeService.accentColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Horizontal scrollable cards - negative margin to extend to edges
-        Transform.translate(
-          offset: const Offset(-16, 0),
-          child: SizedBox(
-            width: MediaQuery.of(context).size.width,
-            height: 230,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              itemCount: visibleSuggestions.length,
-              itemBuilder: (context, index) {
-                final user = visibleSuggestions[index];
-                return _SuggestionCard(
-                  user: user,
-                  isFollowed: _followedIds.contains(user.id),
-                  onFollow: () => _toggleFollow(user),
-                  onDismiss: () => _dismissSuggestion(user.id),
-                  onTap: () => _navigateToProfile(user),
-                  themeService: _themeService,
-                  localeService: _localeService,
-                );
-              },
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Instagram-style suggestion card
-class _SuggestionCard extends StatelessWidget {
-  final SuggestedUser user;
-  final bool isFollowed;
-  final VoidCallback onFollow;
-  final VoidCallback onDismiss;
-  final VoidCallback onTap;
-  final ThemeService themeService;
-  final LocaleService localeService;
-
-  const _SuggestionCard({
-    required this.user,
-    required this.isFollowed,
-    required this.onFollow,
-    required this.onDismiss,
-    required this.onTap,
-    required this.themeService,
-    required this.localeService,
-  });
-
   String _getAvatarUrl(String? avatar) {
     if (avatar == null || avatar.isEmpty) return '';
     if (avatar.startsWith('http')) return avatar;
@@ -229,14 +130,149 @@ class _SuggestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleSuggestions = _suggestions
+        .where((s) => !_dismissedIds.contains(s.id))
+        .toList();
+
+    return Scaffold(
+      backgroundColor: _themeService.backgroundColor,
+      appBar: AppBar(
+        backgroundColor: _themeService.appBarBackground,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: _themeService.iconColor),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          _localeService.get('discover_people'),
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: _isLoading
+          ? Center(
+              child: CircularProgressIndicator(
+                color: _themeService.textPrimaryColor,
+                strokeWidth: 2,
+              ),
+            )
+          : visibleSuggestions.isEmpty
+              ? _buildEmptyState()
+              : RefreshIndicator(
+                  onRefresh: _loadSuggestions,
+                  color: ThemeService.accentColor,
+                  child: GridView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.75,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemCount: visibleSuggestions.length,
+                    itemBuilder: (context, index) {
+                      final user = visibleSuggestions[index];
+                      return _SuggestionGridCard(
+                        user: user,
+                        isFollowed: _followedIds.contains(user.id),
+                        onFollow: () => _toggleFollow(user),
+                        onDismiss: () => _dismissSuggestion(user.id),
+                        onTap: () => _navigateToProfile(user),
+                        themeService: _themeService,
+                        localeService: _localeService,
+                        getAvatarUrl: _getAvatarUrl,
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 80,
+              color: _themeService.textSecondaryColor.withOpacity(0.5),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              _localeService.get('no_suggestions_title'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _localeService.get('no_suggestions_desc'),
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            TextButton.icon(
+              onPressed: _loadSuggestions,
+              icon: Icon(Icons.refresh, color: ThemeService.accentColor),
+              label: Text(
+                _localeService.get('refresh'),
+                style: TextStyle(
+                  color: ThemeService.accentColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Grid card for suggestion
+class _SuggestionGridCard extends StatelessWidget {
+  final SuggestedUser user;
+  final bool isFollowed;
+  final VoidCallback onFollow;
+  final VoidCallback onDismiss;
+  final VoidCallback onTap;
+  final ThemeService themeService;
+  final LocaleService localeService;
+  final String Function(String?) getAvatarUrl;
+
+  const _SuggestionGridCard({
+    required this.user,
+    required this.isFollowed,
+    required this.onFollow,
+    required this.onDismiss,
+    required this.onTap,
+    required this.themeService,
+    required this.localeService,
+    required this.getAvatarUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: 155,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         color: themeService.isLightMode 
             ? Colors.grey[100] 
             : const Color(0xFF262626),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: themeService.isLightMode
             ? Border.all(color: Colors.grey[300]!, width: 0.5)
             : null,
@@ -248,9 +284,9 @@ class _SuggestionCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(16),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 24, 12, 10),
+                padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -262,35 +298,42 @@ class _SuggestionCard extends StatelessWidget {
                           color: themeService.isLightMode
                               ? Colors.grey[300]!
                               : Colors.grey[600]!,
-                          width: 2,
+                          width: 3,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
                       child: CircleAvatar(
-                        radius: 36,
+                        radius: 44,
                         backgroundColor: themeService.isLightMode
                             ? Colors.grey[200]
                             : Colors.grey[700],
-                        backgroundImage: user.avatar != null && user.avatar!.isNotEmpty && _getAvatarUrl(user.avatar).isNotEmpty
-                            ? NetworkImage(_getAvatarUrl(user.avatar))
+                        backgroundImage: user.avatar != null && user.avatar!.isNotEmpty && getAvatarUrl(user.avatar).isNotEmpty
+                            ? NetworkImage(getAvatarUrl(user.avatar))
                             : null,
-                        child: user.avatar == null || user.avatar!.isEmpty || _getAvatarUrl(user.avatar).isEmpty
+                        child: user.avatar == null || user.avatar!.isEmpty || getAvatarUrl(user.avatar).isEmpty
                             ? Icon(
                                 Icons.person,
-                                size: 40,
+                                size: 48,
                                 color: themeService.textSecondaryColor,
                               )
                             : null,
                       ),
                     ),
 
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 14),
 
                     // Name
                     Text(
                       user.fullName ?? user.username,
                       style: TextStyle(
                         color: themeService.textPrimaryColor,
-                        fontSize: 13,
+                        fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
@@ -298,7 +341,7 @@ class _SuggestionCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
 
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
 
                     // Reason
                     Text(
@@ -312,7 +355,7 @@ class _SuggestionCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
 
-                    const SizedBox(height: 12),
+                    const Spacer(),
 
                     // Follow button
                     SizedBox(
@@ -329,9 +372,9 @@ class _SuggestionCard extends StatelessWidget {
                               ? themeService.textPrimaryColor
                               : Colors.white,
                           elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                         child: Text(
@@ -339,7 +382,7 @@ class _SuggestionCard extends StatelessWidget {
                               ? localeService.get('followed')
                               : localeService.get('follow'),
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -353,19 +396,21 @@ class _SuggestionCard extends StatelessWidget {
 
           // Dismiss button (X)
           Positioned(
-            top: 4,
-            right: 4,
+            top: 6,
+            right: 6,
             child: GestureDetector(
               onTap: onDismiss,
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(12),
+                  color: themeService.isLightMode 
+                      ? Colors.grey[200] 
+                      : Colors.grey[800],
+                  borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   Icons.close,
-                  size: 18,
+                  size: 16,
                   color: themeService.textSecondaryColor,
                 ),
               ),

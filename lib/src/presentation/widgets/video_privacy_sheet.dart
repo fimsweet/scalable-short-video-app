@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 class VideoPrivacySheet extends StatefulWidget {
   final String videoId;
@@ -72,25 +73,16 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
       
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.isVietnamese 
-                ? 'Đã cập nhật quyền riêng tư' 
-                : 'Privacy updated'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
+        AppSnackBar.showSuccess(
+          context,
+          _localeService.isVietnamese 
+              ? 'Đã cập nhật quyền riêng tư' 
+              : 'Privacy updated',
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('error_occurred')),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        AppSnackBar.showError(context, _localeService.get('error_occurred'));
       }
     } finally {
       if (mounted) setState(() => _isUpdating = false);

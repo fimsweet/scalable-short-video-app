@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
@@ -62,12 +62,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     }
     
     final result = await _apiService.hasPassword(token);
-    print('🔐 hasPassword API result: $result');
+    print('hasPassword API result: $result');
     if (mounted) {
       setState(() {
         _hasPassword = result['hasPassword'] ?? true;
         _isLoadingPassword = false;
-        print('🔐 _hasPassword set to: $_hasPassword');
+        print('_hasPassword set to: $_hasPassword');
       });
     }
   }

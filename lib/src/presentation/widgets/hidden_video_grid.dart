@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
@@ -27,12 +27,12 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
   }
 
   void _onLogin() {
-    print('🔔 HiddenVideoGrid: Login event - loading hidden videos');
+    print('HiddenVideoGrid: Login event - loading hidden videos');
     _loadHiddenVideos();
   }
 
   void _onLogout() {
-    print('🔔 HiddenVideoGrid: Logout event - clearing hidden videos');
+    print('HiddenVideoGrid: Logout event - clearing hidden videos');
     if (mounted) {
       setState(() {
         _hiddenVideos = [];
@@ -59,7 +59,7 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
       final videos = await _videoService.getUserVideos(userId);
 
       // Debug: Log all videos data
-      print('🔍 All videos from backend: ${videos.length}');
+      print('All videos from backend: ${videos.length}');
       for (var video in videos) {
         print('   Video ID: ${video['id']}');
         print('   likeCount: ${video['likeCount']}');
@@ -81,10 +81,10 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
           _hiddenVideos = hiddenVideos;
           _isLoading = false;
         });
-        print('🔒 Loaded ${hiddenVideos.length} hidden videos');
+        print('Loaded ${hiddenVideos.length} hidden videos');
       }
     } catch (e) {
-      print('❌ Error loading hidden videos: $e');
+      print('Error loading hidden videos: $e');
       if (mounted) {
         setState(() {
           _error = 'Không thể tải video: $e';

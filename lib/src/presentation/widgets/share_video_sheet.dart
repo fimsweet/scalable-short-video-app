@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/share_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 class ShareVideoSheet extends StatefulWidget {
   final String videoId;
@@ -85,7 +86,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
         });
       }
     } catch (e) {
-      print('❌ Error loading followers: $e');
+      print('Error loading followers: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -127,12 +128,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
   // Show confirmation dialog
   Future<void> _showConfirmDialog() async {
     if (_selectedUserIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_localeService.get('please_select_at_least_one')),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      AppSnackBar.showWarning(context, _localeService.get('please_select_at_least_one'));
       return;
     }
 
@@ -186,7 +182,7 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
           lastShareCount = result['shareCount'] ?? lastShareCount;
           successCount++;
         } catch (e) {
-          print('❌ Error sending to $userId: $e');
+          print('Error sending to $userId: $e');
         }
       }
 
@@ -211,14 +207,9 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
         overlay.insert(overlayEntry);
       }
     } catch (e) {
-      print('❌ Error sharing video: $e');
+      print('Error sharing video: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('cannot_share_video')),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, _localeService.get('cannot_share_video'));
       }
     } finally {
       if (mounted) {
@@ -443,10 +434,10 @@ class _UserSelectItem extends StatelessWidget {
             CircleAvatar(
               radius: 24,
               backgroundColor: Colors.grey[800],
-              backgroundImage: user['avatar'] != null
+              backgroundImage: user['avatar'] != null && apiService.getAvatarUrl(user['avatar']).isNotEmpty
                   ? NetworkImage(apiService.getAvatarUrl(user['avatar']))
                   : null,
-              child: user['avatar'] == null
+              child: user['avatar'] == null || apiService.getAvatarUrl(user['avatar']).isEmpty
                   ? const Icon(Icons.person, color: Colors.white)
                   : null,
             ),

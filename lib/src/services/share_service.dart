@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 
@@ -15,7 +15,7 @@ class ShareService {
     String recipientId,
   ) async {
     try {
-      print('📤 Sharing video: videoId=$videoId, sharerId=$sharerId, recipientId=$recipientId');
+      print('Sharing video: videoId=$videoId, sharerId=$sharerId, recipientId=$recipientId');
       
       final response = await http.post(
         Uri.parse('$_baseUrl/shares'),
@@ -27,7 +27,7 @@ class ShareService {
         }),
       );
 
-      print('📥 Share response: ${response.statusCode} - ${response.body}');
+      print('Share response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -39,7 +39,7 @@ class ShareService {
       
       return {'success': false, 'shareCount': 0};
     } catch (e) {
-      print('❌ Error in shareVideo: $e');
+      print('Error in shareVideo: $e');
       return {'success': false, 'shareCount': 0};
     }
   }
@@ -56,7 +56,7 @@ class ShareService {
       }
       return 0;
     } catch (e) {
-      print('❌ Error getting share count: $e');
+      print('Error getting share count: $e');
       return 0;
     }
   }

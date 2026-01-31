@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
@@ -28,12 +28,12 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
   }
 
   void _onLogin() {
-    print('🔔 SavedVideoGrid: Login event - loading saved videos');
+    print('SavedVideoGrid: Login event - loading saved videos');
     _loadSavedVideos();
   }
 
   void _onLogout() {
-    print('🔔 SavedVideoGrid: Logout event - clearing saved videos');
+    print('SavedVideoGrid: Logout event - clearing saved videos');
     if (mounted) {
       setState(() {
         _savedVideos = [];
@@ -61,7 +61,7 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
         });
       }
     } catch (e) {
-      print('❌ Error loading saved videos: $e');
+      print('Error loading saved videos: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }

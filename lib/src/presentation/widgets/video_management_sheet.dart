@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
@@ -317,7 +317,7 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                     Expanded(
                       child: TextButton(
                         onPressed: () async {
-                          print('🗑️ DELETE BUTTON PRESSED');
+                          print('DELETE BUTTON PRESSED');
                           print('   VideoId: ${widget.videoId}');
                           print('   UserId: ${widget.userId}');
                           

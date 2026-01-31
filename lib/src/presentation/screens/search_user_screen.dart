@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
@@ -71,7 +71,7 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error loading suggested users: $e');
+      print('Error loading suggested users: $e');
       if (mounted) {
         setState(() => _isLoadingSuggestions = false);
       }
@@ -107,7 +107,7 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error searching users: $e');
+      print('Error searching users: $e');
       if (mounted) {
         setState(() {
           _searchResults = [];
@@ -347,10 +347,10 @@ class _SearchUserScreenState extends State<SearchUserScreen> {
       leading: CircleAvatar(
         radius: 24,
         backgroundColor: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
-        backgroundImage: user['avatar'] != null
+        backgroundImage: user['avatar'] != null && _apiService.getAvatarUrl(user['avatar']).isNotEmpty
             ? NetworkImage(_apiService.getAvatarUrl(user['avatar']))
             : null,
-        child: user['avatar'] == null
+        child: user['avatar'] == null || _apiService.getAvatarUrl(user['avatar']).isEmpty
             ? Icon(Icons.person, color: _themeService.textSecondaryColor)
             : null,
       ),

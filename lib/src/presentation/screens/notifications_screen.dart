@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:timeago/timeago.dart' as timeago;
 
 class NotificationsScreen extends StatefulWidget {
@@ -77,7 +78,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         });
       }
     } catch (e) {
-      print('❌ Error loading notifications: $e');
+      print('Error loading notifications: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -96,7 +97,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         return userInfo;
       }
     } catch (e) {
-      print('❌ Error fetching user info: $e');
+      print('Error fetching user info: $e');
     }
 
     return {'username': 'user', 'avatar': null};
@@ -215,15 +216,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         );
       }
     } catch (e) {
-      print('❌ Error navigating to video: $e');
+      print('Error navigating to video: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.isVietnamese 
-                ? 'Không thể tải video' 
-                : 'Unable to load video'),
-            backgroundColor: Colors.red,
-          ),
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese 
+              ? 'Không thể tải video' 
+              : 'Unable to load video',
         );
       }
     }
@@ -245,15 +244,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         );
       }
     } catch (e) {
-      print('❌ Error navigating to video with comments: $e');
+      print('Error navigating to video with comments: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.isVietnamese 
-                ? 'Không thể tải video' 
-                : 'Unable to load video'),
-            backgroundColor: Colors.red,
-          ),
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese 
+              ? 'Không thể tải video' 
+              : 'Unable to load video',
         );
       }
     }
@@ -270,14 +267,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.isVietnamese 
-                ? 'Đã xóa thông báo' 
-                : 'Notification deleted'),
-            backgroundColor: ThemeService.accentColor,
-            duration: const Duration(seconds: 2),
-          ),
+        AppSnackBar.showSuccess(
+          context,
+          _localeService.isVietnamese 
+              ? 'Đã xóa thông báo' 
+              : 'Notification deleted',
         );
       }
     }
@@ -634,7 +628,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                                 ? Colors.grey[200] 
                                 : Colors.grey[800],
                             backgroundImage: userInfo['avatar'] != null && userInfo['avatar'].toString().isNotEmpty
-                                ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar']))
+                                ? (userInfo['avatar'] != null && _apiService.getAvatarUrl(userInfo['avatar']).isNotEmpty ? NetworkImage(_apiService.getAvatarUrl(userInfo['avatar'])) : null)
                                 : null,
                             child: userInfo['avatar'] == null || userInfo['avatar'].toString().isEmpty
                                 ? Icon(Icons.person, 

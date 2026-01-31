@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -7,10 +7,10 @@ class LocaleService extends ChangeNotifier {
   static final LocaleService _instance = LocaleService._internal();
   factory LocaleService() => _instance;
   LocaleService._internal() {
-    print('🌐 LocaleService._internal() constructor called - registering listeners');
+    print('LocaleService._internal() constructor called - registering listeners');
     _authService.addLogoutListener(_onLogout);
     _authService.addLoginListener(_onLogin);
-    print('✅ LocaleService listeners registered');
+    print('LocaleService listeners registered');
   }
 
   final ApiService _apiService = ApiService();
@@ -24,28 +24,28 @@ class LocaleService extends ChangeNotifier {
 
   void _onLogin() {
     // Load language from backend when user logs in
-    print('👤 Login detected in LocaleService - loading language from backend');
+    print('Login detected in LocaleService - loading language from backend');
     _loadLanguageFromBackend().catchError((error) {
-      print('❌ Error in _onLogin while loading language: $error');
+      print('Error in _onLogin while loading language: $error');
     });
   }
 
   void _onLogout() {
     // Reset to Vietnamese when user logs out
-    print('🌐 Logout detected - resetting to Vietnamese');
+    print('Logout detected - resetting to Vietnamese');
     _currentLocale = 'vi';
     SharedPreferences.getInstance().then((prefs) async {
       await prefs.setString('app_locale', 'vi');
-      print('💾 Vietnamese locale saved to storage');
+      print('Vietnamese locale saved to storage');
     });
     notifyListeners();
-    print('📢 Locale listeners notified - currentLocale: $_currentLocale');
+    print('Locale listeners notified - currentLocale: $_currentLocale');
   }
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _currentLocale = prefs.getString('app_locale') ?? 'vi';
-    print('🌐 LocaleService initialized - local locale: $_currentLocale');
+    print('LocaleService initialized - local locale: $_currentLocale');
     notifyListeners();
   }
 
@@ -53,13 +53,13 @@ class LocaleService extends ChangeNotifier {
     try {
       final token = await _authService.getToken();
       if (token == null) {
-        print('⚠️ No token found, skipping backend language load');
+        print('No token found, skipping backend language load');
         return;
       }
 
-      print('🔄 Loading language from backend...');
+      print('Loading language from backend...');
       final response = await _apiService.getUserSettings(token);
-      print('📦 Backend language response: $response');
+      print('Backend language response: $response');
       
       if (response['success'] == true && response['settings'] != null) {
         final language = response['settings']['language'] as String?;
@@ -71,17 +71,17 @@ class LocaleService extends ChangeNotifier {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('app_locale', language);
           
-          print('✅ Language loaded from backend: $language (changed from $wasLocale to $_currentLocale)');
+          print('Language loaded from backend: $language (changed from $wasLocale to $_currentLocale)');
           
           // Notify listeners if locale changed
           if (wasLocale != _currentLocale) {
-            print('📢 Locale changed - notifying listeners');
+            print('Locale changed - notifying listeners');
             notifyListeners();
           }
         }
       }
     } catch (e, stackTrace) {
-      print('⚠️ Failed to load language from backend: $e');
+      print('Failed to load language from backend: $e');
       print('Stack trace: $stackTrace');
     }
   }
@@ -93,7 +93,7 @@ class LocaleService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('app_locale', language);
       notifyListeners();
-      print('✅ LocaleService: Loaded language from backend: $language');
+      print('LocaleService: Loaded language from backend: $language');
     }
   }
 
@@ -120,9 +120,9 @@ class LocaleService extends ChangeNotifier {
       await _apiService.updateUserSettings(token, {
         'language': language,
       });
-      print('✅ Language synced to backend: $language');
+      print('Language synced to backend: $language');
     } catch (e) {
-      print('⚠️ Failed to sync language to backend: $e');
+      print('Failed to sync language to backend: $e');
     }
   }
 
@@ -295,7 +295,12 @@ class LocaleService extends ChangeNotifier {
     'mutual_friends': 'bạn chung',
     'has_mutual_friend': 'Có bạn chung',
     'popular_account': 'Tài khoản phổ biến',
+    'similar_taste': 'Bạn có thể thích',
+    'liked_their_content': 'Bạn đã thích nội dung của họ',
+    'friends_and_similar_taste': 'Bạn chung & có thể thích',
     'no_suggestions': 'Không có đề xuất nào',
+    'no_suggestions_title': 'Chưa có ai để đề xuất',
+    'no_suggestions_desc': 'Hãy tương tác nhiều hơn để chúng tôi có thể đề xuất bạn bè phù hợp',
     'followed': 'Đã theo dõi',
     'copy_link': 'Sao chép liên kết',
     'link_copied': 'Đã sao chép liên kết',
@@ -682,9 +687,11 @@ class LocaleService extends ChangeNotifier {
     'add_website': 'Thêm đường dẫn website',
     'add_location': 'Thêm vị trí của bạn',
 
-    // Followers/Following
+    // Followers/Following/Friends
     'no_followers': 'Chưa có người theo dõi',
     'no_following': 'Chưa theo dõi ai',
+    'no_friends': 'Chưa có bạn bè',
+    'follow_each_other_to_be_friends': 'Theo dõi lẫn nhau để trở thành bạn bè',
     'posts': 'Bài viết',
     'no_posts': 'Chưa có bài viết',
     'register_now': 'Đăng ký ngay',
@@ -1032,7 +1039,12 @@ class LocaleService extends ChangeNotifier {
     'mutual_friends': 'mutual friends',
     'has_mutual_friend': 'Has mutual friend',
     'popular_account': 'Popular account',
+    'similar_taste': 'You may like',
+    'liked_their_content': 'You liked their content',
+    'friends_and_similar_taste': 'Mutual friends & similar taste',
     'no_suggestions': 'No suggestions',
+    'no_suggestions_title': 'No one to suggest yet',
+    'no_suggestions_desc': 'Interact more so we can suggest friends for you',
     'followed': 'Followed',
     'copy_link': 'Copy Link',
     'link_copied': 'Link copied',
@@ -1419,9 +1431,11 @@ class LocaleService extends ChangeNotifier {
     'add_website': 'Add your website link',
     'add_location': 'Add your location',
 
-    // Followers/Following
+    // Followers/Following/Friends
     'no_followers': 'No followers yet',
     'no_following': 'Not following anyone',
+    'no_friends': 'No friends yet',
+    'follow_each_other_to_be_friends': 'Follow each other to become friends',
     'posts': 'Posts',
     'no_posts': 'No posts yet',
     'register_now': 'Register now',

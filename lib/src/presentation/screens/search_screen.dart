@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -156,7 +156,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         });
       }
     } catch (e) {
-      print('❌ Search error: $e');
+      print('Search error: $e');
       if (mounted) {
         setState(() {
           _isSearching = false;
@@ -257,8 +257,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                         )
                       : null,
                   border: InputBorder.none,
-                  isCollapsed: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
                 ),
                 onChanged: (value) {
                   setState(() {});
@@ -694,10 +694,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               CircleAvatar(
                 radius: 10,
                 backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[700],
-                backgroundImage: avatar != null
+                backgroundImage: avatar != null && _apiService.getAvatarUrl(avatar).isNotEmpty
                     ? NetworkImage(_apiService.getAvatarUrl(avatar))
                     : null,
-                child: avatar == null
+                child: avatar == null || _apiService.getAvatarUrl(avatar).isEmpty
                     ? Icon(
                         Icons.person,
                         size: 12,
@@ -787,10 +787,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           leading: CircleAvatar(
             radius: 24,
             backgroundColor: Colors.grey[800],
-            backgroundImage: user['avatar'] != null
+            backgroundImage: user['avatar'] != null && _apiService.getAvatarUrl(user['avatar']).isNotEmpty
                 ? NetworkImage(_apiService.getAvatarUrl(user['avatar']))
                 : null,
-            child: user['avatar'] == null
+            child: user['avatar'] == null || _apiService.getAvatarUrl(user['avatar']).isEmpty
                 ? const Icon(Icons.person, color: Colors.white)
                 : null,
           ),

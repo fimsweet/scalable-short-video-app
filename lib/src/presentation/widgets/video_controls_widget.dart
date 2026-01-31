@@ -6,13 +6,15 @@ class VideoControlsWidget extends StatefulWidget {
   final VoidCallback onCommentTap;
   final VoidCallback onSaveTap;
   final VoidCallback onShareTap;
+  final VoidCallback? onMoreTap; // NEW - for 3 dots menu
   final bool isLiked;
   final bool isSaved;
   final bool showManageButton;
+  final bool showMoreButton; // NEW
   final String likeCount;
   final String commentCount;
   final String saveCount;
-  final String shareCount; // NEW
+  final String shareCount;
 
   const VideoControlsWidget({
     super.key,
@@ -21,13 +23,15 @@ class VideoControlsWidget extends StatefulWidget {
     required this.onCommentTap,
     required this.onSaveTap,
     required this.onShareTap,
+    this.onMoreTap,
     this.isLiked = false,
     this.isSaved = false,
     this.showManageButton = false,
+    this.showMoreButton = false, // NEW
     this.likeCount = '0',
     this.commentCount = '0',
     this.saveCount = '0',
-    this.shareCount = '0', // NEW
+    this.shareCount = '0',
   });
 
   @override
@@ -144,6 +148,15 @@ class _VideoControlsWidgetState extends State<VideoControlsWidget>
               onTap: widget.onShareTap,
               rotationAngle: -0.4,
             ),
+            // More button (3 dots) - shown below share
+            if (widget.showMoreButton) ...[
+              const SizedBox(height: 20),
+              _buildIconButton(
+                icon: Icons.more_horiz_rounded,
+                label: '',
+                onTap: widget.onMoreTap,
+              ),
+            ],
           ],
         ),
       ),

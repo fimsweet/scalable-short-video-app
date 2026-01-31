@@ -1,4 +1,4 @@
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+﻿import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/fcm_service.dart';
 import 'dart:convert';
@@ -107,14 +107,14 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('user', json.encode(userData));
     
-    print('✅ Login successful - notifying ${_loginListeners.length} listeners');
+    print('Login successful - notifying ${_loginListeners.length} listeners');
     
     // Register FCM token for push notifications
     try {
       await FcmService().registerToken();
-      print('✅ FCM token registered');
+      print('FCM token registered');
     } catch (e) {
-      print('⚠️ Failed to register FCM token: $e');
+      print('Failed to register FCM token: $e');
     }
     
     // Notify all login listeners with error handling
@@ -125,7 +125,7 @@ class AuthService {
         listener();
         print('   ✅ Listener #$listenerIndex completed');
       } catch (e, stackTrace) {
-        print('❌ Error calling login listener #$listenerIndex: $e');
+        print('Error calling login listener #$listenerIndex: $e');
         print('   Stack trace: $stackTrace');
       }
       listenerIndex++;
@@ -153,16 +153,16 @@ class AuthService {
     // Clear secure storage
     await _storage.deleteAll();
     
-    print('🚪 Logging out - clearing all cached data');
-    print('✅ Logout complete - isLoggedIn: $_isLoggedIn');
+    print('Logging out - clearing all cached data');
+    print('Logout complete - isLoggedIn: $_isLoggedIn');
     
     // Notify all listeners with error handling
-    print('📢 Notifying ${_logoutListeners.length} logout listeners');
+    print('Notifying ${_logoutListeners.length} logout listeners');
     for (var listener in List.from(_logoutListeners)) { // Create copy to avoid modification during iteration
       try {
         listener();
       } catch (e) {
-        print('❌ Error calling logout listener: $e');
+        print('Error calling logout listener: $e');
       }
     }
   }
@@ -203,14 +203,14 @@ class AuthService {
         };
       }
       
-      print('✅ Auto-login successful - notifying ${_loginListeners.length} listeners');
+      print('Auto-login successful - notifying ${_loginListeners.length} listeners');
       
       // Register FCM token for push notifications
       try {
         await FcmService().registerToken();
-        print('✅ FCM token registered after auto-login');
+        print('FCM token registered after auto-login');
       } catch (e) {
-        print('⚠️ Failed to register FCM token: $e');
+        print('Failed to register FCM token: $e');
       }
       
       // Notify all login listeners with error handling
@@ -218,7 +218,7 @@ class AuthService {
         try {
           listener();
         } catch (e) {
-          print('❌ Error calling login listener: $e');
+          print('Error calling login listener: $e');
         }
       }
     }
@@ -260,7 +260,7 @@ class AuthService {
       await prefs.setString('user', json.encode(_user));
     }
     
-    print('✅ Bio updated in AuthService: $bio');
+    print('Bio updated in AuthService: $bio');
   }
 
   /// Update username in local storage and memory
@@ -275,7 +275,7 @@ class AuthService {
       await prefs.setString('user', json.encode(_user));
     }
     
-    print('✅ Username updated in AuthService: $username');
+    print('Username updated in AuthService: $username');
   }
 
   // ============= Google OAuth Methods =============
@@ -307,7 +307,7 @@ class AuthService {
         providerId: account.id,
       );
     } catch (e) {
-      print('❌ Google Sign-In error: $e');
+      print('Google Sign-In error: $e');
       return GoogleSignInResult.error(e.toString());
     }
   }
@@ -331,7 +331,7 @@ class AuthService {
         throw Exception(error['message'] ?? 'Google auth failed');
       }
     } catch (e) {
-      print('❌ Backend Google auth error: $e');
+      print('Backend Google auth error: $e');
       rethrow;
     }
   }
@@ -367,7 +367,7 @@ class AuthService {
         throw Exception(error['message'] ?? 'Registration failed');
       }
     } catch (e) {
-      print('❌ OAuth registration error: $e');
+      print('OAuth registration error: $e');
       rethrow;
     }
   }
@@ -399,7 +399,7 @@ class AuthService {
         throw Exception(error['message'] ?? 'Registration failed');
       }
     } catch (e) {
-      print('❌ Email registration error: $e');
+      print('Email registration error: $e');
       rethrow;
     }
   }
@@ -414,7 +414,7 @@ class AuthService {
       }
       return false;
     } catch (e) {
-      print('❌ Check username error: $e');
+      print('Check username error: $e');
       return false;
     }
   }
@@ -429,7 +429,7 @@ class AuthService {
       }
       return false;
     } catch (e) {
-      print('❌ Check email error: $e');
+      print('Check email error: $e');
       return false;
     }
   }
@@ -439,7 +439,7 @@ class AuthService {
     try {
       await _googleSignIn.signOut();
     } catch (e) {
-      print('❌ Google sign out error: $e');
+      print('Google sign out error: $e');
     }
   }
 }

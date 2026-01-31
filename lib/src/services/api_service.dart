@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
@@ -295,6 +295,11 @@ class ApiService {
     if (avatarPath == null || avatarPath.isEmpty) {
       return '';
     }
+    // If avatarPath is a Google avatar URL, return empty to use default avatar
+    // Google URLs often get rate limited (429 error)
+    if (avatarPath.contains('googleusercontent.com') || avatarPath.contains('lh3.google')) {
+      return '';
+    }
     // If avatarPath is already a full URL (starts with http:// or https://), return as is
     if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
       return avatarPath;
@@ -324,7 +329,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      print('❌ Error fetching user: $e');
+      print('Error fetching user: $e');
       return null;
     }
   }
@@ -353,7 +358,7 @@ class ApiService {
       }
       return {'success': false, 'isOnline': false, 'statusText': 'Offline'};
     } catch (e) {
-      print('❌ Error fetching online status: $e');
+      print('Error fetching online status: $e');
       return {'success': false, 'isOnline': false, 'statusText': 'Offline'};
     }
   }
@@ -393,7 +398,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error updating profile: $e');
+      print('Error updating profile: $e');
       return {
         'success': false,
         'message': e.toString(),
@@ -421,7 +426,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error getting username change info: $e');
+      print('Error getting username change info: $e');
       return {
         'success': false,
         'message': e.toString(),
@@ -459,7 +464,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error changing username: $e');
+      print('Error changing username: $e');
       return {
         'success': false,
         'message': e.toString(),
@@ -496,7 +501,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error changing password: $e');
+      print('Error changing password: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -507,9 +512,9 @@ class ApiService {
   /// Check if user has password (for OAuth users)
   Future<Map<String, dynamic>> hasPassword(String token) async {
     try {
-      print('🔐 Calling hasPassword API...');
-      print('🔐 URL: $_baseUrl/users/has-password');
-      print('🔐 Token length: ${token.length}');
+      print('Calling hasPassword API...');
+      print('URL: $_baseUrl/users/has-password');
+      print('Token length: ${token.length}');
       
       final response = await http.get(
         Uri.parse('$_baseUrl/users/has-password'),
@@ -519,22 +524,22 @@ class ApiService {
         },
       );
 
-      print('🔐 hasPassword response status: ${response.statusCode}');
-      print('🔐 hasPassword response headers: ${response.headers}');
-      print('🔐 hasPassword response body length: ${response.body.length}');
-      print('🔐 hasPassword response body: "${response.body}"');
+      print('hasPassword response status: ${response.statusCode}');
+      print('hasPassword response headers: ${response.headers}');
+      print('hasPassword response body length: ${response.body.length}');
+      print('hasPassword response body: "${response.body}"');
       
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         return json.decode(response.body);
       } else if (response.statusCode == 401) {
-        print('❌ Unauthorized - token may be expired');
+        print('Unauthorized - token may be expired');
         return {'success': false, 'hasPassword': false, 'error': 'Unauthorized'};
       } else {
-        print('❌ hasPassword failed with status: ${response.statusCode}, body: ${response.body}');
+        print('hasPassword failed with status: ${response.statusCode}, body: ${response.body}');
         return {'success': false, 'hasPassword': false};
       }
     } catch (e) {
-      print('❌ Error checking password: $e');
+      print('Error checking password: $e');
       return {'success': false, 'hasPassword': false};
     }
   }
@@ -566,7 +571,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error setting password: \$e');
+      print('Error setting password: \$e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -599,7 +604,7 @@ class ApiService {
       }
       return {'success': false, 'message': body['message'] ?? 'Liên kết thất bại'};
     } catch (e) {
-      print('❌ Error linking phone: $e');
+      print('Error linking phone: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -621,7 +626,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error checking phone: $e');
+      print('Error checking phone: $e');
       return {'available': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -644,7 +649,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error unlinking phone: $e');
+      print('Error unlinking phone: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -667,7 +672,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error deactivating account: \$e');
+      print('Error deactivating account: \$e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -695,7 +700,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error reactivating account: \$e');
+      print('Error reactivating account: \$e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -714,7 +719,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error checking deactivated status: $e');
+      print('Error checking deactivated status: $e');
       return {'isDeactivated': false};
     }
   }
@@ -738,7 +743,7 @@ class ApiService {
       }
       return {'success': false, 'message': body['message'] ?? 'Không thể lấy danh sách thiết bị'};
     } catch (e) {
-      print('❌ Error getting sessions: $e');
+      print('Error getting sessions: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -760,7 +765,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error logging out session: $e');
+      print('Error logging out session: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -779,7 +784,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error logging out other sessions: $e');
+      print('Error logging out other sessions: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -798,7 +803,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('❌ Error logging out all sessions: $e');
+      print('Error logging out all sessions: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -822,7 +827,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error requesting password reset: $e');
+      print('Error requesting password reset: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -855,7 +860,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error verifying OTP: $e');
+      print('Error verifying OTP: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -890,7 +895,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error resetting password: $e');
+      print('Error resetting password: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -926,7 +931,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting followers: $e');
+      print('Error getting followers: $e');
       return [];
     }
   }
@@ -959,7 +964,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting following: $e');
+      print('Error getting following: $e');
       return [];
     }
   }
@@ -967,7 +972,7 @@ class ApiService {
   /// Check if username is available
   Future<Map<String, dynamic>> checkUsernameAvailability(String username) async {
     try {
-      print('🔍 Checking username availability: "$username"');
+      print('Checking username availability: "$username"');
       
       final response = await http.get(
         Uri.parse('$_baseUrl/users/check-username/${Uri.encodeComponent(username)}'),
@@ -976,20 +981,20 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('✅ Username check result: ${data['available'] ? 'available' : 'taken'}');
+        print('Username check result: ${data['available'] ? 'available' : 'taken'}');
         return {
           'success': true,
           'available': data['available'] ?? false,
         };
       } else {
-        print('❌ Username check failed: ${response.statusCode}');
+        print('Username check failed: ${response.statusCode}');
         return {
           'success': false,
           'available': false,
         };
       }
     } catch (e) {
-      print('❌ Error checking username: $e');
+      print('Error checking username: $e');
       return {
         'success': false,
         'available': false,
@@ -1003,7 +1008,7 @@ class ApiService {
     if (query.trim().isEmpty) return [];
     
     try {
-      print('🔍 Searching users for: "$query"');
+      print('Searching users for: "$query"');
       
       final response = await http.get(
         Uri.parse('$_baseUrl/users/search?q=${Uri.encodeComponent(query)}'),
@@ -1014,16 +1019,16 @@ class ApiService {
         final data = jsonDecode(response.body);
         if (data['success'] == true && data['users'] != null) {
           final List<dynamic> users = data['users'];
-          print('✅ Found ${users.length} users for query: "$query"');
+          print('Found ${users.length} users for query: "$query"');
           return users.map((u) => Map<String, dynamic>.from(u)).toList();
         }
         return [];
       } else {
-        print('❌ User search failed: ${response.statusCode}');
+        print('User search failed: ${response.statusCode}');
         return [];
       }
     } catch (e) {
-      print('❌ Error searching users: $e');
+      print('Error searching users: $e');
       return [];
     }
   }
@@ -1039,7 +1044,7 @@ class ApiService {
 
       return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
-      print('❌ Error blocking user: $e');
+      print('Error blocking user: $e');
       return false;
     }
   }
@@ -1056,7 +1061,7 @@ class ApiService {
       final streamedResponse = await request.send();
       return streamedResponse.statusCode == 200;
     } catch (e) {
-      print('❌ Error unblocking user: $e');
+      print('Error unblocking user: $e');
       return false;
     }
   }
@@ -1078,7 +1083,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('❌ Error getting blocked users: $e');
+      print('Error getting blocked users: $e');
       return [];
     }
   }
@@ -1097,8 +1102,65 @@ class ApiService {
       }
       return false;
     } catch (e) {
-      print('❌ Error checking blocked status: $e');
+      print('Error checking blocked status: $e');
       return false;
+    }
+  }
+
+  // ============= REPORT USER METHODS =============
+
+  /// Report a user
+  Future<bool> reportUser({
+    required String reporterId,
+    required String reportedUserId,
+    required String reason,
+    String? description,
+  }) async {
+    try {
+      final body = {
+        'reporterId': reporterId,
+        'reportedUserId': reportedUserId,
+        'reason': reason,
+        if (description != null && description.isNotEmpty) 'description': description,
+      };
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/reports'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        print('Report submitted successfully');
+        return true;
+      } else {
+        final data = jsonDecode(response.body);
+        final message = data['message'] ?? 'Unknown error';
+        print('Error reporting user: $message');
+        throw Exception(message);
+      }
+    } catch (e) {
+      print('Error reporting user: $e');
+      rethrow;
+    }
+  }
+
+  /// Get report count for a user
+  Future<int> getReportCount(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/reports/count/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['count'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print('Error getting report count: $e');
+      return 0;
     }
   }
 
@@ -1108,7 +1170,7 @@ class ApiService {
   Future<Map<String, dynamic>> getUserSettings(String token) async {
     try {
       final url = '$_baseUrl/users/settings';
-      print('🌐 Calling getUserSettings API: $url');
+      print('Calling getUserSettings API: $url');
       print('   Token: ${token.substring(0, 20)}...');
       
       final response = await http.get(
@@ -1119,20 +1181,20 @@ class ApiService {
         },
       );
 
-      print('📥 getUserSettings response status: ${response.statusCode}');
-      print('📦 Response body: ${response.body}');
+      print('getUserSettings response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        print('✅ Decoded response: $decoded');
+        print('Decoded response: $decoded');
         return decoded;
       } else {
-        print('⚠️ Failed to get user settings: ${response.statusCode}');
+        print('Failed to get user settings: ${response.statusCode}');
         print('   Response body: ${response.body}');
         return {'success': false};
       }
     } catch (e, stackTrace) {
-      print('❌ Error getting user settings: $e');
+      print('Error getting user settings: $e');
       print('   Stack trace: $stackTrace');
       return {'success': false};
     }
@@ -1156,11 +1218,11 @@ class ApiService {
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       } else {
-        print('⚠️ Failed to update user settings: ${response.statusCode}');
+        print('Failed to update user settings: ${response.statusCode}');
         return {'success': false};
       }
     } catch (e) {
-      print('❌ Error updating user settings: $e');
+      print('Error updating user settings: $e');
       return {'success': false};
     }
   }
@@ -1188,7 +1250,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error getting account info: $e');
+      print('Error getting account info: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1215,7 +1277,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error sending link email OTP: $e');
+      print('Error sending link email OTP: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1247,7 +1309,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error verifying link email: $e');
+      print('Error verifying link email: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1266,7 +1328,7 @@ class ApiService {
       }
       return {'enabled': false, 'methods': []};
     } catch (e) {
-      print('❌ Error getting 2FA settings: $e');
+      print('Error getting 2FA settings: $e');
       return {'enabled': false, 'methods': []};
     }
   }
@@ -1288,7 +1350,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return {'success': false, 'message': body['message'] ?? 'Cập nhật 2FA thất bại'};
     } catch (e) {
-      print('❌ Error updating 2FA settings: $e');
+      print('Error updating 2FA settings: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1307,7 +1369,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return {'success': false, 'message': body['message'] ?? 'Gửi mã xác thực thất bại'};
     } catch (e) {
-      print('❌ Error sending 2FA OTP: $e');
+      print('Error sending 2FA OTP: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1326,7 +1388,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return {'success': false, 'message': body['message'] ?? 'Xác thực thất bại'};
     } catch (e) {
-      print('❌ Error verifying 2FA: $e');
+      print('Error verifying 2FA: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1348,7 +1410,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return {'success': false, 'message': body['message'] ?? 'Gửi mã xác thực thất bại'};
     } catch (e) {
-      print('❌ Error sending 2FA settings OTP: $e');
+      print('Error sending 2FA settings OTP: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1381,7 +1443,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return {'success': false, 'message': body['message'] ?? 'Xác thực thất bại'};
     } catch (e) {
-      print('❌ Error verifying 2FA settings: $e');
+      print('Error verifying 2FA settings: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1406,7 +1468,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error checking phone for reset: $e');
+      print('Error checking phone for reset: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1438,7 +1500,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error resetting password with phone: $e');
+      print('Error resetting password with phone: $e');
       return {'success': false, 'message': 'Không thể kết nối đến server'};
     }
   }
@@ -1504,7 +1566,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching categories: $e');
+      print('Error fetching categories: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1532,7 +1594,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching user interests: $e');
+      print('Error fetching user interests: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1549,7 +1611,7 @@ class ApiService {
       final body = jsonDecode(response.body);
       return body['hasInterests'] == true;
     } catch (e) {
-      print('❌ Error checking user interests: $e');
+      print('Error checking user interests: $e');
       return false;
     }
   }
@@ -1586,7 +1648,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error setting user interests: $e');
+      print('Error setting user interests: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1617,7 +1679,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching recommendations: $e');
+      print('Error fetching recommendations: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1646,7 +1708,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching trending videos: $e');
+      print('Error fetching trending videos: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1675,7 +1737,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching videos by category: $e');
+      print('Error fetching videos by category: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1703,7 +1765,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching video categories: $e');
+      print('Error fetching video categories: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1746,7 +1808,7 @@ class ApiService {
       }
     } catch (e) {
       // Silent fail - don't disrupt user experience for analytics
-      print('⚠️ Error recording watch time: $e');
+      print('Error recording watch time: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1775,7 +1837,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching watch history: $e');
+      print('Error fetching watch history: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1803,7 +1865,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching watch interests: $e');
+      print('Error fetching watch interests: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1831,7 +1893,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error fetching watch stats: $e');
+      print('Error fetching watch stats: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1859,7 +1921,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('❌ Error clearing watch history: $e');
+      print('Error clearing watch history: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1893,7 +1955,7 @@ class ApiService {
         return {'success': false, 'activities': []};
       }
     } catch (e) {
-      print('❌ Error getting activity history: $e');
+      print('Error getting activity history: $e');
       return {'success': false, 'activities': []};
     }
   }
@@ -1912,7 +1974,7 @@ class ApiService {
         return {'success': false, 'message': 'Failed to delete activity'};
       }
     } catch (e) {
-      print('❌ Error deleting activity: $e');
+      print('Error deleting activity: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1931,7 +1993,7 @@ class ApiService {
         return {'success': false, 'message': 'Failed to delete activities'};
       }
     } catch (e) {
-      print('❌ Error deleting all activities: $e');
+      print('Error deleting all activities: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1950,7 +2012,7 @@ class ApiService {
         return {'success': false, 'message': 'Failed to delete activities'};
       }
     } catch (e) {
-      print('❌ Error deleting activities by type: $e');
+      print('Error deleting activities by type: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -1978,7 +2040,7 @@ class ApiService {
         return {'success': false, 'message': 'Failed to delete activities'};
       }
     } catch (e) {
-      print('❌ Error deleting activities by time range: $e');
+      print('Error deleting activities by time range: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }
@@ -2006,7 +2068,7 @@ class ApiService {
         return {'count': 0};
       }
     } catch (e) {
-      print('❌ Error getting activity count: $e');
+      print('Error getting activity count: $e');
       return {'count': 0};
     }
   }
@@ -2027,7 +2089,7 @@ class ApiService {
         return {'success': false, 'message': 'Failed to load analytics'};
       }
     } catch (e) {
-      print('❌ Error getting analytics: $e');
+      print('Error getting analytics: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }

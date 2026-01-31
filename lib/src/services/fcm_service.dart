@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -8,10 +8,10 @@ import 'auth_service.dart';
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print('📩 Handling a background message: ${message.messageId}');
-  print('📩 Message data: ${message.data}');
+  print('Handling a background message: ${message.messageId}');
+  print('Message data: ${message.data}');
   if (message.notification != null) {
-    print('📩 Message notification: ${message.notification?.title}');
+    print('Message notification: ${message.notification?.title}');
   }
 }
 
@@ -50,7 +50,7 @@ class FcmService {
       
       // Listen for token refresh
       _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((newToken) {
-        print('🔄 FCM Token refreshed');
+        print('FCM Token refreshed');
         _fcmToken = newToken;
         _sendTokenToServer(newToken);
       });
@@ -67,9 +67,9 @@ class FcmService {
         _handleNotificationTap(initialMessage);
       }
       
-      print('✅ Push notifications initialized');
+      print('Push notifications initialized');
     } catch (e) {
-      print('❌ Error initializing push notifications: $e');
+      print('Error initializing push notifications: $e');
     }
   }
 
@@ -89,10 +89,10 @@ class FcmService {
       final authorized = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
       
-      print('📱 Notification permission: ${settings.authorizationStatus}');
+      print('Notification permission: ${settings.authorizationStatus}');
       return authorized;
     } catch (e) {
-      print('❌ Error requesting permission: $e');
+      print('Error requesting permission: $e');
       return false;
     }
   }
@@ -103,17 +103,17 @@ class FcmService {
       // For web, you need to pass vapidKey
       if (kIsWeb) {
         // _fcmToken = await _messaging.getToken(vapidKey: 'YOUR_VAPID_KEY');
-        print('⚠️ Web FCM not configured');
+        print('Web FCM not configured');
         return null;
       }
       
       _fcmToken = await _messaging.getToken();
       if (_fcmToken != null) {
-        print('📱 FCM Token: ${_fcmToken!.substring(0, 20)}...');
+        print('FCM Token: ${_fcmToken!.substring(0, 20)}...');
       }
       return _fcmToken;
     } catch (e) {
-      print('❌ Error getting FCM token: $e');
+      print('Error getting FCM token: $e');
       return null;
     }
   }
@@ -123,7 +123,7 @@ class FcmService {
     try {
       final authToken = await _authService.getToken();
       if (authToken == null) {
-        print('⚠️ No auth token available');
+        print('No auth token available');
         return false;
       }
       
@@ -136,13 +136,13 @@ class FcmService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          print('✅ FCM token sent to server');
+          print('FCM token sent to server');
           return true;
         }
       }
       return false;
     } catch (e) {
-      print('❌ Error sending FCM token to server: $e');
+      print('Error sending FCM token to server: $e');
       return false;
     }
   }
@@ -161,12 +161,12 @@ class FcmService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    print('📩 Foreground message received');
-    print('📩 Data: ${message.data}');
+    print('Foreground message received');
+    print('Data: ${message.data}');
     
     if (message.notification != null) {
-      print('📩 Title: ${message.notification?.title}');
-      print('📩 Body: ${message.notification?.body}');
+      print('Title: ${message.notification?.title}');
+      print('Body: ${message.notification?.body}');
     }
     
     // Check if this is a login alert
@@ -177,8 +177,8 @@ class FcmService {
 
   /// Handle when user taps on notification
   void _handleNotificationTap(RemoteMessage message) {
-    print('📱 Notification tapped');
-    print('📱 Data: ${message.data}');
+    print('Notification tapped');
+    print('Data: ${message.data}');
     
     // Handle navigation based on notification type
     final type = message.data['type'];
@@ -186,10 +186,10 @@ class FcmService {
     switch (type) {
       case 'login_alert':
         // Navigation will be handled by the app
-        print('📱 Should navigate to sessions screen');
+        print('Should navigate to sessions screen');
         break;
       default:
-        print('📱 Unknown notification type: $type');
+        print('Unknown notification type: $type');
     }
   }
 
@@ -198,7 +198,7 @@ class FcmService {
     try {
       final authToken = await _authService.getToken();
       if (authToken == null) {
-        print('⚠️ No auth token available');
+        print('No auth token available');
         return false;
       }
       
@@ -211,13 +211,13 @@ class FcmService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          print('✅ Login alerts ${enabled ? 'enabled' : 'disabled'}');
+          print('Login alerts ${enabled ? 'enabled' : 'disabled'}');
           return true;
         }
       }
       return false;
     } catch (e) {
-      print('❌ Error toggling login alerts: $e');
+      print('Error toggling login alerts: $e');
       return false;
     }
   }
@@ -227,7 +227,7 @@ class FcmService {
     try {
       final authToken = await _authService.getToken();
       if (authToken == null) {
-        print('⚠️ No auth token available');
+        print('No auth token available');
         return true; // Default to enabled
       }
       
@@ -244,7 +244,7 @@ class FcmService {
       }
       return true; // Default to enabled
     } catch (e) {
-      print('❌ Error getting login alerts status: $e');
+      print('Error getting login alerts status: $e');
       return true;
     }
   }

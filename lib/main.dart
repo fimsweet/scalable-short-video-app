@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:scalable_short_video_app/firebase_options.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/main_screen.dart';
@@ -13,7 +13,7 @@ import 'package:timeago/timeago.dart' as timeago;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  print('🚀 App starting - initializing services...');
+  print('App starting - initializing services...');
   
   // Add Vietnamese locale for timeago
   timeago.setLocaleMessages('vi', timeago.ViMessages());
@@ -22,26 +22,26 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  print('🔥 Firebase initialized');
+  print('Firebase initialized');
   
   // Initialize ThemeService first to register login/logout listeners
   // This ensures the singleton is created and listeners are registered
   final themeService = ThemeService();
   await themeService.init();
-  print('✅ ThemeService initialized');
+  print('ThemeService initialized');
   
   // Initialize LocaleService
   final localeService = LocaleService();
   await localeService.init();
-  print('✅ LocaleService initialized');
+  print('LocaleService initialized');
   
   // Initialize FCM service for push notifications
   await FcmService().initialize();
-  print('✅ FCM Service initialized');
+  print('FCM Service initialized');
   
   // Then try auto-login which will trigger the listeners if successful
   await AuthService().tryAutoLogin();
-  print('✅ Auth check completed');
+  print('Auth check completed');
   
   runApp(const MyApp());
 }

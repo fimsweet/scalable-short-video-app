@@ -1,15 +1,17 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/activity_history_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/discover_people_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/user_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hidden_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/saved_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/liked_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_bottom_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_grid_section.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
@@ -208,7 +210,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   _likedCount = 0;
                 });
                 
-                print('🔄 Logout successful - rebuilding UI');
+                print('Logout successful - rebuilding UI');
               }
             },
             child: Text(_localeService.get('logout'), style: const TextStyle(color: Colors.red)),
@@ -357,10 +359,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _navigateToEditProfile() async {
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const EditProfileScreen(),
-      ),
+    final result = await NavigationUtils.slideToScreen(
+      context,
+      const EditProfileScreen(),
     );
     
     // Always refresh the screen when returning from edit profile
@@ -391,6 +392,24 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     } else {
       _suggestionsAnimController?.reverse();
     }
+  }
+
+  /// Navigate to full discover people screen with slide animation
+  void _navigateToDiscoverPeople() {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const DiscoverPeopleScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          var offsetAnimation = animation.drive(tween);
+          return SlideTransition(position: offsetAnimation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
   }
 
   void _navigateToActivityHistory() {
@@ -444,9 +463,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 onTap: () {
                   // Copy profile link
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(_localeService.get('link_copied'))),
-                  );
+                  AppSnackBar.showSuccess(context, _localeService.get('link_copied'));
                 },
               ),
               ListTile(
@@ -485,9 +502,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       final token = await _authService.getToken();
       if (token == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(_localeService.get('please_login_again'))),
-          );
+          AppSnackBar.showWarning(context, _localeService.get('please_login_again'));
         }
         return;
       }
@@ -504,27 +519,26 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
 
         if (mounted) {
           setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Cập nhật ảnh đại diện thành công!'),
-              backgroundColor: Colors.green,
-            ),
+          AppSnackBar.showSuccess(
+            context,
+            _localeService.isVietnamese 
+                ? 'Cập nhật ảnh đại diện thành công!' 
+                : 'Avatar updated successfully!',
           );
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Upload thất bại'),
-              backgroundColor: Colors.red,
-            ),
+          AppSnackBar.showError(
+            context,
+            result['message'] ?? (_localeService.isVietnamese ? 'Upload thất bại' : 'Upload failed'),
           );
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi: $e')),
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese ? 'Lỗi: $e' : 'Error: $e',
         );
       }
     } finally {
@@ -547,7 +561,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           _followingCount = stats['followingCount'] ?? 0;
         });
         
-        print('📊 Follow stats loaded: $_followerCount followers, $_followingCount following');
+        print('Follow stats loaded: $_followerCount followers, $_followingCount following');
       }
     } else {
       // Reset counts when logged out
@@ -580,10 +594,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           setState(() {
             _likedCount = videos.length;
           });
-          print('✅ Liked count: ${videos.length}');
+          print('Liked count: ${videos.length}');
         }
       } catch (e) {
-        print('❌ Error loading liked count: $e');
+        print('Error loading liked count: $e');
         if (mounted) {
           setState(() {
             _likedCount = 0;
@@ -769,6 +783,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   });
                 },
                 icon: Stack(
+                  clipBehavior: Clip.none,
                   children: [
                     Icon(
                       Icons.notifications_outlined,
@@ -777,8 +792,8 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     ),
                     if (_unreadCount > 0)
                       Positioned(
-                        right: 0,
-                        top: 0,
+                        right: -6,
+                        top: -4,
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: const BoxDecoration(
@@ -1029,7 +1044,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(_authService.username ?? '', style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
+                      Text('@${_authService.username ?? ''}', style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
                       const SizedBox(height: 4),
                       // Bio section with character limit
                       if (_authService.bio != null && _authService.bio!.isNotEmpty)
@@ -1067,7 +1082,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                         SizeTransition(
                           sizeFactor: _suggestionsAnimation ?? const AlwaysStoppedAnimation(0.0),
                           axisAlignment: -1.0,
-                          child: const SuggestionsGridSection(),
+                          child: SuggestionsGridSection(
+                            onSeeAll: _navigateToDiscoverPeople,
+                          ),
                         ),
                       
                       const SizedBox(height: 16),
@@ -1129,7 +1146,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
             height: 80,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              print('❌ Error loading avatar: $error');
+              print('Error loading avatar: $error');
               return Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor);
             },
             loadingBuilder: (context, child, loadingProgress) {

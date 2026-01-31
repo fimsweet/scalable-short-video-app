@@ -1,7 +1,8 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -11,6 +12,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'dart:io';
 
 class ChatScreen extends StatefulWidget {
@@ -84,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _newMessageSubscription;
   StreamSubscription? _messageSentSubscription;
   StreamSubscription? _typingSubscription;
+  StreamSubscription? _onlineStatusSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
   String get _conversationId {
@@ -103,7 +106,6 @@ class _ChatScreenState extends State<ChatScreen> {
   
   // Pinned message at top of chat
   Map<String, dynamic>? _pinnedMessage;
-  String? _highlightedMessageId; // For highlighting when scrolling to pinned message
   
   // Online status
   bool _recipientIsOnline = false;
@@ -156,12 +158,27 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Start polling for recipient's online status
   void _startOnlineStatusPolling() {
-    // Fetch immediately
+    // Fetch immediately via REST as initial value
     _fetchOnlineStatus();
     
-    // Then poll every 30 seconds
-    _onlineStatusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _fetchOnlineStatus();
+    // Subscribe to realtime online status updates via WebSocket
+    _subscribeOnlineStatus();
+  }
+  
+  void _subscribeOnlineStatus() {
+    // Subscribe to online status stream for recipient
+    _messageService.subscribeOnlineStatus(widget.recipientId);
+    
+    // Listen to online status updates
+    _onlineStatusSubscription = _messageService.onlineStatusStream.listen((data) {
+      final userId = data['userId']?.toString();
+      if (userId == widget.recipientId && mounted) {
+        final isOnline = data['isOnline'] == true;
+        setState(() {
+          _recipientIsOnline = isOnline;
+          _recipientStatusText = isOnline ? 'Online' : 'Offline';
+        });
+      }
     });
   }
 
@@ -287,7 +304,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _messageService.markAsRead(_conversationId);
       }
     } catch (e) {
-      print('❌ Error loading messages: $e');
+      print('Error loading messages: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -524,6 +541,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (textToSend.isNotEmpty) {
         final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_text';
         
+        // Capture reply data before clearing
+        final replyData = _replyToMessage != null ? {
+          'id': _replyToMessage!['id'],
+          'content': _replyToMessage!['content'],
+          'senderId': _replyToMessage!['senderId'],
+        } : null;
+        
         final tempMessage = {
           'id': null,
           'tempId': tempId,
@@ -533,15 +557,26 @@ class _ChatScreenState extends State<ChatScreen> {
           'createdAt': DateTime.now().toIso8601String(),
           'isRead': false,
           'status': 'sending',
+          // Include reply info in temp message for UI display
+          if (replyData != null) ...{
+            'replyToId': replyData['id'],
+            'replyToContent': replyData['content'],
+            'replyToSenderId': replyData['senderId'],
+          },
         };
 
+        // Clear reply state immediately
         if (mounted) {
-          setState(() => _messages.insert(0, tempMessage));
+          setState(() {
+            _messages.insert(0, tempMessage);
+            _replyToMessage = null;
+          });
         }
 
         await _messageService.sendMessage(
           recipientId: widget.recipientId,
           content: textToSend,
+          replyTo: replyData,
         );
 
         if (mounted) {
@@ -554,7 +589,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     } catch (e) {
-      print('❌ Error sending message: $e');
+      print('Error sending message: $e');
     }
 
     _isSending = false;
@@ -584,6 +619,9 @@ class _ChatScreenState extends State<ChatScreen> {
     _newMessageSubscription?.cancel();
     _messageSentSubscription?.cancel();
     _typingSubscription?.cancel();
+    _onlineStatusSubscription?.cancel();
+    // Unsubscribe from online status updates
+    _messageService.unsubscribeOnlineStatus(widget.recipientId);
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -758,7 +796,7 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     } catch (e) {
-      print('❌ Error opening shared video: $e');
+      print('Error opening shared video: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Không thể mở video')),
       );
@@ -794,7 +832,7 @@ class _ChatScreenState extends State<ChatScreen> {
             }
             newImages.add(image);
           } catch (e) {
-            print('❌ Error loading image preview: $e');
+            print('Error loading image preview: $e');
           }
         }
         
@@ -806,7 +844,7 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
     } catch (e) {
-      print('❌ Error picking image: $e');
+      print('Error picking image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -840,11 +878,11 @@ class _ChatScreenState extends State<ChatScreen> {
             _selectedImagesList!.add(photo);
           });
         } catch (e) {
-          print('❌ Error loading photo preview: $e');
+          print('Error loading photo preview: $e');
         }
       }
     } catch (e) {
-      print('❌ Error taking photo: $e');
+      print('Error taking photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -907,75 +945,546 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _showMessageOptions(Map<String, dynamic> message) {
+  void _showMessageOptions(Map<String, dynamic> message, {Offset? tapPosition, Size? bubbleSize, bool isMe = false}) {
     final messageId = message['id']?.toString();
-    final isPinned = message['pinnedBy'] != null;
     final content = message['content']?.toString() ?? '';
+    final isDeletedForEveryone = message['isDeletedForEveryone'] == true;
     
-    // Don't show options for temp messages (no id yet)
+    // Don't show options for temp messages (no id yet) or deleted messages
     if (messageId == null) return;
+    if (isDeletedForEveryone) return;
     
+    // Show Messenger-style overlay
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierDismissible: true,
+        barrierColor: Colors.black.withOpacity(0.5),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return _MessageOptionsOverlay(
+            message: message,
+            content: content,
+            currentUserId: _currentUserId,
+            themeService: _themeService,
+            localeService: _localeService,
+            messageService: _messageService,
+            chatThemeColor: _chatThemeColor,
+            tapPosition: tapPosition,
+            bubbleSize: bubbleSize,
+            isMe: isMe,
+            onReply: () {
+              Navigator.pop(context);
+              // Set reply state
+              _setReplyTo(message);
+            },
+            onCopy: () {
+              Navigator.pop(context);
+              _copyToClipboard(content);
+            },
+            onTranslate: () async {
+              Navigator.pop(context);
+              await _translateMessage(message);
+            },
+            onForward: () {
+              Navigator.pop(context);
+              _forwardMessage(message);
+            },
+            onPin: () async {
+              Navigator.pop(context);
+              final isPinned = message['pinnedBy'] != null;
+              await _togglePinMessage(messageId, isPinned);
+            },
+            onRemind: () {
+              Navigator.pop(context);
+              _showReminderDialog(message);
+            },
+            onReport: () {
+              Navigator.pop(context);
+              _reportMessage(message);
+            },
+            onDeleteForMe: () async {
+              Navigator.pop(context);
+              await _deleteMessageForMe(messageId);
+            },
+            onDeleteForEveryone: () async {
+              Navigator.pop(context);
+              await _deleteMessageForEveryone(messageId);
+            },
+            animation: animation,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return child; // Animation handled inside overlay
+        },
+      ),
+    );
+  }
+
+  // Reply to a message
+  Map<String, dynamic>? _replyToMessage;
+  
+  void _setReplyTo(Map<String, dynamic> message) {
+    setState(() {
+      _replyToMessage = message;
+    });
+    _focusNode.requestFocus();
+  }
+
+  void _clearReply() {
+    setState(() {
+      _replyToMessage = null;
+    });
+  }
+
+  // Show user options modal when avatar is tapped (like Messenger)
+  void _showUserOptionsModal() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
+        margin: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _themeService.isLightMode ? Colors.white : Colors.grey[900],
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          color: _themeService.isLightMode ? Colors.white : const Color(0xFF2C2C2C),
+          borderRadius: BorderRadius.circular(16),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
+            // User info header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                widget.recipientUsername,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: _themeService.textPrimaryColor,
+                ),
               ),
             ),
-            // Pin/Unpin option
+            Divider(height: 1, color: _themeService.dividerColor),
+            // View profile option
             ListTile(
-              leading: Icon(
-                isPinned ? Icons.push_pin_outlined : Icons.push_pin,
-                color: _chatThemeColor ?? Colors.blue,
-              ),
-              title: Text(
-                isPinned 
-                    ? (_localeService.isVietnamese ? 'Bỏ ghim tin nhắn' : 'Unpin message')
-                    : (_localeService.isVietnamese ? 'Ghim tin nhắn' : 'Pin message'),
-                style: TextStyle(color: _themeService.textPrimaryColor),
-              ),
-              onTap: () async {
+              onTap: () {
                 Navigator.pop(context);
-                await _togglePinMessage(messageId, isPinned);
+                _navigateToProfile();
               },
-            ),
-            // Copy text option (only for text messages)
-            if (!content.startsWith('[IMAGE:') && !content.startsWith('[VIDEO_SHARE:'))
-              ListTile(
-                leading: Icon(
-                  Icons.copy,
-                  color: _themeService.textSecondaryColor,
+              title: Text(
+                _localeService.isVietnamese ? 'Xem trang cá nhân' : 'View Profile',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _chatThemeColor ?? Colors.blue,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
                 ),
-                title: Text(
-                  _localeService.isVietnamese ? 'Sao chép' : 'Copy',
-                  style: TextStyle(color: _themeService.textPrimaryColor),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Copy to clipboard
-                  // Clipboard.setData(ClipboardData(text: content));
-                },
               ),
+            ),
+            Divider(height: 1, color: _themeService.dividerColor),
+            // Block option
+            ListTile(
+              onTap: () {
+                Navigator.pop(context);
+                _showBlockConfirmDialog();
+              },
+              title: Text(
+                _localeService.isVietnamese ? 'Chặn' : 'Block',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            Divider(height: 1, color: _themeService.dividerColor),
+            // Cancel
+            ListTile(
+              onTap: () => Navigator.pop(context),
+              title: Text(
+                _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 16,
+                ),
+              ),
+            ),
             SizedBox(height: MediaQuery.of(context).padding.bottom),
           ],
         ),
       ),
     );
+  }
+
+  void _navigateToProfile() {
+    final userId = int.tryParse(widget.recipientId);
+    if (userId == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => UserProfileScreen(userId: userId),
+      ),
+    );
+  }
+
+  void _showBlockConfirmDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.isLightMode ? Colors.white : const Color(0xFF2C2C2C),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _localeService.isVietnamese ? 'Chặn người dùng?' : 'Block User?',
+          style: TextStyle(color: _themeService.textPrimaryColor),
+        ),
+        content: Text(
+          _localeService.isVietnamese 
+              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}? Họ sẽ không thể gửi tin nhắn cho bạn.'
+              : 'Are you sure you want to block ${widget.recipientUsername}? They won\'t be able to message you.',
+          style: TextStyle(color: _themeService.textSecondaryColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
+              style: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _blockUser();
+            },
+            child: Text(
+              _localeService.isVietnamese ? 'Chặn' : 'Block',
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _blockUser() async {
+    try {
+      await _apiService.blockUser(widget.recipientId, currentUserId: _currentUserId);
+      if (mounted) {
+        setState(() {
+          _isUserBlocked = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese 
+                  ? 'Đã chặn ${widget.recipientUsername}' 
+                  : 'Blocked ${widget.recipientUsername}',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese ? 'Không thể chặn người dùng' : 'Failed to block user',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // Copy text to clipboard
+  void _copyToClipboard(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_localeService.isVietnamese ? 'Đã sao chép' : 'Copied'),
+        duration: const Duration(seconds: 1),
+        backgroundColor: _chatThemeColor ?? Colors.blue,
+      ),
+    );
+  }
+
+  // Translate message
+  Future<void> _translateMessage(Map<String, dynamic> message) async {
+    final content = message['content']?.toString() ?? '';
+    if (content.isEmpty || content.startsWith('[')) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: _themeService.cardColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const CircularProgressIndicator(),
+        ),
+      ),
+    );
+
+    try {
+      final targetLang = _localeService.isVietnamese ? 'vi' : 'en';
+      final result = await _messageService.translateMessage(content, targetLang);
+      
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+      
+      if (result['success'] == true && result['translatedText'] != null) {
+        final translated = result['translatedText'] as String;
+        
+        // Show translated text in a dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: _themeService.cardColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.translate, color: _chatThemeColor ?? Colors.blue, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  _localeService.isVietnamese ? 'Bản dịch' : 'Translation',
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Original text
+                Text(
+                  _localeService.isVietnamese ? 'Gốc:' : 'Original:',
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  content,
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Divider(color: _themeService.dividerColor),
+                const SizedBox(height: 12),
+                // Translated text
+                Text(
+                  _localeService.isVietnamese ? 'Dịch:' : 'Translated:',
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  translated,
+                  style: TextStyle(
+                    color: _chatThemeColor ?? Colors.blue,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(
+                  'OK',
+                  style: TextStyle(color: _chatThemeColor ?? Colors.blue),
+                ),
+              ),
+            ],
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['error'] ?? 'Translation failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_localeService.isVietnamese ? 'Lỗi dịch tin nhắn' : 'Translation error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Forward message (placeholder)
+  void _forwardMessage(Map<String, dynamic> message) {
+    // TODO: Implement forward to other conversations
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_localeService.isVietnamese ? 'Tính năng đang phát triển' : 'Coming soon'),
+        backgroundColor: _chatThemeColor ?? Colors.blue,
+      ),
+    );
+  }
+
+  // Show reminder dialog (placeholder)
+  void _showReminderDialog(Map<String, dynamic> message) {
+    // TODO: Implement reminder feature
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_localeService.isVietnamese ? 'Tính năng đang phát triển' : 'Coming soon'),
+        backgroundColor: _chatThemeColor ?? Colors.blue,
+      ),
+    );
+  }
+
+  // Report message (placeholder)
+  void _reportMessage(Map<String, dynamic> message) {
+    // TODO: Implement report feature
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_localeService.isVietnamese ? 'Đã báo cáo tin nhắn' : 'Message reported'),
+        backgroundColor: _chatThemeColor ?? Colors.blue,
+      ),
+    );
+  }
+
+  String _formatTimeRemaining(int seconds) {
+    if (seconds <= 0) return '0s';
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    if (minutes > 0) {
+      return '${minutes}m ${secs}s';
+    }
+    return '${secs}s';
+  }
+
+  Future<void> _deleteMessageForMe(String messageId) async {
+    try {
+      final result = await _messageService.deleteForMe(messageId);
+      
+      if (result['success'] == true && mounted) {
+        setState(() {
+          // Remove the message from local list
+          _messages.removeWhere((m) => m['id']?.toString() == messageId);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese ? 'Đã gỡ tin nhắn' : 'Message deleted',
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: _chatThemeColor ?? Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error deleting message for me: $e');
+    }
+  }
+
+  Future<void> _deleteMessageForEveryone(String messageId) async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.isLightMode ? Colors.white : const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          _localeService.isVietnamese ? 'Gỡ tin nhắn?' : 'Unsend message?',
+          style: TextStyle(color: _themeService.textPrimaryColor),
+        ),
+        content: Text(
+          _localeService.isVietnamese 
+              ? 'Tin nhắn này sẽ bị gỡ với tất cả mọi người trong cuộc trò chuyện.'
+              : 'This message will be removed for everyone in this conversation.',
+          style: TextStyle(color: _themeService.textSecondaryColor),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
+              style: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'OK',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true) return;
+    
+    try {
+      final result = await _messageService.deleteForEveryone(messageId);
+      
+      if (result['success'] == true && mounted) {
+        setState(() {
+          // Update the message in local list to show as deleted
+          final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+          if (index != -1) {
+            _messages[index] = {
+              ..._messages[index],
+              'content': '[MESSAGE_DELETED]',
+              'isDeletedForEveryone': true,
+              'imageUrls': [],
+            };
+          }
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese ? 'Đã gỡ tin nhắn với mọi người' : 'Message unsent',
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: _chatThemeColor ?? Colors.blue,
+          ),
+        );
+      } else if (result['canUnsend'] == false && mounted) {
+        // Time expired
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _localeService.isVietnamese 
+                  ? 'Không thể gỡ tin nhắn sau 10 phút'
+                  : 'Cannot unsend message after 10 minutes',
+            ),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error deleting message for everyone: $e');
+    }
   }
 
   Future<void> _togglePinMessage(String messageId, bool isPinned) async {
@@ -1004,7 +1513,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _pinnedMessage = _messages[index];
               
               // Scroll to the pinned message
-              _scrollToMessage(index);
+              _scrollToMessageByIndex(index);
             }
           }
         });
@@ -1035,7 +1544,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _scrollToMessage(int index) {
+  void _scrollToMessageByIndex(int index) {
     // Since ListView is reversed, we need to scroll to the correct position
     // Each message is approximately 60-80 pixels high, estimate position
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -1054,6 +1563,31 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _scrollToMessage(String messageId) {
+    print('DEBUG: _scrollToMessage called with messageId: $messageId');
+    print('DEBUG: Total messages: ${_messages.length}');
+    
+    // Find the message index
+    final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+    print('DEBUG: Found index: $index');
+    
+    if (index != -1 && _scrollController.hasClients) {
+      // Estimate position - each message is roughly 80-100 pixels
+      // Since messages are reversed, we need to calculate from the end
+      final estimatedPosition = index * 80.0;
+      final maxScroll = _scrollController.position.maxScrollExtent;
+      print('DEBUG: Estimated position: $estimatedPosition, max scroll: $maxScroll');
+      
+      _scrollController.animateTo(
+        estimatedPosition.clamp(0.0, maxScroll),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    } else {
+      print('DEBUG: Cannot scroll - index: $index, hasClients: ${_scrollController.hasClients}');
+    }
+  }
+
   void _scrollToPinnedMessage() {
     if (_pinnedMessage == null) return;
     final messageId = _pinnedMessage!['id']?.toString();
@@ -1061,7 +1595,7 @@ class _ChatScreenState extends State<ChatScreen> {
     
     final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
     if (index != -1) {
-      _scrollToMessage(index);
+      _scrollToMessageByIndex(index);
     }
   }
 
@@ -1077,23 +1611,14 @@ class _ChatScreenState extends State<ChatScreen> {
         themeService: _themeService,
         localeService: _localeService,
         messageService: _messageService,
+        apiService: _apiService,
         currentUserId: _currentUserId,
+        currentUserAvatar: _authService.user?['avatar']?.toString(),
         onMessageTap: (messageId) {
           Navigator.pop(context);
           final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
           if (index != -1) {
-            _scrollToMessage(index);
-            // Highlight the message briefly
-            setState(() {
-              _highlightedMessageId = messageId;
-            });
-            Future.delayed(const Duration(seconds: 2), () {
-              if (mounted) {
-                setState(() {
-                  _highlightedMessageId = null;
-                });
-              }
-            });
+            _scrollToMessageByIndex(index);
           }
         },
         onPinnedMessagesChanged: () {
@@ -1201,10 +1726,17 @@ class _ChatScreenState extends State<ChatScreen> {
         },
         transitionDuration: const Duration(milliseconds: 300),
       ),
-    ).then((_) {
+    ).then((result) {
       // Refresh blocked status and conversation settings when returning from options
       _checkBlockedStatus();
       _loadConversationSettings();
+      
+      // Handle scroll to message from search/pinned
+      print('DEBUG: ChatScreen received result from ChatOptions: $result');
+      if (result != null && result is Map && result['scrollToMessageId'] != null) {
+        print('DEBUG: Scrolling to message: ${result['scrollToMessageId']}');
+        _scrollToMessage(result['scrollToMessageId']);
+      }
     });
   }
 
@@ -1363,6 +1895,19 @@ class _ChatScreenState extends State<ChatScreen> {
                               }
                             }
 
+                            // Check if message is deleted for everyone
+                            final isDeletedForEveryone = message['isDeletedForEveryone'] == true || content == '[MESSAGE_DELETED]';
+                            if (isDeletedForEveryone) {
+                              return _DeletedMessageBubble(
+                                isMe: isMe,
+                                time: _formatTime(message['createdAt']),
+                                showAvatar: showAvatar,
+                                recipientAvatar: widget.recipientAvatar,
+                                themeService: _themeService,
+                                localeService: _localeService,
+                              );
+                            }
+
                             if (_isVideoShare(content)) {
                               final videoId = _extractVideoId(content);
                               if (videoId != null) {
@@ -1419,8 +1964,17 @@ class _ChatScreenState extends State<ChatScreen> {
                               chatThemeColor: _chatThemeColor,
                               messageId: message['id']?.toString(),
                               isPinned: message['pinnedBy'] != null,
-                              isHighlighted: message['id']?.toString() == _highlightedMessageId,
-                              onLongPress: () => _showMessageOptions(message),
+                              // Reply support
+                              replyToId: message['replyToId']?.toString(),
+                              replyToContent: message['replyToContent']?.toString(),
+                              replyToSenderId: message['replyToSenderId']?.toString(),
+                              currentUserId: _currentUserId,
+                              recipientName: widget.recipientUsername,
+                              localeService: _localeService,
+                              onAvatarTap: _showUserOptionsModal,
+                              onLongPressWithPosition: (tapPosition, bubbleSize, isMe) {
+                                _showMessageOptions(message, tapPosition: tapPosition, bubbleSize: bubbleSize, isMe: isMe);
+                              },
                             );
                           },
                         ),
@@ -1688,128 +2242,235 @@ class _ChatScreenState extends State<ChatScreen> {
     final hasText = _messageController.text.trim().isNotEmpty;
     final canSend = hasText || _hasSelectedImages; // Use safe getter
     
-    return Container(
-      padding: EdgeInsets.only(
-        left: 12,
-        right: 8,
-        top: 10,
-        bottom: _showEmojiPicker ? 10 : (bottomInset > 0 ? 10 : bottomPadding + 10),
-      ),
-      decoration: BoxDecoration(
-        color: _themeService.backgroundColor,
-        border: Border(top: BorderSide(color: _themeService.dividerColor, width: 0.5)),
-      ),
-      child: SafeArea(
-        top: false,
-        bottom: !_showEmojiPicker,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Camera/Image picker button
-            if (kIsWeb) ...[
-              GestureDetector(
-                onTap: _pickImageFromGallery,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.image_outlined,
-                    color: _themeService.textSecondaryColor,
-                    size: 26,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Reply preview bar
+        if (_replyToMessage != null)
+          _buildReplyPreview(),
+        
+        Container(
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 8,
+            top: 10,
+            bottom: _showEmojiPicker ? 10 : (bottomInset > 0 ? 10 : bottomPadding + 10),
+          ),
+          decoration: BoxDecoration(
+            color: _themeService.backgroundColor,
+            border: Border(top: BorderSide(color: _themeService.dividerColor, width: 0.5)),
+          ),
+          child: SafeArea(
+            top: false,
+            bottom: !_showEmojiPicker,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Camera/Image picker button
+                if (kIsWeb) ...[
+                  GestureDetector(
+                    onTap: _pickImageFromGallery,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.image_outlined,
+                        color: _themeService.textSecondaryColor,
+                        size: 26,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ] else ...[
-              GestureDetector(
-                onTap: _pickImageFromGallery,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.image_outlined,
-                    color: _themeService.textSecondaryColor,
-                    size: 26,
+                ] else ...[
+                  GestureDetector(
+                    onTap: _pickImageFromGallery,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.image_outlined,
+                        color: _themeService.textSecondaryColor,
+                        size: 26,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
-            
-            // Text input field
-            Expanded(
-              child: Container(
-                constraints: const BoxConstraints(minHeight: 44, maxHeight: 120),
-                decoration: BoxDecoration(
-                  color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    // Text field
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _focusNode,
-                        style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 16),
-                        decoration: InputDecoration(
-                          hintText: _hasSelectedImages  // Use safe getter
-                              ? (_localeService.isVietnamese ? 'Thêm tin nhắn...' : 'Add a message...')
-                              : _localeService.get('type_message'),
-                          hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16, 
-                            vertical: 12,
+                ],
+                
+                // Text input field
+                Expanded(
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 44, maxHeight: 120),
+                    decoration: BoxDecoration(
+                      color: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Text field
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            focusNode: _focusNode,
+                            style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: _hasSelectedImages  // Use safe getter
+                                  ? (_localeService.isVietnamese ? 'Thêm tin nhắn...' : 'Add a message...')
+                                  : _localeService.get('type_message'),
+                              hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16, 
+                                vertical: 12,
+                              ),
+                            ),
+                            maxLines: null,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _sendMessage(),
+                            onTap: () {
+                              if (_showEmojiPicker) {
+                                setState(() => _showEmojiPicker = false);
+                              }
+                            },
                           ),
                         ),
-                        maxLines: null,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
-                        onTap: () {
-                          if (_showEmojiPicker) {
-                            setState(() => _showEmojiPicker = false);
-                          }
-                        },
-                      ),
-                    ),
-                    
-                    // Emoji button
-                    GestureDetector(
-                      onTap: _toggleEmojiPicker,
-                      child: Container(
-                        width: 44,
-                        height: 44,
-                        alignment: Alignment.center,
-                        child: Icon(
-                          _showEmojiPicker ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined,
-                          color: _showEmojiPicker ? Colors.blue : Colors.grey[500],
-                          size: 24,
+                        
+                        // Emoji button
+                        GestureDetector(
+                          onTap: _toggleEmojiPicker,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.center,
+                            child: Icon(
+                              _showEmojiPicker ? Icons.keyboard_rounded : Icons.emoji_emotions_outlined,
+                              color: _showEmojiPicker ? Colors.blue : Colors.grey[500],
+                              size: 24,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            
-            // Send button - Messenger/Instagram style (no circle background)
-            GestureDetector(
-              onTap: _sendMessage, // Always allow tap
-              child: Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.send_rounded,
-                  color: canSend ? (_chatThemeColor ?? Colors.blue) : _themeService.textSecondaryColor,
-                  size: 28,
+                
+                // Send button - Messenger/Instagram style (no circle background)
+                GestureDetector(
+                  onTap: _sendMessage, // Always allow tap
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.send_rounded,
+                      color: canSend ? (_chatThemeColor ?? Colors.blue) : _themeService.textSecondaryColor,
+                      size: 28,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
+      ],
+    );
+  }
+  
+  Widget _buildReplyPreview() {
+    final replyContent = _replyToMessage?['content'] ?? '';
+    final replySenderId = _replyToMessage?['senderId'] ?? '';
+    final isReplyingToSelf = replySenderId == _currentUserId;
+    
+    // Get preview text
+    String previewText = replyContent;
+    if (replyContent.startsWith('[IMAGE:')) {
+      previewText = _localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo';
+    } else if (replyContent.startsWith('[STACKED_IMAGE:')) {
+      previewText = _localeService.isVietnamese ? '📷 Nhiều hình ảnh' : '📷 Multiple photos';
+    } else if (replyContent.startsWith('[VIDEO_SHARE:')) {
+      previewText = _localeService.isVietnamese ? '🎬 Video' : '🎬 Video';
+    }
+    
+    // Truncate if too long
+    if (previewText.length > 50) {
+      previewText = '${previewText.substring(0, 50)}...';
+    }
+    
+    final replyToName = isReplyingToSelf 
+        ? (_localeService.isVietnamese ? 'chính mình' : 'yourself')
+        : widget.recipientUsername;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: _themeService.isLightMode 
+            ? Colors.grey[100] 
+            : Colors.grey[900],
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Colored bar indicator
+          Container(
+            width: 3,
+            height: 36,
+            decoration: BoxDecoration(
+              color: _chatThemeColor ?? Colors.blue,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Reply content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _localeService.isVietnamese 
+                      ? 'Đang trả lời $replyToName'
+                      : 'Replying to $replyToName',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _chatThemeColor ?? Colors.blue,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  previewText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: _themeService.textSecondaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Close button
+          GestureDetector(
+            onTap: _clearReply,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[300] 
+                    : Colors.grey[700],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: _themeService.textPrimaryColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1920,8 +2581,15 @@ class _MessageBubble extends StatefulWidget {
   final Color? chatThemeColor; // Custom theme color for my bubbles
   final String? messageId; // For pin/unpin functionality
   final bool isPinned;
-  final bool isHighlighted; // For highlighting when scrolled to
-  final VoidCallback? onLongPress;
+  final void Function(Offset tapPosition, Size bubbleSize, bool isMe)? onLongPressWithPosition;
+  // Reply to support
+  final String? replyToId;
+  final String? replyToContent;
+  final String? replyToSenderId;
+  final String? currentUserId;
+  final String? recipientName;
+  final LocaleService localeService;
+  final VoidCallback? onAvatarTap; // Callback when avatar is tapped
 
   const _MessageBubble({
     required this.message,
@@ -1936,8 +2604,15 @@ class _MessageBubble extends StatefulWidget {
     this.chatThemeColor,
     this.messageId,
     this.isPinned = false,
-    this.isHighlighted = false,
-    this.onLongPress,
+    this.onLongPressWithPosition,
+    // Reply to support
+    this.replyToId,
+    this.replyToContent,
+    this.replyToSenderId,
+    this.currentUserId,
+    this.recipientName,
+    required this.localeService,
+    this.onAvatarTap,
   });
 
   @override
@@ -1976,6 +2651,123 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
     }
   }
 
+  Widget _buildReplyBubble() {
+    final replyContent = widget.replyToContent ?? '';
+    final replySenderId = widget.replyToSenderId ?? '';
+    final isReplyToSelf = replySenderId == widget.currentUserId;
+    
+    // Get preview text
+    String previewText = replyContent;
+    if (replyContent.startsWith('[IMAGE:')) {
+      previewText = widget.localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo';
+    } else if (replyContent.startsWith('[STACKED_IMAGE:')) {
+      previewText = widget.localeService.isVietnamese ? '📷 Nhiều hình ảnh' : '📷 Multiple photos';
+    } else if (replyContent.startsWith('[VIDEO_SHARE:')) {
+      previewText = widget.localeService.isVietnamese ? '🎬 Video đã chia sẻ' : '🎬 Shared video';
+    }
+    
+    // Truncate if too long
+    if (previewText.length > 50) {
+      previewText = '${previewText.substring(0, 50)}...';
+    }
+    
+    // Determine who sent the reply (current bubble sender)
+    final isSenderMe = widget.isMe;
+    // Determine who is being replied to
+    final isReplyToMe = replySenderId == widget.currentUserId;
+    
+    // Build the "You replied to..." or "X replied to..." text
+    String repliedToText;
+    if (isSenderMe) {
+      // I sent this reply
+      if (isReplyToMe) {
+        repliedToText = widget.localeService.isVietnamese 
+            ? 'Bạn đã trả lời chính mình' 
+            : 'You replied to yourself';
+      } else {
+        repliedToText = widget.localeService.isVietnamese 
+            ? 'Bạn đã trả lời ${widget.recipientName ?? "User"}' 
+            : 'You replied to ${widget.recipientName ?? "User"}';
+      }
+    } else {
+      // They sent this reply
+      if (isReplyToMe) {
+        repliedToText = widget.localeService.isVietnamese 
+            ? '${widget.recipientName ?? "User"} đã trả lời bạn' 
+            : '${widget.recipientName ?? "User"} replied to you';
+      } else {
+        repliedToText = widget.localeService.isVietnamese 
+            ? '${widget.recipientName ?? "User"} đã trả lời chính mình' 
+            : '${widget.recipientName ?? "User"} replied to themselves';
+      }
+    }
+    
+    // Messenger-style: Reply bubble connected to main bubble
+    return Container(
+      margin: const EdgeInsets.only(bottom: 0), // No margin - connected to main bubble
+      child: Column(
+        crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // "You replied to..." label with icon
+          Padding(
+            padding: EdgeInsets.only(
+              left: widget.isMe ? 0 : 0,
+              right: widget.isMe ? 4 : 0,
+              bottom: 4,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.reply_rounded,
+                  size: 12,
+                  color: widget.themeService.textSecondaryColor,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  repliedToText,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: widget.themeService.textSecondaryColor,
+                    decoration: TextDecoration.none,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Reply content bubble - connected style (rounded top, flat bottom to connect with main)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: widget.themeService.isLightMode 
+                  ? Colors.grey[200] 
+                  : Colors.grey[800],
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                // Bottom corners connect to main bubble
+                bottomLeft: Radius.circular(widget.isMe ? 16 : 4),
+                bottomRight: Radius.circular(widget.isMe ? 4 : 16),
+              ),
+            ),
+            child: Text(
+              previewText,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: widget.themeService.textPrimaryColor,
+                decoration: TextDecoration.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Status indicator for _MessageBubble
   Widget _buildStatusIndicator() {
     if (!widget.isMe) return const SizedBox.shrink();
     
@@ -2045,81 +2837,101 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
   @override
   Widget build(BuildContext context) {
     final isSending = widget.status == 'sending';
+    final hasReply = widget.replyToId != null && widget.replyToContent != null;
     
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: widget.isHighlighted 
-            ? (widget.chatThemeColor ?? Colors.blue).withOpacity(0.15) 
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(top: 2, bottom: 2, left: widget.isMe ? 60 : 0, right: widget.isMe ? 0 : 60),
-        child: Column(
-          crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (!widget.isMe)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: widget.showAvatar
-                        ? CircleAvatar(
+    return Padding(
+      padding: EdgeInsets.only(top: 2, bottom: 2, left: widget.isMe ? 60 : 0, right: widget.isMe ? 0 : 60),
+      child: Column(
+        crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (!widget.isMe)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: widget.showAvatar
+                      ? GestureDetector(
+                          onTap: widget.onAvatarTap,
+                          child: CircleAvatar(
                             radius: 14,
                             backgroundColor: Colors.grey[800],
                             backgroundImage: widget.recipientAvatar != null ? NetworkImage(widget.recipientAvatar!) : null,
                             child: widget.recipientAvatar == null ? const Icon(Icons.person, color: Colors.white, size: 14) : null,
-                          )
-                        : const SizedBox(width: 28),
-                  ),
-                Flexible(
-                  child: GestureDetector(
-                    onTap: _toggleTime,
-                    onLongPress: widget.onLongPress,
-                    child: Opacity(
-                      opacity: isSending ? 0.7 : 1.0,
-                      child: Stack(
-                        children: [
-                          Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: widget.isMe 
-                                ? (widget.chatThemeColor ?? Colors.blue) 
-                                : (widget.themeService.isLightMode ? Colors.grey[300] : Colors.grey[900]),
-                            borderRadius: BorderRadius.only(
-                              topLeft: const Radius.circular(18),
-                              topRight: const Radius.circular(18),
-                              bottomLeft: Radius.circular(widget.isMe ? 18 : 4),
-                              bottomRight: Radius.circular(widget.isMe ? 4 : 18),
-                            ),
                           ),
-                          child: Text(
-                            widget.message, 
-                            style: TextStyle(
-                              color: widget.isMe ? Colors.white : widget.themeService.textPrimaryColor, 
-                              fontSize: 15, 
-                              height: 1.3,
+                        )
+                      : const SizedBox(width: 28),
+                ),
+              Flexible(
+                child: Builder(
+                  builder: (context) {
+                    final GlobalKey bubbleKey = GlobalKey();
+                    return GestureDetector(
+                      onTap: _toggleTime,
+                      onLongPressStart: (details) {
+                        if (widget.onLongPressWithPosition != null) {
+                          final RenderBox? box = bubbleKey.currentContext?.findRenderObject() as RenderBox?;
+                          final size = box?.size ?? Size.zero;
+                          widget.onLongPressWithPosition!(details.globalPosition, size, widget.isMe);
+                        }
+                      },
+                      child: Opacity(
+                        opacity: isSending ? 0.7 : 1.0,
+                        child: Column(
+                          key: bubbleKey,
+                          crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Reply preview (if replying to a message) - connected to main bubble
+                            if (hasReply) _buildReplyBubble(),
+                            
+                            // Main message bubble - connects to reply bubble above
+                            Stack(
+                              children: [
+                                Container(
+                                  margin: EdgeInsets.only(top: hasReply ? 2 : 0), // Small gap for connected look
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: widget.isMe 
+                                        ? (widget.chatThemeColor ?? Colors.blue) 
+                                        : (widget.themeService.isLightMode ? Colors.grey[300] : Colors.grey[900]),
+                                    borderRadius: BorderRadius.only(
+                                      // When has reply, top corners are small to show connection
+                                      topLeft: Radius.circular(hasReply ? 4 : 18),
+                                      topRight: Radius.circular(hasReply ? 4 : 18),
+                                      bottomLeft: Radius.circular(widget.isMe ? 18 : 4),
+                                      bottomRight: Radius.circular(widget.isMe ? 4 : 18),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    widget.message, 
+                                    style: TextStyle(
+                                      color: widget.isMe ? Colors.white : widget.themeService.textPrimaryColor, 
+                                      fontSize: 15, 
+                                      height: 1.3,
+                                    ),
+                                  ),
+                                ),
+                                // Pin indicator
+                                if (widget.isPinned)
+                                  Positioned(
+                                    right: widget.isMe ? 4 : null,
+                                    left: widget.isMe ? null : 4,
+                                    top: 4,
+                                    child: Icon(
+                                      Icons.push_pin,
+                                      size: 12,
+                                      color: widget.isMe ? Colors.white70 : widget.themeService.textSecondaryColor,
+                                    ),
+                                  ),
+                              ],
                             ),
-                          ),
+                          ],
                         ),
-                        // Pin indicator
-                        if (widget.isPinned)
-                          Positioned(
-                            right: widget.isMe ? 4 : null,
-                            left: widget.isMe ? null : 4,
-                            top: 4,
-                            child: Icon(
-                              Icons.push_pin,
-                              size: 12,
-                              color: widget.isMe ? Colors.white70 : widget.themeService.textSecondaryColor,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -2159,7 +2971,6 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
               ),
             ),
         ],
-        ),
       ),
     );
   }
@@ -3201,7 +4012,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
     final imageCount = widget.imageUrls.length;
     
     return Padding(
-      padding: EdgeInsets.only(top: 2, bottom: 2, left: widget.isMe ? 60 : 0, right: widget.isMe ? 0 : 60),
+      padding: EdgeInsets.only(top: 12, bottom: 12, left: widget.isMe ? 60 : 0, right: widget.isMe ? 0 : 60),
       child: Column(
         crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -3407,7 +4218,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
   }
 }
 
-// Pinned Messages Modal - Messenger style
+// Pinned Messages Modal - Messenger style with horizontal list
 class _PinnedMessagesModal extends StatefulWidget {
   final String recipientId;
   final String recipientUsername;
@@ -3415,7 +4226,9 @@ class _PinnedMessagesModal extends StatefulWidget {
   final ThemeService themeService;
   final LocaleService localeService;
   final MessageService messageService;
+  final ApiService apiService;
   final String currentUserId;
+  final String? currentUserAvatar;
   final Function(String messageId) onMessageTap;
   final VoidCallback onPinnedMessagesChanged;
 
@@ -3426,7 +4239,9 @@ class _PinnedMessagesModal extends StatefulWidget {
     required this.themeService,
     required this.localeService,
     required this.messageService,
+    required this.apiService,
     required this.currentUserId,
+    this.currentUserAvatar,
     required this.onMessageTap,
     required this.onPinnedMessagesChanged,
   });
@@ -3435,34 +4250,14 @@ class _PinnedMessagesModal extends StatefulWidget {
   State<_PinnedMessagesModal> createState() => _PinnedMessagesModalState();
 }
 
-class _PinnedMessagesModalState extends State<_PinnedMessagesModal> with SingleTickerProviderStateMixin {
+class _PinnedMessagesModalState extends State<_PinnedMessagesModal> {
   List<Map<String, dynamic>> _pinnedMessages = [];
   bool _isLoading = true;
-  late AnimationController _animationController;
-  late Animation<double> _slideAnimation;
-  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _slideAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-    _animationController.forward();
     _loadPinnedMessages();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadPinnedMessages() async {
@@ -3489,209 +4284,725 @@ class _PinnedMessagesModalState extends State<_PinnedMessagesModal> with SingleT
       final diff = now.difference(date);
       
       if (diff.inDays == 0) {
-        // Today - show time HH:mm
         final hour = date.hour.toString().padLeft(2, '0');
         final minute = date.minute.toString().padLeft(2, '0');
         return '$hour:$minute';
       } else if (diff.inDays < 7) {
-        // Within a week - show day and month
         return '${date.day} Thg ${date.month}';
       } else {
-        // Older - show full date
-        return '${date.day} Thg ${date.month}';
+        return '${date.day}/${date.month}/${date.year}';
       }
     } catch (e) {
       return '';
     }
   }
 
+  String? _getAvatarUrl(String? avatar) {
+    if (avatar == null || avatar.isEmpty) return null;
+    final url = widget.apiService.getAvatarUrl(avatar);
+    return url.isNotEmpty ? url : null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Stack(
+    // Use simple Container - showModalBottomSheet handles animation & backdrop
+    return Container(
+      decoration: BoxDecoration(
+        color: widget.themeService.cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Backdrop
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                color: Colors.black.withOpacity(0.5 * _fadeAnimation.value),
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: widget.themeService.dividerColor,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Modal content
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Transform.translate(
-                offset: Offset(0, MediaQuery.of(context).size.height * 0.6 * _slideAnimation.value),
-                child: Container(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: widget.themeService.cardColor,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Handle bar
-                      Container(
-                        margin: const EdgeInsets.only(top: 12),
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: widget.themeService.dividerColor,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      // Title
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          widget.localeService.isVietnamese ? 'Tin nhắn đã ghim' : 'Pinned Messages',
-                          style: TextStyle(
-                            color: widget.themeService.textPrimaryColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Divider(height: 1, color: widget.themeService.dividerColor),
-                      // Messages list
-                      Flexible(
-                        child: _isLoading
-                            ? const Center(child: Padding(
-                                padding: EdgeInsets.all(32),
-                                child: CircularProgressIndicator(),
-                              ))
-                            : _pinnedMessages.isEmpty
-                                ? Padding(
-                                    padding: const EdgeInsets.all(32),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.push_pin_outlined,
-                                          size: 48,
-                                          color: widget.themeService.textSecondaryColor,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Text(
-                                          widget.localeService.isVietnamese 
-                                              ? 'Chưa có tin nhắn ghim' 
-                                              : 'No pinned messages',
-                                          style: TextStyle(
-                                            color: widget.themeService.textSecondaryColor,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : ListView.separated(
-                                    shrinkWrap: true,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    itemCount: _pinnedMessages.length,
-                                    separatorBuilder: (_, __) => Divider(
-                                      height: 1,
-                                      indent: 72,
-                                      color: widget.themeService.dividerColor.withOpacity(0.5),
-                                    ),
-                                    itemBuilder: (context, index) {
-                                      final message = _pinnedMessages[index];
-                                      final isMyMessage = message['senderId']?.toString() == widget.currentUserId;
-                                      final content = message['content']?.toString() ?? '';
-                                      final isImage = content.startsWith('[IMAGE:') || content.startsWith('[STACKED_IMAGE:');
-                                      
-                                      return InkWell(
-                                        onTap: () => widget.onMessageTap(message['id']?.toString() ?? ''),
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                          child: Row(
-                                            children: [
-                                              // Avatar with pin icon
-                                              Stack(
-                                                children: [
-                                                  CircleAvatar(
-                                                    radius: 22,
-                                                    backgroundColor: Colors.amber.withOpacity(0.2),
-                                                    child: const Icon(
-                                                      Icons.push_pin,
-                                                      color: Colors.amber,
-                                                      size: 20,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const SizedBox(width: 12),
-                                              // Content
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Row(
-                                                      children: [
-                                                        Expanded(
-                                                          child: Text(
-                                                            isMyMessage 
-                                                                ? (widget.localeService.isVietnamese ? 'Bạn' : 'You')
-                                                                : widget.recipientUsername,
-                                                            style: TextStyle(
-                                                              color: widget.themeService.textPrimaryColor,
-                                                              fontWeight: FontWeight.w600,
-                                                              fontSize: 15,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          _formatDate(message['createdAt']?.toString()),
-                                                          style: TextStyle(
-                                                            color: widget.themeService.textSecondaryColor,
-                                                            fontSize: 13,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    const SizedBox(height: 4),
-                                                    Text(
-                                                      isImage 
-                                                          ? (widget.localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo')
-                                                          : content,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        color: widget.themeService.textSecondaryColor,
-                                                        fontSize: 14,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Icon(
-                                                Icons.chevron_right,
-                                                color: widget.themeService.textSecondaryColor,
-                                                size: 20,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                      ),
-                      SizedBox(height: MediaQuery.of(context).padding.bottom),
-                    ],
-                  ),
+            // Title
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Text(
+                widget.localeService.isVietnamese ? 'Tin nhắn đã ghim' : 'Pinned Messages',
+                style: TextStyle(
+                  color: widget.themeService.textPrimaryColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
+            Divider(height: 1, color: widget.themeService.dividerColor),
+            // Content
+            _isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: CircularProgressIndicator(),
+                  )
+                : _pinnedMessages.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.push_pin_outlined,
+                              size: 48,
+                              color: widget.themeService.textSecondaryColor,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              widget.localeService.isVietnamese 
+                                  ? 'Chưa có tin nhắn ghim' 
+                                  : 'No pinned messages',
+                              style: TextStyle(
+                                color: widget.themeService.textSecondaryColor,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: _pinnedMessages.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          indent: 72,
+                          color: widget.themeService.dividerColor.withOpacity(0.5),
+                        ),
+                        itemBuilder: (context, index) {
+                          return _buildPinnedMessageRow(_pinnedMessages[index]);
+                        },
+                      ),
+            const SizedBox(height: 8),
           ],
-        );
-      },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPinnedMessageRow(Map<String, dynamic> message) {
+    final isMyMessage = message['senderId']?.toString() == widget.currentUserId;
+    final content = message['content']?.toString() ?? '';
+    final isImage = content.startsWith('[IMAGE:') || content.startsWith('[STACKED_IMAGE:');
+    final isSticker = content.startsWith('[STICKER:');
+    final isVoice = content.startsWith('[VOICE:');
+    
+    // Get avatar for the message sender
+    final avatarUrl = isMyMessage 
+        ? _getAvatarUrl(widget.currentUserAvatar)
+        : _getAvatarUrl(widget.recipientAvatar);
+
+    // Get display content
+    String displayContent = content;
+    if (isImage) {
+      displayContent = widget.localeService.isVietnamese ? 'Đã gửi một ảnh' : 'Sent a photo';
+    } else if (isSticker) {
+      displayContent = widget.localeService.isVietnamese ? 'Đã gửi một sticker' : 'Sent a sticker';
+    } else if (isVoice) {
+      displayContent = widget.localeService.isVietnamese ? 'Tin nhắn thoại' : 'Voice message';
+    }
+    
+    return InkWell(
+      onTap: () => widget.onMessageTap(message['id']?.toString() ?? ''),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // Avatar with pin badge
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: widget.themeService.isLightMode 
+                      ? Colors.grey[200] 
+                      : Colors.grey[800],
+                  backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl == null 
+                      ? Icon(Icons.person, size: 24, color: widget.themeService.textSecondaryColor)
+                      : null,
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Colors.amber,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: widget.themeService.cardColor, width: 2),
+                    ),
+                    child: const Icon(Icons.push_pin, size: 10, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            // Message info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isMyMessage 
+                        ? (widget.localeService.isVietnamese ? 'Bạn' : 'You')
+                        : widget.recipientUsername,
+                    style: TextStyle(
+                      color: widget.themeService.textPrimaryColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  // Message preview
+                  Row(
+                    children: [
+                      if (isImage) ...[
+                        Icon(Icons.photo, size: 14, color: widget.themeService.textSecondaryColor),
+                        const SizedBox(width: 4),
+                      ] else if (isSticker) ...[
+                        Icon(Icons.emoji_emotions, size: 14, color: widget.themeService.textSecondaryColor),
+                        const SizedBox(width: 4),
+                      ] else if (isVoice) ...[
+                        Icon(Icons.mic, size: 14, color: widget.themeService.textSecondaryColor),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          displayContent,
+                          style: TextStyle(
+                            color: widget.themeService.textSecondaryColor,
+                            fontSize: 14,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Date and arrow - vertically aligned on right
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _formatDate(message['createdAt']?.toString()),
+                  style: TextStyle(
+                    color: widget.themeService.textSecondaryColor,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Icon(
+                  Icons.chevron_right,
+                  color: widget.themeService.textSecondaryColor,
+                  size: 18,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Messenger-style message options overlay
+class _MessageOptionsOverlay extends StatefulWidget {
+  final Map<String, dynamic> message;
+  final String content;
+  final String currentUserId;
+  final ThemeService themeService;
+  final LocaleService localeService;
+  final MessageService messageService;
+  final Color? chatThemeColor;
+  final Offset? tapPosition;
+  final Size? bubbleSize;
+  final bool isMe;
+  final VoidCallback onReply;
+  final VoidCallback onCopy;
+  final VoidCallback onTranslate;
+  final VoidCallback onForward;
+  final VoidCallback onPin;
+  final VoidCallback onRemind;
+  final VoidCallback onReport;
+  final VoidCallback onDeleteForMe;
+  final VoidCallback onDeleteForEveryone;
+  final Animation<double> animation;
+
+  const _MessageOptionsOverlay({
+    required this.message,
+    required this.content,
+    required this.currentUserId,
+    required this.themeService,
+    required this.localeService,
+    required this.messageService,
+    this.chatThemeColor,
+    this.tapPosition,
+    this.bubbleSize,
+    this.isMe = false,
+    required this.onReply,
+    required this.onCopy,
+    required this.onTranslate,
+    required this.onForward,
+    required this.onPin,
+    required this.onRemind,
+    required this.onReport,
+    required this.onDeleteForMe,
+    required this.onDeleteForEveryone,
+    required this.animation,
+  });
+
+  @override
+  State<_MessageOptionsOverlay> createState() => _MessageOptionsOverlayState();
+}
+
+class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
+  bool _showMoreOptions = false;
+
+  bool get _isMyMessage => widget.message['senderId'] == widget.currentUserId;
+  bool get _isPinned => widget.message['pinnedBy'] != null;
+  bool get _isTextMessage => !widget.content.startsWith('[IMAGE:') && 
+                              !widget.content.startsWith('[VIDEO_SHARE:') && 
+                              !widget.content.startsWith('[STACKED_IMAGE:') &&
+                              !widget.content.startsWith('[STICKER:') &&
+                              !widget.content.startsWith('[VOICE:');
+  bool get _canUnsend => widget.messageService.canUnsendMessage(widget.message, widget.currentUserId);
+  
+  @override
+  Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final themeColor = widget.chatThemeColor ?? Colors.blue;
+    
+    // Menu and bubble dimensions
+    const double menuWidth = 220.0;
+    const double menuHeight = 180.0;
+    const double moreMenuHeight = 280.0;
+    const double bubbleMaxWidth = 260.0;
+    
+    // Calculate menu position
+    double menuTop = 0;
+    double menuLeft = 0;
+    double menuRight = 0;
+    double bubbleTop = 0;
+    
+    final currentMenuHeight = _showMoreOptions ? moreMenuHeight : menuHeight;
+    final bubbleHeight = widget.bubbleSize?.height ?? 50;
+    final estimatedBubbleHeight = bubbleHeight.clamp(40.0, 80.0);
+    final totalHeight = currentMenuHeight + estimatedBubbleHeight + 8;
+    
+    if (widget.tapPosition != null) {
+      // Center the whole group (bubble + menu) vertically
+      final centerY = screenSize.height / 2;
+      bubbleTop = centerY - totalHeight / 2;
+      menuTop = bubbleTop + estimatedBubbleHeight + 8;
+      
+      // Clamp to screen bounds
+      if (bubbleTop < 80) {
+        bubbleTop = 80;
+        menuTop = bubbleTop + estimatedBubbleHeight + 8;
+      }
+      if (menuTop + currentMenuHeight > screenSize.height - 50) {
+        menuTop = screenSize.height - currentMenuHeight - 50;
+        bubbleTop = menuTop - estimatedBubbleHeight - 8;
+      }
+      
+      // Horizontal position based on sender
+      if (widget.isMe) {
+        menuRight = 16;
+      } else {
+        menuLeft = 50;
+      }
+    } else {
+      bubbleTop = screenSize.height * 0.3;
+      menuTop = bubbleTop + estimatedBubbleHeight + 8;
+      menuLeft = (screenSize.width - menuWidth) / 2;
+    }
+    
+    return GestureDetector(
+      onTap: () => Navigator.pop(context),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedBuilder(
+        animation: widget.animation,
+        builder: (context, child) {
+          // Animation for pulling up effect
+          final pullUpAnimation = Tween<double>(
+            begin: 30.0,
+            end: 0.0,
+          ).animate(CurvedAnimation(
+            parent: widget.animation,
+            curve: Curves.easeOutCubic,
+          ));
+          
+          return Stack(
+            children: [
+              // Blurred/dimmed background
+              Positioned.fill(
+                child: Opacity(
+                  opacity: widget.animation.value * 0.6,
+                  child: Container(color: Colors.black),
+                ),
+              ),
+              
+              // Cloned bubble preview - above menu with pull-up animation
+              Positioned(
+                top: bubbleTop + pullUpAnimation.value,
+                left: widget.isMe ? null : menuLeft,
+                right: widget.isMe ? menuRight : null,
+                child: FadeTransition(
+                  opacity: CurvedAnimation(
+                    parent: widget.animation,
+                    curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
+                  ),
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                      CurvedAnimation(
+                        parent: widget.animation,
+                        curve: Curves.easeOutBack,
+                      ),
+                    ),
+                    alignment: widget.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      constraints: BoxConstraints(maxWidth: bubbleMaxWidth),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _isMyMessage 
+                            ? themeColor
+                            : (widget.themeService.isLightMode ? Colors.grey[200] : Colors.grey[800]),
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(18),
+                          topRight: const Radius.circular(18),
+                          bottomLeft: Radius.circular(widget.isMe ? 18 : 4),
+                          bottomRight: Radius.circular(widget.isMe ? 4 : 18),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _isTextMessage 
+                            ? (widget.content.length > 80 ? '${widget.content.substring(0, 80)}...' : widget.content)
+                            : (widget.localeService.isVietnamese ? '📷 Đa phương tiện' : '📷 Media'),
+                        style: TextStyle(
+                          color: _isMyMessage ? Colors.white : widget.themeService.textPrimaryColor,
+                          fontSize: 15,
+                          height: 1.3,
+                          decoration: TextDecoration.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Options menu - below bubble
+              Positioned(
+                top: menuTop,
+                left: widget.isMe ? null : menuLeft,
+                right: widget.isMe ? menuRight : null,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, -0.1),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: widget.animation,
+                    curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
+                  )),
+                  child: FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: widget.animation,
+                      curve: const Interval(0.1, 0.8, curve: Curves.easeOut),
+                    ),
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.9, end: 1.0).animate(
+                        CurvedAnimation(
+                          parent: widget.animation,
+                          curve: Curves.easeOutBack,
+                        ),
+                      ),
+                      alignment: widget.isMe ? Alignment.topRight : Alignment.topLeft,
+                      child: GestureDetector(
+                        onTap: () {}, // Prevent closing
+                        child: Container(
+                          width: menuWidth,
+                          decoration: BoxDecoration(
+                            color: widget.themeService.isLightMode 
+                                ? Colors.white 
+                                : const Color(0xFF2C2C2C),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 20,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: _showMoreOptions 
+                                    ? _buildMoreOptions() 
+                                    : _buildMainOptions(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _buildMainOptions() {
+    return [
+      // Reply
+      _buildOptionItem(
+        icon: Icons.reply_rounded,
+        label: widget.localeService.isVietnamese ? 'Trả lời' : 'Reply',
+        onTap: widget.onReply,
+      ),
+      // Copy (only for text)
+      if (_isTextMessage)
+        _buildOptionItem(
+          icon: Icons.content_copy_rounded,
+          label: widget.localeService.isVietnamese ? 'Sao chép' : 'Copy',
+          onTap: widget.onCopy,
+        ),
+      // Translate (only for text)
+      if (_isTextMessage)
+        _buildOptionItem(
+          icon: Icons.translate_rounded,
+          label: widget.localeService.isVietnamese ? 'Dịch' : 'Translate',
+          onTap: widget.onTranslate,
+        ),
+      // More
+      _buildOptionItem(
+        icon: Icons.more_horiz_rounded,
+        label: widget.localeService.isVietnamese ? 'Khác' : 'More',
+        onTap: () => setState(() => _showMoreOptions = true),
+        showDivider: false,
+      ),
+    ];
+  }
+
+  List<Widget> _buildMoreOptions() {
+    return [
+      // Forward
+      _buildOptionItem(
+        icon: Icons.shortcut_rounded,
+        label: widget.localeService.isVietnamese ? 'Chuyển tiếp' : 'Forward',
+        onTap: widget.onForward,
+      ),
+      // Report
+      _buildOptionItem(
+        icon: Icons.report_outlined,
+        label: widget.localeService.isVietnamese ? 'Báo cáo' : 'Report',
+        onTap: widget.onReport,
+      ),
+      // Remind
+      _buildOptionItem(
+        icon: Icons.notifications_none_rounded,
+        label: widget.localeService.isVietnamese ? 'Nhắc lại' : 'Remind',
+        onTap: widget.onRemind,
+      ),
+      // Pin/Unpin
+      _buildOptionItem(
+        icon: _isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
+        label: _isPinned 
+            ? (widget.localeService.isVietnamese ? 'Bỏ ghim' : 'Unpin')
+            : (widget.localeService.isVietnamese ? 'Ghim' : 'Pin'),
+        onTap: widget.onPin,
+      ),
+      // Delete for me
+      _buildOptionItem(
+        icon: Icons.delete_outline_rounded,
+        label: widget.localeService.isVietnamese ? 'Xóa' : 'Delete',
+        onTap: widget.onDeleteForMe,
+        textColor: Colors.red,
+        iconColor: Colors.red,
+      ),
+      // Back
+      _buildOptionItem(
+        icon: Icons.arrow_back_rounded,
+        label: widget.localeService.isVietnamese ? 'Quay lại' : 'Back',
+        onTap: () => setState(() => _showMoreOptions = false),
+        showDivider: false,
+      ),
+    ];
+  }
+
+  Widget _buildOptionItem({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool showDivider = true,
+    Color? textColor,
+    Color? iconColor,
+  }) {
+    final defaultColor = widget.themeService.textPrimaryColor;
+    
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: showDivider ? BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: widget.themeService.dividerColor.withOpacity(0.3),
+                width: 0.5,
+              ),
+            ),
+          ) : null,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: textColor ?? defaultColor,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ),
+              Icon(
+                icon,
+                size: 20,
+                color: iconColor ?? widget.themeService.textSecondaryColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Widget for displaying deleted messages
+class _DeletedMessageBubble extends StatelessWidget {
+  final bool isMe;
+  final String time;
+  final bool showAvatar;
+  final String? recipientAvatar;
+  final ThemeService themeService;
+  final LocaleService localeService;
+
+  const _DeletedMessageBubble({
+    required this.isMe,
+    required this.time,
+    required this.showAvatar,
+    this.recipientAvatar,
+    required this.themeService,
+    required this.localeService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        top: 2,
+        bottom: 2,
+        left: isMe ? 60 : 0,
+        right: isMe ? 0 : 60,
+      ),
+      child: Row(
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!isMe)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: showAvatar
+                  ? CircleAvatar(
+                      radius: 14,
+                      backgroundColor: themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                      backgroundImage: recipientAvatar != null ? NetworkImage(recipientAvatar!) : null,
+                      child: recipientAvatar == null
+                          ? Icon(Icons.person, color: themeService.iconColor, size: 14)
+                          : null,
+                    )
+                  : const SizedBox(width: 28),
+            ),
+          Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.65,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: themeService.isLightMode
+                  ? Colors.grey[200]
+                  : Colors.grey[800],
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(18),
+                topRight: const Radius.circular(18),
+                bottomLeft: Radius.circular(isMe ? 18 : 4),
+                bottomRight: Radius.circular(isMe ? 4 : 18),
+              ),
+              border: Border.all(
+                color: themeService.isLightMode
+                    ? Colors.grey[300]!
+                    : Colors.grey[700]!,
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.block,
+                  size: 14,
+                  color: themeService.textSecondaryColor,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    localeService.isVietnamese
+                        ? 'Tin nhắn đã bị gỡ'
+                        : 'Message was deleted',
+                    style: TextStyle(
+                      color: themeService.textSecondaryColor,
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

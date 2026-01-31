@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -80,7 +80,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             widget.userId.toString(),
           );
         } catch (e) {
-          print('❌ Error checking blocked status: $e');
+          print('Error checking blocked status: $e');
         }
         
         if (mounted) {
@@ -102,7 +102,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error loading user data: $e');
+      print('Error loading user data: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
@@ -452,10 +452,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               child: CircleAvatar(
                                 radius: 48,
                                 backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[900],
-                                backgroundImage: _userInfo!['avatar'] != null
+                                backgroundImage: _userInfo!['avatar'] != null && _apiService.getAvatarUrl(_userInfo!['avatar']).isNotEmpty
                                     ? NetworkImage(_apiService.getAvatarUrl(_userInfo!['avatar']))
                                     : null,
-                                child: _userInfo!['avatar'] == null
+                                child: _userInfo!['avatar'] == null || _apiService.getAvatarUrl(_userInfo!['avatar']).isEmpty
                                     ? Icon(Icons.person, size: 48, color: _themeService.textSecondaryColor)
                                     : null,
                               ),

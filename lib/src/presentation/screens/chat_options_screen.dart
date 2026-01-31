@@ -8,6 +8,8 @@ import 'package:scalable_short_video_app/src/presentation/screens/user_profile_s
 import 'package:scalable_short_video_app/src/presentation/screens/chat_media_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/pinned_messages_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_search_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/report_user_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 // Chat theme colors
 class ChatThemeColor {
@@ -44,7 +46,7 @@ class ChatOptionsScreen extends StatefulWidget {
   State<ChatOptionsScreen> createState() => _ChatOptionsScreenState();
 }
 
-class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
+class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTickerProviderStateMixin {
   final MessageService _messageService = MessageService();
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
@@ -54,10 +56,14 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   bool _isMuted = false;
   bool _isBlocked = false;
   bool _isLoading = true;
+  bool _isRecipientOnline = false;
   
   // Chat customization
   Color? _selectedThemeColor;
   String? _nickname;
+  
+  // Animation controller for staggered animations
+  late AnimationController _animationController;
   
   // Available theme colors
   final List<ChatThemeColor> _themeColors = [
@@ -74,6 +80,10 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
     _loadSettings();
@@ -81,6 +91,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
 
   @override
   void dispose() {
+    _animationController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -104,11 +115,16 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         isBlocked = await _apiService.isUserBlocked(currentUser['id'].toString(), widget.recipientId);
       }
       
+      // Check online status
+      final onlineStatus = await _apiService.getOnlineStatus(widget.recipientId);
+      final isOnline = onlineStatus['isOnline'] == true;
+      
       if (mounted) {
         setState(() {
           _isMuted = settings['isMuted'] ?? false;
           _isBlocked = isBlocked;
           _nickname = settings['nickname'];
+          _isRecipientOnline = isOnline;
           // Parse theme color if saved
           final themeColorId = settings['themeColor'];
           if (themeColorId != null) {
@@ -120,10 +136,15 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
           }
           _isLoading = false;
         });
+        // Start staggered animation after loading
+        _animationController.forward();
       }
     } catch (e) {
       print('Error loading settings: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        _animationController.forward();
+      }
     }
   }
 
@@ -150,19 +171,18 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
       await _messageService.updateConversationSettings(widget.recipientId, isMuted: value);
     } catch (e) {
       setState(() => _isMuted = !value);
-      _showSnackBar(_localeService.get('error_occurred'), Colors.red);
+      AppSnackBar.showError(context, _localeService.get('error_occurred'));
     }
   }
 
   void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
+    if (color == Colors.red) {
+      AppSnackBar.showError(context, message);
+    } else if (color == Colors.green) {
+      AppSnackBar.showSuccess(context, message);
+    } else {
+      AppSnackBar.showInfo(context, message);
+    }
   }
 
   void _showThemeColorPicker() {
@@ -260,6 +280,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
+          maxLength: 30,
           style: TextStyle(color: _themeService.textPrimaryColor),
           decoration: InputDecoration(
             hintText: widget.recipientUsername,
@@ -269,6 +290,10 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
+            ),
+            counterStyle: TextStyle(
+              color: _themeService.textSecondaryColor,
+              fontSize: 12,
             ),
             suffixIcon: IconButton(
               icon: Icon(Icons.clear, color: _themeService.textSecondaryColor),
@@ -314,14 +339,36 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   void _showSearchInChat() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ChatSearchScreen(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => ChatSearchScreen(
           recipientId: widget.recipientId,
           recipientUsername: _nickname ?? widget.recipientUsername,
           recipientAvatar: widget.recipientAvatar,
+          onMessageTap: (messageId) {
+            print('DEBUG: Search onMessageTap callback: $messageId');
+            // Don't pop here, let ChatSearchScreen pop with result
+          },
         ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
       ),
-    );
+    ).then((result) {
+      print('DEBUG: Search returned: $result');
+      if (result != null && result is Map && result['scrollToMessageId'] != null) {
+        // Pop back to chat screen with the message ID
+        print('DEBUG: Popping ChatOptionsScreen with scrollToMessageId: ${result['scrollToMessageId']}');
+        Navigator.pop(context, {'scrollToMessageId': result['scrollToMessageId']});
+      }
+    });
   }
 
   void _blockUser() {
@@ -329,28 +376,157 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _themeService.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(_localeService.get('block_user'), style: TextStyle(color: _themeService.textPrimaryColor)),
-        content: Text(
-          _localeService.isVietnamese
-              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}?'
-              : 'Are you sure you want to block ${widget.recipientUsername}?',
-          style: TextStyle(color: _themeService.textSecondaryColor),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Warning icon
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.block_rounded,
+                color: Colors.red,
+                size: 40,
+              ),
+            ),
+            const SizedBox(height: 20),
+            
+            // Title
+            Text(
+              _localeService.isVietnamese 
+                  ? 'Chặn ${widget.recipientUsername}?' 
+                  : 'Block ${widget.recipientUsername}?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // Warning list
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[100] 
+                    : Colors.grey[900],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  _buildWarningItem(
+                    icon: Icons.message_outlined,
+                    text: _localeService.isVietnamese 
+                        ? 'Họ sẽ không thể gửi tin nhắn cho bạn'
+                        : 'They won\'t be able to message you',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildWarningItem(
+                    icon: Icons.visibility_off_outlined,
+                    text: _localeService.isVietnamese 
+                        ? 'Họ sẽ không thấy hoạt động của bạn'
+                        : 'They won\'t see your activity',
+                  ),
+                  const SizedBox(height: 10),
+                  _buildWarningItem(
+                    icon: Icons.person_off_outlined,
+                    text: _localeService.isVietnamese 
+                        ? 'Họ sẽ không được thông báo về việc này'
+                        : 'They won\'t be notified about this',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Note
+            Text(
+              _localeService.isVietnamese 
+                  ? 'Bạn có thể bỏ chặn bất cứ lúc nào trong cài đặt.'
+                  : 'You can unblock them anytime in settings.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await _performBlockUser();
-            },
-            child: Text(_localeService.get('block'), style: const TextStyle(color: Colors.red)),
+          Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: _themeService.dividerColor),
+                    ),
+                  ),
+                  child: Text(
+                    _localeService.get('cancel'),
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _performBlockUser();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    _localeService.get('block'),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildWarningItem({required IconData icon, required String text}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: Colors.red.shade400, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: _themeService.textSecondaryColor,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -402,11 +578,22 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   void _showMediaGallery() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ChatMediaScreen(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => ChatMediaScreen(
           recipientId: widget.recipientId,
           recipientUsername: _nickname ?? widget.recipientUsername,
         ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
@@ -414,20 +601,59 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
   void _showPinnedMessages() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => PinnedMessagesScreen(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => PinnedMessagesScreen(
           recipientId: widget.recipientId,
           recipientUsername: _nickname ?? widget.recipientUsername,
           recipientAvatar: widget.recipientAvatar,
+          onMessageTap: (messageId) {
+            print('DEBUG: onMessageTap callback received: $messageId');
+            // Don't pop here, let PinnedMessagesScreen pop with result
+          },
         ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
       ),
-    );
+    ).then((result) {
+      print('DEBUG: PinnedMessages returned: $result');
+      if (result != null && result is Map && result['scrollToMessageId'] != null) {
+        // Pop back to chat screen with the message ID
+        print('DEBUG: Popping ChatOptionsScreen with scrollToMessageId: ${result['scrollToMessageId']}');
+        Navigator.pop(context, {'scrollToMessageId': result['scrollToMessageId']});
+      }
+    });
   }
 
   void _reportUser() {
-    _showSnackBar(
-      _localeService.isVietnamese ? 'Tính năng sắp ra mắt' : 'Feature coming soon',
-      _themeService.snackBarBackground,
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => ReportUserScreen(
+          reportedUserId: widget.recipientId,
+          reportedUsername: _nickname ?? widget.recipientUsername,
+          reportedAvatar: widget.recipientAvatar,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.easeInOut;
+          var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
     );
   }
 
@@ -449,19 +675,59 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
               child: Column(
                 children: [
                   const SizedBox(height: 10),
-                  _buildProfileHeader(),
+                  _buildAnimatedItem(0, _buildProfileHeader()),
                   const SizedBox(height: 24),
-                  _buildQuickActions(),
+                  _buildAnimatedItem(1, _buildQuickActions()),
                   const SizedBox(height: 28),
-                  _buildCustomizeSection(),
+                  _buildAnimatedItem(2, _buildCustomizeSection()),
                   const SizedBox(height: 16),
-                  _buildOtherActionsSection(),
+                  _buildAnimatedItem(3, _buildOtherActionsSection()),
                   const SizedBox(height: 16),
-                  _buildPrivacySection(),
+                  _buildAnimatedItem(4, _buildPrivacySection()),
                   const SizedBox(height: 40),
                 ],
               ),
             ),
+    );
+  }
+
+  // Animated item with staggered delay
+  Widget _buildAnimatedItem(int index, Widget child) {
+    // Calculate staggered interval for each item
+    final double start = index * 0.1; // 10% delay between each item
+    final double end = start + 0.4; // Each animation takes 40% of total time
+    
+    final slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Interval(start.clamp(0.0, 1.0), end.clamp(0.0, 1.0), curve: Curves.easeOutCubic),
+      ),
+    );
+    
+    final fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Interval(start.clamp(0.0, 1.0), end.clamp(0.0, 1.0), curve: Curves.easeOut),
+      ),
+    );
+    
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, _) {
+        return FadeTransition(
+          opacity: fadeAnimation,
+          child: SlideTransition(
+            position: slideAnimation,
+            child: child,
+          ),
+        );
+      },
     );
   }
 
@@ -496,15 +762,17 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> {
             Positioned(
               bottom: 4,
               right: 4,
-              child: Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _themeService.backgroundColor, width: 3),
-                ),
-              ),
+              child: _isRecipientOnline 
+                ? Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: _themeService.backgroundColor, width: 3),
+                    ),
+                  )
+                : const SizedBox.shrink(),
             ),
           ],
         ),
