@@ -988,33 +988,4 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
       ),
     );
   }
-
-  Widget _buildSwitchItem({required IconData icon, required Color iconBgColor, required String label, required bool value, required ValueChanged<bool> onChanged}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: iconBgColor.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, size: 20, color: iconBgColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: TextStyle(fontSize: 15, color: _themeService.textPrimaryColor, fontWeight: FontWeight.w500))),
-          Transform.scale(
-            scale: 0.85,
-            child: Switch(
-              value: value,
-              onChanged: onChanged,
-              activeColor: _themeService.switchActiveColor,
-              activeTrackColor: _themeService.switchActiveTrackColor,
-              inactiveThumbColor: _themeService.switchInactiveThumbColor,
-              inactiveTrackColor: _themeService.switchInactiveTrackColor,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

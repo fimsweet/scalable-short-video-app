@@ -758,18 +758,6 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        color: _themeService.textSecondaryColor,
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-      ),
-    );
-  }
-
   Widget _buildTextField({
     required TextEditingController controller,
     required String hint,
@@ -952,65 +940,4 @@ class _RegisterScreenState extends State<RegisterScreen> with TickerProviderStat
       ),
     );
   }
-
-  Widget _buildGenderSelector() {
-    final genderOptions = [
-      {'value': 'male', 'label': _localeService.get('male')},
-      {'value': 'female', 'label': _localeService.get('female')},
-      {'value': 'other', 'label': _localeService.get('other')},
-      {'value': 'prefer_not_to_say', 'label': _localeService.get('prefer_not_to_say')},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          _localeService.get('gender'),
-          style: TextStyle(
-            color: _themeService.textSecondaryColor,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: genderOptions.map((option) {
-            final isSelected = _selectedGender == option['value'];
-            return GestureDetector(
-              onTap: () => setState(() => _selectedGender = option['value']),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected 
-                      ? ThemeService.accentColor.withValues(alpha: 0.15)
-                      : _themeService.isLightMode ? Colors.grey[100] : Colors.grey[900],
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected 
-                        ? ThemeService.accentColor 
-                        : _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[800]!,
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                child: Text(
-                  option['label']!,
-                  style: TextStyle(
-                    color: isSelected 
-                        ? ThemeService.accentColor 
-                        : _themeService.textPrimaryColor,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-
 }
-
-

@@ -9,12 +9,9 @@ import 'package:scalable_short_video_app/src/presentation/widgets/user_video_gri
 import 'package:scalable_short_video_app/src/presentation/widgets/hidden_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/saved_video_grid.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/liked_video_grid.dart';
-import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_bottom_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/suggestions_grid_section.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
-import 'package:scalable_short_video_app/src/services/video_service.dart';
-import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/notification_service.dart';
@@ -220,12 +217,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     );
   }
 
-  void _mockLogin() {
-    // This function is no longer needed for real login
-    // _authService.login('ten nguoi dung');
-    // setState(() {});
-  }
-
   void _showLanguageDialog() {
     showModalBottomSheet(
       context: context,
@@ -359,7 +350,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   }
 
   void _navigateToEditProfile() async {
-    final result = await NavigationUtils.slideToScreen(
+    await NavigationUtils.slideToScreen(
       context,
       const EditProfileScreen(),
     );
@@ -371,15 +362,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         _videoGridKey++; // Force rebuild if needed
       });
     }
-  }
-
-  void _showSuggestionsBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => const SuggestionsBottomSheet(),
-    );
   }
 
   void _toggleSuggestionsSection() {
@@ -416,71 +398,6 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     NavigationUtils.slideToScreen(
       context,
       const ActivityHistoryScreen(),
-    );
-  }
-
-  void _shareProfile() {
-    final username = _authService.username ?? '';
-    final profileUrl = 'https://yourapp.com/@$username';
-    
-    // Show share options or copy link
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: _themeService.backgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _themeService.textSecondaryColor.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                _localeService.get('share_profile'),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: _themeService.textPrimaryColor,
-                ),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: Icon(Icons.copy, color: _themeService.textPrimaryColor),
-                title: Text(
-                  _localeService.get('copy_link'),
-                  style: TextStyle(color: _themeService.textPrimaryColor),
-                ),
-                onTap: () {
-                  // Copy profile link
-                  Navigator.pop(context);
-                  AppSnackBar.showSuccess(context, _localeService.get('link_copied'));
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.qr_code, color: _themeService.textPrimaryColor),
-                title: Text(
-                  _localeService.get('qr_code'),
-                  style: TextStyle(color: _themeService.textPrimaryColor),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Show QR code
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
@@ -1192,37 +1109,13 @@ class _ProfileStat extends StatelessWidget {
 class _ActionButton extends StatelessWidget {
   final String text;
   final VoidCallback? onTap;
-  final bool isFilled;
-  const _ActionButton({required this.text, this.onTap, this.isFilled = false});
+  const _ActionButton({required this.text, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final themeService = ThemeService();
     
-    // Filled variant for "Chia sẻ trang cá nhân" button
-    if (isFilled) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: themeService.isLightMode ? const Color(0xFFF1F1F2) : Colors.grey[700],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: themeService.textPrimaryColor,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    
-    // Default outline variant
+    // Outline button style (consistent style for all buttons)
     return GestureDetector(
         onTap: onTap,
         child: Container(

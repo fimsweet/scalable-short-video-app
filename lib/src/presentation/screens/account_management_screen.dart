@@ -28,7 +28,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   
   bool _twoFactorEnabled = false;
   List<String> _twoFactorMethods = [];
-  bool _biometricEnabled = false;
   bool _loginAlertsEnabled = false; // Default to false, will be loaded from API
   bool _isLoadingLoginAlerts = true; // Loading state for toggle
   bool _hasPassword = true; // Default to true, will be updated from API
@@ -1546,7 +1545,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   void _showDisable2FADialog() {
     final user = _authService.user;
     final hasEmail = user != null && user['email'] != null;
-    final hasPhone = user != null && user['phoneNumber'] != null;
     
     bool isSendingOtp = false;
     bool isOtpStep = false;

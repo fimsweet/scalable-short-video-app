@@ -100,14 +100,6 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     setState(() {});
   }
 
-  Future<void> _clearSearchHistory() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('search_history');
-    setState(() {
-      _searchHistory = [];
-    });
-  }
-
   void _removeFromHistory(int index) async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
@@ -133,7 +125,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         _apiService.searchUsers(query),
       ]);
 
-      final videos = results[0] as List<dynamic>;
+      final videos = results[0];
       final users = results[1] as List<Map<String, dynamic>>;
       
       // Check follow status for users

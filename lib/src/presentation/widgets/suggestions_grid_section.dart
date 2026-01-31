@@ -174,12 +174,12 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
         Transform.translate(
           offset: const Offset(-16, 0),
           child: SizedBox(
-            width: MediaQuery.of(context).size.width,
+            width: MediaQuery.of(context).size.width + 16,
             height: 230,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.only(left: 16, right: 16),
               itemCount: visibleSuggestions.length,
               itemBuilder: (context, index) {
                 final user = visibleSuggestions[index];
@@ -230,8 +230,8 @@ class _SuggestionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 155,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
+      width: 170,
+      margin: const EdgeInsets.symmetric(horizontal: 5),
       decoration: BoxDecoration(
         color: themeService.isLightMode 
             ? Colors.grey[100] 

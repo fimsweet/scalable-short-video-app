@@ -6,6 +6,7 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
+import 'package:scalable_short_video_app/src/services/fcm_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/login_required_dialog.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
@@ -25,9 +26,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final VideoPlaybackService _videoPlaybackService = VideoPlaybackService();
+  final FcmService _fcmService = FcmService();
   
   // Key to force rebuild screens when auth state changes
   int _rebuildKey = 0;
+  bool _hasRequestedNotificationPermission = false;
 
   // Public method to switch to profile tab
   void switchToProfileTab() {
@@ -46,7 +49,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     
     // Listen to auth events using the same method
     _authService.addLogoutListener(_onAuthStateChanged);
-    _authService.addLoginListener(_onAuthStateChanged);
+    _authService.addLoginListener(_onLoginStateChanged);
+    
+    // Check if should request notification permission on startup
+    _checkNotificationPermission();
+  }
+  
+  /// Check and request notification permission after delay if user is logged in
+  Future<void> _checkNotificationPermission() async {
+    // Wait for context to be ready and some time for user to settle
+    await Future.delayed(const Duration(seconds: 3));
+    
+    if (!mounted) return;
+    if (!_authService.isLoggedIn) return;
+    if (_hasRequestedNotificationPermission) return;
+    
+    _hasRequestedNotificationPermission = true;
+    await _fcmService.requestPermissionWithDialog(context);
   }
 
   @override
@@ -56,7 +75,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _localeService.removeListener(_onLocaleChanged);
     // Remove listeners using the same method reference
     _authService.removeLogoutListener(_onAuthStateChanged);
-    _authService.removeLoginListener(_onAuthStateChanged);
+    _authService.removeLoginListener(_onLoginStateChanged);
     super.dispose();
   }
 
@@ -70,6 +89,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+  
+  void _onLoginStateChanged() {
+    print('MainScreen: Login state changed - forcing rebuild');
+    print('   isLoggedIn: ${_authService.isLoggedIn}');
+    
+    // Force rebuild all screens by changing the key
+    if (mounted) {
+      setState(() {
+        _rebuildKey++;
+      });
+    }
+    
+    // Request notification permission after login with delay
+    _checkNotificationPermission();
   }
 
   void _onAuthStateChanged() {

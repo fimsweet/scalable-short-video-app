@@ -1056,18 +1056,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       ),
     );
   }
-
-
-  InputDecoration _inputDecoration(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: _themeService.textSecondaryColor),
-        filled: true,
-        fillColor: _themeService.inputBackground,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
-        ),
-      );
 }
 
 class _ModernSocialButton extends StatelessWidget {

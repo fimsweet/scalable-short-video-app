@@ -834,10 +834,6 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
     }
   }
 
-  void _confirmDeleteByType(String type) {
-    _showDeleteByTypeDialog(type);
-  }
-
   void _confirmDeleteAll() {
     showDialog(
       context: context,

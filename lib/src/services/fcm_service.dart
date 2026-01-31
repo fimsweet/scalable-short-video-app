@@ -2,8 +2,11 @@
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
+import 'theme_service.dart';
+import 'locale_service.dart';
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -36,17 +39,19 @@ class FcmService {
   
   String? get fcmToken => _fcmToken;
 
-  /// Initialize push notifications
+  /// Initialize push notifications (without requesting permission)
   Future<void> initialize() async {
     try {
       // Set up background message handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
       
-      // Request permission
-      await requestPermission();
-      
-      // Get FCM token
-      await _getToken();
+      // Check if permission was already granted
+      final settings = await _messaging.getNotificationSettings();
+      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        // Permission already granted, get token
+        await _getToken();
+      }
       
       // Listen for token refresh
       _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((newToken) {
@@ -71,6 +76,102 @@ class FcmService {
     } catch (e) {
       print('Error initializing push notifications: $e');
     }
+  }
+
+  /// Show custom dialog before requesting permission
+  /// Call this after user has been using the app for a while or after login
+  Future<bool> requestPermissionWithDialog(BuildContext context) async {
+    final themeService = ThemeService();
+    final localeService = LocaleService();
+    
+    // Check if permission was already requested
+    final settings = await _messaging.getNotificationSettings();
+    if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional) {
+      // Already have permission
+      await _getToken();
+      return true;
+    }
+    
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      // User already denied, don't show dialog again
+      return false;
+    }
+    
+    // Show custom dialog explaining why we need notification permission
+    final shouldRequest = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: themeService.backgroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.notifications_active_rounded,
+              color: ThemeService.accentColor,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                localeService.get('notification_permission_title'),
+                style: TextStyle(
+                  color: themeService.textPrimaryColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          localeService.get('notification_permission_message'),
+          style: TextStyle(
+            color: themeService.textSecondaryColor,
+            fontSize: 14,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              localeService.get('not_now'),
+              style: TextStyle(
+                color: themeService.textSecondaryColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ThemeService.accentColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              elevation: 0,
+            ),
+            child: Text(
+              localeService.get('enable_notifications'),
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    
+    if (shouldRequest == true) {
+      return await requestPermission();
+    }
+    
+    return false;
   }
 
   /// Request notification permission

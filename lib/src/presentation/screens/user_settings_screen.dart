@@ -23,7 +23,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   // Privacy settings (synced with backend)
   bool _isPrivateAccount = false;
   bool _pushNotificationsEnabled = true;
-  bool _allowSaveVideo = true;
   
   // New privacy settings from backend
   String _whoCanViewVideos = 'everyone';

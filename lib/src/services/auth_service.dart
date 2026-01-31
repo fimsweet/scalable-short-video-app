@@ -28,7 +28,7 @@ class AuthService {
   String? _phoneNumber;
   String? _authProvider;
   String? _avatarUrl;
-  String? _token;
+  String? _token; // ignore: unused_field
 
   bool get isLoggedIn => _isLoggedIn;
   String? get username => _username;
