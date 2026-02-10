@@ -47,6 +47,11 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
 
   // Video thumbnail
   VideoPlayerController? _thumbnailController;
+  
+  // Frame picker for auto-thumbnail
+  List<Duration> _framePositions = [];
+  int _selectedFrameIndex = 0;
+  bool _isGeneratingFrames = false;
 
   // Animation
   late AnimationController _stageAnimController;
@@ -165,8 +170,9 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
 
         HapticFeedback.mediumImpact();
         setState(() => _selectedVideo = video);
-        await _generateThumbnail(video);
+        // Navigate to details screen immediately, generate thumbnail in background
         _goToNextStage();
+        _generateThumbnail(video);
       }
     } catch (e) {
       _showSnackBar('${_localeService.get('error_selecting_video')}: $e', Colors.red);
@@ -178,10 +184,50 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
       _thumbnailController?.dispose();
       _thumbnailController = VideoPlayerController.file(File(video.path));
       await _thumbnailController!.initialize();
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        // Generate 10 random frame positions after initialization
+        _generateFramePositions();
+      }
     } catch (e) {
       print('Error generating thumbnail: $e');
     }
+  }
+
+  void _generateFramePositions() {
+    if (_thumbnailController == null || !_thumbnailController!.value.isInitialized) return;
+    
+    final totalDuration = _thumbnailController!.value.duration;
+    if (totalDuration.inMilliseconds <= 0) return;
+    
+    setState(() => _isGeneratingFrames = true);
+    
+    // Generate 10 evenly-spaced positions across the video
+    final totalMs = totalDuration.inMilliseconds;
+    final positions = <Duration>[];
+    for (int i = 0; i < 10; i++) {
+      final posMs = (totalMs * (i + 0.5) / 10).round();
+      positions.add(Duration(milliseconds: posMs));
+    }
+    
+    setState(() {
+      _framePositions = positions;
+      _selectedFrameIndex = 0;
+      _isGeneratingFrames = false;
+    });
+    
+    // Seek to first frame
+    _thumbnailController!.seekTo(positions[0]);
+  }
+
+  Future<void> _selectFrame(int index) async {
+    if (index < 0 || index >= _framePositions.length) return;
+    if (_thumbnailController == null || !_thumbnailController!.value.isInitialized) return;
+    
+    HapticFeedback.selectionClick();
+    setState(() => _selectedFrameIndex = index);
+    await _thumbnailController!.seekTo(_framePositions[index]);
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickCustomThumbnail() async {
@@ -308,72 +354,81 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
       return;
     }
 
+    // Auth check first
+    final token = await _authService.getToken();
+    final user = _authService.user;
+
+    if (token == null || user == null) {
+      _showSnackBar(_localeService.get('please_login_again'), Colors.red);
+      return;
+    }
+
     HapticFeedback.heavyImpact();
+    // OPTIMISTIC UPDATE: Show success immediately
     setState(() {
       _isUploading = true;
-      _uploadProgress = 0.0;
+      _uploadProgress = 1.0;
       _uploadError = null;
     });
     _goToNextStage();
 
-    try {
-      final token = await _authService.getToken();
-      final user = _authService.user;
-
-      if (token == null || user == null) {
-        throw Exception(_localeService.get('please_login_again'));
-      }
-
-      // Simulate progress (actual progress from API if available)
-      _startProgressSimulation();
-
-      final description = _descriptionController.text.trim();
-      
-      // Use upload with thumbnail if custom thumbnail is selected
-      final Map<String, dynamic> result;
-      if (_selectedThumbnail != null) {
-        result = await _videoService.uploadVideoWithThumbnail(
-          videoFile: _selectedVideo!,
-          thumbnailFile: _selectedThumbnail,
-          userId: user['id'].toString(),
-          title: description,
-          description: description,
-          token: token,
-          categoryIds: _selectedCategoryIds.isNotEmpty ? _selectedCategoryIds.toList() : null,
-        );
-      } else {
-        result = await _videoService.uploadVideo(
-          videoFile: _selectedVideo!,
-          userId: user['id'].toString(),
-          title: description,
-          description: description,
-          token: token,
-          categoryIds: _selectedCategoryIds.isNotEmpty ? _selectedCategoryIds.toList() : null,
-        );
-      }
-
+    // Show success animation after transition
+    Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) {
         setState(() {
-          _isUploading = false;
-          _uploadProgress = 1.0;
+          _isUploading = false; 
+          _uploadSuccess = true;
         });
+        _successAnimController.forward();
+        HapticFeedback.heavyImpact();
+        
+        // Removed auto-close to allow user to tap "Done" manually
+      }
+    });
 
-        if (result['success']) {
-          setState(() => _uploadSuccess = true);
-          _successAnimController.forward();
-          HapticFeedback.heavyImpact();
+    // BACKGROUND UPLOAD (Fire and forget)
+    final description = _descriptionController.text.trim();
+    final categoryIds = _selectedCategoryIds.toList();
+    final userId = user['id'].toString();
+    
+    // Calculate thumbnail timestamp from selected frame (in seconds)
+    final double? thumbTimestamp = (_selectedThumbnail == null && _framePositions.isNotEmpty)
+        ? _framePositions[_selectedFrameIndex].inMilliseconds / 1000.0
+        : null;
+    
+    // Define background worker inside the method (local function)
+    Future<void> performBackgroundUpload() async {
+      try {
+        print('Background upload started for ${_selectedVideo!.name}');
+        if (_selectedThumbnail != null) {
+          await _videoService.uploadVideoWithThumbnail(
+            videoFile: _selectedVideo!,
+            thumbnailFile: _selectedThumbnail,
+            userId: userId,
+            title: description,
+            description: description,
+            token: token,
+            categoryIds: categoryIds.isNotEmpty ? categoryIds : null,
+          );
         } else {
-          setState(() => _uploadError = result['message']);
+          await _videoService.uploadVideo(
+            videoFile: _selectedVideo!,
+            userId: userId,
+            title: description,
+            description: description,
+            token: token,
+            categoryIds: categoryIds.isNotEmpty ? categoryIds : null,
+            thumbnailTimestamp: thumbTimestamp,
+          );
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isUploading = false;
-          _uploadError = e.toString();
-        });
+        print('Background upload success');
+      } catch (e) {
+        print('Background upload failed: $e');
       }
     }
+    
+    // Execute detached
+    performBackgroundUpload();
   }
 
   void _startProgressSimulation() {
@@ -758,203 +813,318 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
   }
 
   Widget _buildThumbnailPicker(bool isDark) {
+    if (_selectedThumbnail != null) {
+      return _buildCustomThumbnailView(isDark);
+    }
+    return Column(
+      children: [
+        _buildFramePicker(isDark),
+        const SizedBox(height: 12),
+        _buildCustomThumbnailButton(isDark),
+      ],
+    );
+  }
+
+  Widget _buildCustomThumbnailView(bool isDark) {
     return GestureDetector(
       onTap: _pickCustomThumbnail,
       child: Container(
-        height: 140,
+        height: 180,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[50],
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: _selectedThumbnail != null
-                ? ThemeService.accentColor
-                : (isDark ? Colors.grey[800]! : Colors.grey[300]!),
-            width: _selectedThumbnail != null ? 2 : 1,
+          border: Border.all(color: ThemeService.accentColor, width: 2),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(File(_selectedThumbnail!.path), fit: BoxFit.cover),
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: ThemeService.accentColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _localeService.isVietnamese ? 'Tùy chỉnh' : 'Custom',
+                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 8,
+                right: 8,
+                child: Row(
+                  children: [
+                    _buildOverlayButton(
+                      icon: Icons.close,
+                      label: _localeService.isVietnamese ? 'Xóa' : 'Remove',
+                      onTap: _removeCustomThumbnail,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildOverlayButton(
+                      icon: Icons.camera_alt_rounded,
+                      label: _localeService.isVietnamese ? 'Đổi' : 'Change',
+                      onTap: _pickCustomThumbnail,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        child: _selectedThumbnail != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.file(
-                      File(_selectedThumbnail!.path),
-                      fit: BoxFit.cover,
-                    ),
-                    // Gradient overlay
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.4),
-                            ],
+      ),
+    );
+  }
+
+  Widget _buildOverlayButton({required IconData icon, required String label, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 16),
+            const SizedBox(width: 4),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFramePicker(bool isDark) {
+    final isReady = _thumbnailController?.value.isInitialized == true && _framePositions.isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Selected frame preview
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+            child: SizedBox(
+              width: double.infinity,
+              height: 180,
+              child: isReady
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _thumbnailController!.value.size.width,
+                            height: _thumbnailController!.value.size.height,
+                            child: VideoPlayer(_thumbnailController!),
                           ),
                         ),
-                      ),
-                    ),
-                    // Custom badge
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: ThemeService.accentColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _localeService.isVietnamese ? 'Tùy chỉnh' : 'Custom',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Remove & Change buttons
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: _removeCustomThumbnail,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.close, color: Colors.white, size: 16),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _localeService.isVietnamese ? 'Xóa' : 'Remove',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        // Frame counter badge
+                        Positioned(
+                          top: 8,
+                          left: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.black.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
+                                const Icon(Icons.photo_camera_outlined, color: Colors.white, size: 14),
                                 const SizedBox(width: 4),
                                 Text(
-                                  _localeService.isVietnamese ? 'Đổi' : 'Change',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  '${_selectedFrameIndex + 1}/${_framePositions.length}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : Row(
-                children: [
-                  // Auto-generated preview
-                  ClipRRect(
-                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(15)),
-                    child: SizedBox(
-                      width: 100,
-                      height: 138,
-                      child: _thumbnailController?.value.isInitialized == true
-                          ? Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                FittedBox(
-                                  fit: BoxFit.cover,
-                                  child: SizedBox(
-                                    width: _thumbnailController!.value.size.width,
-                                    height: _thumbnailController!.value.size.height,
-                                    child: VideoPlayer(_thumbnailController!),
-                                  ),
-                                ),
-                                Positioned(
-                                  bottom: 4,
-                                  left: 4,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.6),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      _localeService.isVietnamese ? 'Tự động' : 'Auto',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Container(
-                              color: isDark ? Colors.grey[800] : Colors.grey[300],
-                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
-                    ),
-                  ),
-                  // Select custom thumbnail
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: ThemeService.accentColor.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.add_photo_alternate_rounded,
-                            size: 28,
-                            color: ThemeService.accentColor,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _localeService.isVietnamese ? 'Chọn ảnh bìa' : 'Choose cover',
-                          style: TextStyle(
-                            color: _themeService.textPrimaryColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                        // Timestamp badge
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              _formatDuration(_framePositions[_selectedFrameIndex]),
+                              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w500),
+                            ),
                           ),
                         ),
                       ],
+                    )
+                  : Container(
+                      color: isDark ? Colors.grey[800] : Colors.grey[200],
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _themeService.textSecondaryColor,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _localeService.isVietnamese ? 'Đang tải...' : 'Loading...',
+                              style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          // Frame selector strip
+          if (isReady)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _localeService.isVietnamese ? 'Chọn khung hình' : 'Select frame',
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 48,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _framePositions.length,
+                      itemBuilder: (context, index) {
+                        final isSelected = index == _selectedFrameIndex;
+                        return GestureDetector(
+                          onTap: () => _selectFrame(index),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 48,
+                            height: 48,
+                            margin: EdgeInsets.only(right: index < _framePositions.length - 1 ? 8 : 0),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isSelected ? ThemeService.accentColor : (isDark ? Colors.grey[700]! : Colors.grey[300]!),
+                                width: isSelected ? 2.5 : 1,
+                              ),
+                              color: isSelected
+                                  ? ThemeService.accentColor.withOpacity(0.1)
+                                  : (isDark ? Colors.grey[800] : Colors.grey[100]),
+                            ),
+                            child: Center(
+                              child: Text(
+                                '${index + 1}',
+                                style: TextStyle(
+                                  color: isSelected ? ThemeService.accentColor : _themeService.textSecondaryColor,
+                                  fontSize: 14,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  Widget _buildCustomThumbnailButton(bool isDark) {
+    return GestureDetector(
+      onTap: _pickCustomThumbnail,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: ThemeService.accentColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.add_photo_alternate_rounded, size: 22, color: ThemeService.accentColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _localeService.isVietnamese ? 'Tải ảnh bìa riêng' : 'Upload custom cover',
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _localeService.isVietnamese ? 'Chọn ảnh từ thư viện' : 'Choose from gallery',
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 22),
+          ],
+        ),
       ),
     );
   }

@@ -358,11 +358,23 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
     }
 
     if (!_isInitialized) {
-      // Simple loading state: black screen with centered spinner (no thumbnail)
       return Container(
         color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty)
+              Image.network(
+                widget.thumbnailUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return const SizedBox();
+                },
+              ),
+            const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          ],
         ),
       );
     }

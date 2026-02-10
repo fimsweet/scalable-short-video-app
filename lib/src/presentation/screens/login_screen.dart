@@ -334,29 +334,35 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 
-  /// Show 2FA verification dialog
+  /// Navigate to 2FA verification page
   void _show2FAVerificationDialog({required int userId, required List<String> methods}) {
-    String selectedMethod = methods.isNotEmpty ? methods.first : 'email';
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      isDismissible: false,
-      builder: (context) => _TwoFactorVerificationSheet(
-        userId: userId,
-        methods: methods,
-        selectedMethod: selectedMethod,
-        themeService: _themeService,
-        localeService: _localeService,
-        apiService: _apiService,
-        authService: _auth,
-        onSuccess: () {
-          Navigator.pop(context); // Close bottom sheet
-          Navigator.pop(context, true); // Return success to previous screen
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => _TwoFactorVerificationPage(
+          userId: userId,
+          methods: methods,
+          themeService: _themeService,
+          localeService: _localeService,
+          apiService: _apiService,
+          authService: _auth,
+        ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1.0, 0.0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+            child: child,
+          );
         },
+        transitionDuration: const Duration(milliseconds: 350),
       ),
-    );
+    ).then((success) {
+      if (success == true && mounted) {
+        Navigator.pop(context, true); // Return success to previous screen
+      }
+    });
   }
 
   void _navigateToRegister() async {
@@ -1135,49 +1141,58 @@ class _ModernSocialButton extends StatelessWidget {
   }
 }
 /// Two-Factor Authentication Verification Sheet
-class _TwoFactorVerificationSheet extends StatefulWidget {
+class _TwoFactorVerificationPage extends StatefulWidget {
   final int userId;
   final List<String> methods;
-  final String selectedMethod;
   final ThemeService themeService;
   final LocaleService localeService;
   final ApiService apiService;
   final AuthService authService;
-  final VoidCallback onSuccess;
 
-  const _TwoFactorVerificationSheet({
+  const _TwoFactorVerificationPage({
     required this.userId,
     required this.methods,
-    required this.selectedMethod,
     required this.themeService,
     required this.localeService,
     required this.apiService,
     required this.authService,
-    required this.onSuccess,
   });
 
   @override
-  State<_TwoFactorVerificationSheet> createState() => _TwoFactorVerificationSheetState();
+  State<_TwoFactorVerificationPage> createState() => _TwoFactorVerificationPageState();
 }
 
-class _TwoFactorVerificationSheetState extends State<_TwoFactorVerificationSheet> {
+class _TwoFactorVerificationPageState extends State<_TwoFactorVerificationPage> with SingleTickerProviderStateMixin {
   late String _selectedMethod;
   final _otpController = TextEditingController();
+  final _focusNode = FocusNode();
   bool _isLoading = false;
   bool _isSendingOtp = false;
   bool _otpSent = false;
   String? _errorMessage;
   String? _successMessage;
+  late AnimationController _shakeController;
 
   @override
   void initState() {
     super.initState();
-    _selectedMethod = widget.selectedMethod;
+    _selectedMethod = widget.methods.isNotEmpty ? widget.methods.first : 'email';
+    _shakeController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    // For TOTP, skip the send OTP step
+    if (_selectedMethod == 'totp') {
+      _otpSent = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    }
   }
 
   @override
   void dispose() {
     _otpController.dispose();
+    _focusNode.dispose();
+    _shakeController.dispose();
     super.dispose();
   }
 
@@ -1188,13 +1203,18 @@ class _TwoFactorVerificationSheetState extends State<_TwoFactorVerificationSheet
     });
 
     final result = await widget.apiService.send2FAOtp(widget.userId, _selectedMethod);
-    
+
     if (mounted) {
       setState(() {
         _isSendingOtp = false;
         if (result['success'] == true) {
           _otpSent = true;
-          _successMessage = result['message'];
+          _successMessage = widget.localeService.get('2fa_sent_success');
+          // Clear success message after 3 seconds
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) setState(() => _successMessage = null);
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
         } else {
           _errorMessage = result['message'];
         }
@@ -1203,7 +1223,7 @@ class _TwoFactorVerificationSheetState extends State<_TwoFactorVerificationSheet
   }
 
   Future<void> _verifyOtp() async {
-    if (_otpController.text.trim().isEmpty) {
+    if (_otpController.text.trim().isEmpty || _otpController.text.trim().length < 6) {
       setState(() => _errorMessage = widget.localeService.get('enter_otp'));
       return;
     }
@@ -1221,292 +1241,482 @@ class _TwoFactorVerificationSheetState extends State<_TwoFactorVerificationSheet
 
     if (mounted) {
       if (result['success'] == true) {
-        // Login successful
         final userData = result['user'];
         final token = result['access_token'];
         await widget.authService.login(userData, token);
-        widget.onSuccess();
+        if (mounted) Navigator.pop(context, true);
       } else {
+        // Localize common backend error messages
+        String errorMsg = result['message'] ?? '';
+        if (errorMsg.contains('Invalid OTP') || errorMsg.contains('không đúng')) {
+          errorMsg = widget.localeService.get('2fa_invalid_otp');
+        } else if (errorMsg.contains('expired') || errorMsg.contains('hết hạn')) {
+          errorMsg = widget.localeService.get('2fa_otp_expired');
+        } else if (errorMsg.contains('already used') || errorMsg.contains('đã được sử dụng')) {
+          errorMsg = widget.localeService.get('2fa_otp_already_used');
+        } else if (errorMsg.isEmpty) {
+          errorMsg = widget.localeService.get('2fa_invalid_otp');
+        }
+        
         setState(() {
           _isLoading = false;
-          _errorMessage = result['message'];
+          _errorMessage = errorMsg;
+          _otpController.clear();
         });
+        // Shake animation on error
+        _shakeController.forward(from: 0);
+        _focusNode.requestFocus();
       }
+    }
+  }
+
+  void _switchMethod(String method) {
+    setState(() {
+      _selectedMethod = method;
+      _otpSent = method == 'totp';
+      _errorMessage = null;
+      _successMessage = null;
+      _otpController.clear();
+    });
+    if (method == 'totp') {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+    }
+  }
+
+  IconData _methodIcon(String method) {
+    switch (method) {
+      case 'totp': return Icons.app_settings_alt;
+      case 'sms': return Icons.sms_outlined;
+      default: return Icons.email_outlined;
+    }
+  }
+
+  String _methodLabel(String method) {
+    switch (method) {
+      case 'totp': return widget.localeService.get('authenticator_app');
+      case 'sms': return 'SMS';
+      default: return 'Email';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
+    final theme = widget.themeService;
+    final locale = widget.localeService;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    return Scaffold(
+      backgroundColor: theme.backgroundColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_new, color: theme.textPrimaryColor, size: 20),
+          onPressed: () => Navigator.pop(context, false),
+        ),
       ),
-      decoration: BoxDecoration(
-        color: widget.themeService.cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
+      body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 28),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle bar
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[600],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              
-              // Title with icon
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.security, color: Colors.blue, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.localeService.get('two_factor_verification'),
-                          style: TextStyle(
-                            color: widget.themeService.textPrimaryColor,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          widget.localeService.get('verify_identity'),
-                          style: TextStyle(
-                            color: widget.themeService.textSecondaryColor,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              
-              // Method selection (if multiple methods)
-              if (widget.methods.length > 1) ...[
-                Text(
-                  widget.localeService.get('select_verification_method'),
-                  style: TextStyle(
-                    color: widget.themeService.textSecondaryColor,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: widget.methods.map((method) {
-                    final isSelected = method == _selectedMethod;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedMethod = method;
-                            _otpSent = false;
-                            _errorMessage = null;
-                            _successMessage = null;
-                            _otpController.clear();
-                          });
-                        },
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SizedBox(height: bottomInset > 0 ? 8 : 40),
+
+                      // Icon
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
                         child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          key: ValueKey(_selectedMethod),
+                          width: 72,
+                          height: 72,
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.blue.withOpacity(0.2) : widget.themeService.inputBackground,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected ? Colors.blue : Colors.grey[700]!,
-                              width: isSelected ? 2 : 1,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.blue.withOpacity(0.15),
+                                Colors.blue.withOpacity(0.08),
+                              ],
                             ),
+                            shape: BoxShape.circle,
                           ),
-                          child: Column(
-                            children: [
-                              Icon(
-                                method == 'email' ? Icons.email_outlined : Icons.sms_outlined,
-                                color: isSelected ? Colors.blue : widget.themeService.textSecondaryColor,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                method == 'email' ? 'Email' : 'SMS',
-                                style: TextStyle(
-                                  color: isSelected ? Colors.blue : widget.themeService.textSecondaryColor,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          child: Icon(
+                            _selectedMethod == 'totp'
+                                ? Icons.app_settings_alt_rounded
+                                : _selectedMethod == 'sms'
+                                    ? Icons.sms_outlined
+                                    : Icons.shield_outlined,
+                            color: Colors.blue,
+                            size: 32,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Title
+                      Text(
+                        locale.get('2fa_login_title'),
+                        style: TextStyle(
+                          color: theme.textPrimaryColor,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Subtitle
+                      Text(
+                        _otpSent
+                            ? _selectedMethod == 'totp'
+                                ? locale.get('2fa_enter_totp')
+                                : _selectedMethod == 'email'
+                                    ? locale.get('2fa_code_sent_email')
+                                    : locale.get('2fa_code_sent_sms')
+                            : locale.get('2fa_login_subtitle'),
+                        style: TextStyle(
+                          color: theme.textSecondaryColor,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: bottomInset > 0 ? 20 : 32),
+
+                      // === STEP 1: Method selection (before OTP sent) ===
+                      if (!_otpSent) ...[
+                        // Method cards
+                        if (widget.methods.length > 1) ...[
+                          ...widget.methods.map((method) {
+                            final isSelected = method == _selectedMethod;
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _switchMethod(method),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? Colors.blue.withOpacity(0.1)
+                                          : theme.cardColor,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? Colors.blue.withOpacity(0.5)
+                                            : theme.cardColor,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 40,
+                                          height: 40,
+                                          decoration: BoxDecoration(
+                                            color: isSelected
+                                                ? Colors.blue.withOpacity(0.15)
+                                                : theme.inputBackground,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Icon(
+                                            _methodIcon(method),
+                                            color: isSelected ? Colors.blue : theme.textSecondaryColor,
+                                            size: 20,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _methodLabel(method),
+                                                style: TextStyle(
+                                                  color: theme.textPrimaryColor,
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                              Text(
+                                                method == 'totp'
+                                                    ? locale.get('authenticator_app_desc')
+                                                    : method == 'email'
+                                                        ? locale.get('email_2fa_desc')
+                                                        : locale.get('sms_2fa_desc'),
+                                                style: TextStyle(
+                                                  color: theme.textSecondaryColor,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        AnimatedOpacity(
+                                          opacity: isSelected ? 1 : 0,
+                                          duration: const Duration(milliseconds: 200),
+                                          child: const Icon(Icons.check_circle_rounded, color: Colors.blue, size: 20),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ],
+                            );
+                          }),
+                        ] else ...[
+                          // Single method info
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: theme.cardColor,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(_methodIcon(_selectedMethod), color: Colors.blue, size: 20),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Text(
+                                    _methodLabel(_selectedMethod),
+                                    style: TextStyle(
+                                      color: theme.textPrimaryColor,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Error
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 16),
+                          _buildErrorBanner(_errorMessage!),
+                        ],
+                      ],
+
+                      // === STEP 2: OTP Input ===
+                      if (_otpSent) ...[
+                        // Success banner
+                        if (_successMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.check_circle_outline, color: Colors.green, size: 16),
+                                const SizedBox(width: 8),
+                                Text(_successMessage!, style: const TextStyle(color: Colors.green, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // OTP Input with shake
+                        AnimatedBuilder(
+                          animation: _shakeController,
+                          builder: (context, child) {
+                            final progress = _shakeController.value;
+                            final shake = _shakeController.isAnimating
+                                ? 8 * (1 - progress) * (progress * 6 * 3.14159).clamp(-1, 1)
+                                : 0.0;
+                            return Transform.translate(offset: Offset(shake, 0), child: child);
+                          },
+                          child: TextField(
+                            controller: _otpController,
+                            focusNode: _focusNode,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            textAlign: TextAlign.center,
+                            autofocus: true,
+                            style: TextStyle(
+                              color: theme.textPrimaryColor,
+                              fontSize: 28,
+                              letterSpacing: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            onChanged: (value) {
+                              if (_errorMessage != null) setState(() => _errorMessage = null);
+                              if (value.length == 6) _verifyOtp();
+                            },
+                            decoration: InputDecoration(
+                              counterText: '',
+                              hintText: '000000',
+                              hintStyle: TextStyle(
+                                color: theme.textSecondaryColor.withOpacity(0.25),
+                                fontSize: 28,
+                                letterSpacing: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              filled: true,
+                              fillColor: theme.cardColor,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide.none,
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(color: Colors.blue, width: 1.5),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-              ],
-              
-              // Success message
-              if (_successMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.green, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _successMessage!,
-                          style: const TextStyle(color: Colors.green, fontSize: 13),
-                        ),
-                      ),
+
+                        // Loading indicator under input
+                        if (_isLoading)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blue),
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  locale.get('2fa_verifying'),
+                                  style: TextStyle(color: theme.textSecondaryColor, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Error
+                        if (_errorMessage != null) ...[
+                          const SizedBox(height: 16),
+                          _buildErrorBanner(_errorMessage!),
+                        ],
+
+                        const SizedBox(height: 20),
+
+                        // Resend / switch method
+                        if (_selectedMethod != 'totp')
+                          TextButton(
+                            onPressed: _isSendingOtp ? null : _sendOtp,
+                            child: Text(
+                              _isSendingOtp ? locale.get('2fa_sending') : locale.get('resend_otp'),
+                              style: TextStyle(
+                                color: _isSendingOtp ? theme.textSecondaryColor : Colors.blue,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+
+                        if (widget.methods.length > 1)
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _otpSent = false;
+                                _errorMessage = null;
+                                _successMessage = null;
+                                _otpController.clear();
+                              });
+                            },
+                            child: Text(
+                              locale.get('2fa_use_another_method'),
+                              style: TextStyle(color: theme.textSecondaryColor, fontSize: 14),
+                            ),
+                          ),
+                      ],
                     ],
                   ),
                 ),
-              
-              // OTP input
-              if (_otpSent) ...[
-                TextField(
-                  controller: _otpController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: widget.themeService.textPrimaryColor,
-                    fontSize: 24,
-                    letterSpacing: 8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '------',
-                    hintStyle: TextStyle(color: widget.themeService.textSecondaryColor),
-                    counterText: '',
-                    filled: true,
-                    fillColor: widget.themeService.inputBackground,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey[700]!),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey[700]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Colors.blue, width: 2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              
-              // Error message
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.error_outline, color: Colors.redAccent, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _errorMessage!,
-                          style: const TextStyle(color: Colors.redAccent, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        widget.localeService.get('cancel'),
-                        style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
+              ),
+
+              // Bottom button (only for method selection step or single non-totp method)
+              if (!_otpSent) ...[
+                Padding(
+                  padding: EdgeInsets.only(bottom: bottomInset > 0 ? 8 : 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 50,
                     child: ElevatedButton(
                       onPressed: (_isSendingOtp || _isLoading)
                           ? null
-                          : (_otpSent ? _verifyOtp : _sendOtp),
+                          : _selectedMethod == 'totp'
+                              ? () {
+                                  setState(() { _otpSent = true; _errorMessage = null; });
+                                  WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+                                }
+                              : _sendOtp,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                         elevation: 0,
+                        disabledBackgroundColor: Colors.blue.withOpacity(0.4),
                       ),
                       child: (_isSendingOtp || _isLoading)
                           ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              width: 22, height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                             )
                           : Text(
-                              _otpSent
-                                  ? widget.localeService.get('verify')
-                                  : widget.localeService.get('send_otp'),
+                              locale.get('2fa_continue'),
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                             ),
                     ),
                   ),
-                ],
-              ),
-              
-              // Resend OTP
-              if (_otpSent)
-                Center(
-                  child: TextButton(
-                    onPressed: _isSendingOtp ? null : _sendOtp,
-                    child: Text(
-                      widget.localeService.get('resend_otp'),
-                      style: TextStyle(color: Colors.blue.withOpacity(_isSendingOtp ? 0.5 : 1)),
-                    ),
-                  ),
                 ),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorBanner(String message) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline_rounded, color: Colors.red[400], size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: Colors.red[400], fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }

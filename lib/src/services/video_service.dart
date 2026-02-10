@@ -24,6 +24,7 @@ class VideoService {
     String? description,
     required String token,
     List<int>? categoryIds,
+    double? thumbnailTimestamp,
   }) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$_videoApiUrl/upload'));
@@ -56,6 +57,12 @@ class VideoService {
       if (categoryIds != null && categoryIds.isNotEmpty) {
         request.fields['categoryIds'] = json.encode(categoryIds);
         print('Categories: $categoryIds');
+      }
+
+      // Add thumbnail timestamp for frame selection
+      if (thumbnailTimestamp != null) {
+        request.fields['thumbnailTimestamp'] = thumbnailTimestamp.toStringAsFixed(3);
+        print('Thumbnail timestamp: ${thumbnailTimestamp}s');
       }
       
       print('Uploading video to: $_videoApiUrl/upload');
@@ -242,7 +249,10 @@ class VideoService {
 
   /// Get HLS video URL
   String getVideoUrl(String hlsUrl) {
-    // HLS URL từ backend: /uploads/processed_videos/xxx/playlist.m3u8
+    // HLS URL từ backend: /uploads/processed_videos/xxx/playlist.m3u8 hoặc full URL (CloudFront)
+    if (hlsUrl.startsWith('http://') || hlsUrl.startsWith('https://')) {
+      return hlsUrl;
+    }
     // Convert thành full URL with platform-specific base
     return '$_baseUrl$hlsUrl';
   }
@@ -332,6 +342,40 @@ class VideoService {
     } catch (e) {
       print('Error fetching friends videos: $e');
       return [];
+    }
+  }
+
+  /// Get count of new videos from following users since a given date
+  Future<int> getFollowingNewVideoCount(String userId, DateTime since) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/feed/following/$userId/new-count?since=${since.toIso8601String()}'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['newCount'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print('Error fetching following new count: $e');
+      return 0;
+    }
+  }
+
+  /// Get count of new videos from friends since a given date
+  Future<int> getFriendsNewVideoCount(String userId, DateTime since) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/videos/feed/friends/$userId/new-count?since=${since.toIso8601String()}'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['newCount'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print('Error fetching friends new count: $e');
+      return 0;
     }
   }
 
@@ -655,6 +699,7 @@ class VideoService {
     String? description,
     required String token,
     List<int>? categoryIds,
+    double? thumbnailTimestamp,
   }) async {
     try {
       var request = http.MultipartRequest(
@@ -702,6 +747,12 @@ class VideoService {
       if (categoryIds != null && categoryIds.isNotEmpty) {
         request.fields['categoryIds'] = json.encode(categoryIds);
         print('Categories: $categoryIds');
+      }
+
+      // Add thumbnail timestamp for frame selection
+      if (thumbnailTimestamp != null) {
+        request.fields['thumbnailTimestamp'] = thumbnailTimestamp.toStringAsFixed(3);
+        print('Thumbnail timestamp: ${thumbnailTimestamp}s');
       }
       
       print('Uploading video with thumbnail to: $_videoApiUrl/upload-with-thumbnail');

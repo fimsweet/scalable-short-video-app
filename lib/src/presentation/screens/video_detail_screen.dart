@@ -835,20 +835,22 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   bottom: 0,
                   left: 0,
                   right: 0,
-                  child: SafeArea(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.7),
-                            Colors.transparent,
-                          ],
-                        ),
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      left: 16, right: 16, top: 12,
+                      bottom: 12 + MediaQuery.of(context).viewPadding.bottom,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.7),
+                          Colors.transparent,
+                        ],
                       ),
-                      child: Row(
+                    ),
+                    child: Row(
                         children: [
                           // View count with play icon
                           Row(
@@ -906,7 +908,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         ],
                       ),
                     ),
-                  ),
                 ),
 
               // Viewer bottom bar - comment input and search (when viewing other's video)
@@ -918,20 +919,22 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   bottom: 0,
                   left: 0,
                   right: 0,
-                  child: SafeArea(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.8),
-                            Colors.transparent,
-                          ],
-                        ),
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      left: 12, right: 12, top: 10,
+                      bottom: 10 + MediaQuery.of(context).viewPadding.bottom,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.8),
+                          Colors.transparent,
+                        ],
                       ),
-                      child: Row(
+                    ),
+                    child: Row(
                         children: [
                           // Comment input field
                           Expanded(
@@ -1027,7 +1030,6 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         ],
                       ),
                     ),
-                  ),
                 ),
 
               // Controls - position higher when there's bottom bar
@@ -1044,7 +1046,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                       likeCount: _formatCount(_likeCounts[videoId] ?? 0),
                       commentCount: _formatCount(_commentCounts[videoId] ?? 0),
                       saveCount: _formatCount(_saveCounts[videoId] ?? 0),
-                      shareCount: _formatCount(_shareCounts[videoId] ?? 0),
+                      shareCount: (_shareCounts[videoId] ?? 0) == 0 ? _localeService.get('share') : _formatCount(_shareCounts[videoId] ?? 0),
                       showManageButton: false,
                       showMoreButton: _authService.isLoggedIn && 
                           _authService.user != null && 

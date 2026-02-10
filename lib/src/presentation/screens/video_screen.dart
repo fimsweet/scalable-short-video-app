@@ -104,6 +104,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   bool _isLoadingFriends = true;
   List<dynamic> _friendsVideos = [];
   
+  // New content indicators for tabs (red dot)
+  bool _hasNewFollowing = false;
+  bool _hasNewFriends = false;
+  DateTime? _lastFollowingVisit;
+  DateTime? _lastFriendsVisit;
+  
   // Separate page positions for each tab to preserve state
   int _forYouCurrentPage = 0;
   int _followingCurrentPage = 0;
@@ -127,6 +133,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideos();
+      _checkNewVideoIndicators();
     });
   }
   
@@ -322,6 +329,35 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     _videoStartTime = null;
     _currentWatchingVideoId = null;
     _currentVideoDuration = null;
+  }
+
+  /// Check if there are new videos in Following/Friends tabs (for red dot indicators)
+  Future<void> _checkNewVideoIndicators() async {
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+    
+    final userId = _authService.user!['id'].toString();
+    // Default "since" = 24 hours ago if no last visit recorded
+    final defaultSince = DateTime.now().subtract(const Duration(hours: 24));
+    
+    try {
+      final results = await Future.wait([
+        _videoService.getFollowingNewVideoCount(
+          userId, _lastFollowingVisit ?? defaultSince,
+        ),
+        _videoService.getFriendsNewVideoCount(
+          userId, _lastFriendsVisit ?? defaultSince,
+        ),
+      ]);
+      
+      if (mounted) {
+        setState(() {
+          _hasNewFollowing = results[0] > 0;
+          _hasNewFriends = results[1] > 0;
+        });
+      }
+    } catch (e) {
+      // Silent fail - indicators are not critical
+    }
   }
 
   Future<void> _loadVideos() async {
@@ -657,6 +693,15 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       _selectedFeedTab = index;
       _videos = _getVideosForTab(index);
       _currentPage = _getSavedPagePosition(index);
+      
+      // Clear red dot indicator when visiting a tab
+      if (index == 0) {
+        _hasNewFollowing = false;
+        _lastFollowingVisit = DateTime.now();
+      } else if (index == 1) {
+        _hasNewFriends = false;
+        _lastFriendsVisit = DateTime.now();
+      }
     });
     
     // Load videos for target tab if still loading
@@ -1001,49 +1046,94 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     return Container(
       color: Colors.black,
       child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.check_circle_outline,
-              size: 80,
-              color: Colors.green,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _localeService.isVietnamese 
-                  ? 'Bạn đã xem hết video rồi!' 
-                  : 'You\'ve watched all videos!',
-              style: const TextStyle(
-                color: Colors.white, 
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.green.withOpacity(0.2),
+                      Colors.teal.withOpacity(0.1),
+                    ],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.check_circle_outline_rounded,
+                  size: 48,
+                  color: Colors.green,
+                ),
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _localeService.isVietnamese 
-                  ? 'Quay lại sau để xem video mới nhé' 
-                  : 'Come back later for new videos',
-              style: TextStyle(
-                color: Colors.grey[400], 
-                fontSize: 14,
+              const SizedBox(height: 20),
+              Text(
+                _localeService.isVietnamese 
+                    ? 'Bạn đã xem hết video rồi!' 
+                    : 'You\'re all caught up!',
+                style: const TextStyle(
+                  color: Colors.white, 
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _loadVideos,
-              icon: const Icon(Icons.refresh),
-              label: Text(_localeService.get('reload')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              const SizedBox(height: 8),
+              Text(
+                _localeService.isVietnamese 
+                    ? 'Kéo xuống để làm mới hoặc khám phá nội dung mới' 
+                    : 'Pull down to refresh or explore new content',
+                style: TextStyle(
+                  color: Colors.grey[400], 
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+              const SizedBox(height: 28),
+              // Refresh action - plain text+icon, no box
+              GestureDetector(
+                onTap: _loadVideos,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, size: 18, color: Colors.grey[400]),
+                    const SizedBox(width: 6),
+                    Text(
+                      _localeService.isVietnamese ? 'Làm mới' : 'Refresh',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Explore action - plain text+icon
+              GestureDetector(
+                onTap: () {
+                  _videoPlaybackService.setVideoTabInvisible();
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const SearchScreen()),
+                  ).then((_) {
+                    _videoPlaybackService.setVideoTabVisible();
+                  });
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.explore_outlined, size: 18, color: Colors.grey[400]),
+                    const SizedBox(width: 6),
+                    Text(
+                      _localeService.isVietnamese ? 'Khám phá nội dung mới' : 'Explore new content',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1061,6 +1151,9 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     final hlsUrl = video['hlsUrl'] != null 
         ? _videoService.getVideoUrl(video['hlsUrl']) 
         : '';
+    final thumbnailUrl = video['thumbnailUrl'] != null 
+        ? _videoService.getVideoUrl(video['thumbnailUrl']) 
+        : null;
     final userId = video['userId']?.toString();
     
     // Load videos within range of 2 to allow smooth pause transition
@@ -1080,6 +1173,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
             isTabVisible: isActiveTab && _videoPlaybackService.isVideoTabVisible,
             tabIndex: tabIndex,
             videoId: videoId,
+            thumbnailUrl: thumbnailUrl,
             onPlayerCreated: (playerState) {
               if (isCurrentVideo) {
                 _currentVideoPlayerState = playerState;
@@ -1310,7 +1404,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         likeCount: _formatCount(_likeCounts[videoId] ?? 0),
         commentCount: _formatCount(_commentCounts[videoId] ?? 0),
         saveCount: _formatCount(_saveCounts[videoId] ?? 0),
-        shareCount: _formatCount(_shareCounts[videoId] ?? 0),
+        shareCount: (_shareCounts[videoId] ?? 0) == 0 ? _localeService.get('share') : _formatCount(_shareCounts[videoId] ?? 0),
         onLikeTap: () => _handleLike(videoId),
         onCommentTap: () {
           showModalBottomSheet(
@@ -1428,6 +1522,8 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
               child: FeedTabBar(
                 selectedIndex: _selectedFeedTab,
                 onTabChanged: _onTabChanged,
+                hasNewFollowing: _hasNewFollowing,
+                hasNewFriends: _hasNewFriends,
                 onSearchTap: () {
                   _videoPlaybackService.setVideoTabInvisible();
                   print('VideoScreen: Navigating to search, pausing video');
@@ -1620,53 +1716,75 @@ class _TabVideoFeedState extends State<_TabVideoFeed> with AutomaticKeepAliveCli
     // Show empty state ONLY after loading is complete
     if (widget.videos.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              widget.tabIndex == 2 
-                  ? Icons.check_circle_outline
-                  : widget.tabIndex == 0 
-                      ? Icons.people_outline 
-                      : Icons.video_library_outlined,
-              size: 80,
-              color: widget.tabIndex == 2 ? Colors.green : Colors.grey,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.tabIndex == 2
-                  ? (widget.localeService.isVietnamese 
-                      ? 'Bạn đã xem hết video rồi!' 
-                      : 'You\'ve watched all videos!')
-                  : widget.tabIndex == 0 
-                      ? widget.localeService.get('no_videos_following')
-                      : widget.localeService.get('no_videos_yet'),
-              style: const TextStyle(color: Colors.white, fontSize: 18),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              widget.tabIndex == 2
-                  ? (widget.localeService.isVietnamese 
-                      ? 'Quay lại sau để xem video mới nhé' 
-                      : 'Come back later for new videos')
-                  : widget.tabIndex == 0
-                      ? widget.localeService.get('follow_others_hint')
-                      : widget.localeService.get('be_first_upload'),
-              style: TextStyle(color: Colors.grey[400], fontSize: 14),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: widget.onLoadVideos,
-              icon: const Icon(Icons.refresh),
-              label: Text(widget.localeService.get('reload')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.black,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.tabIndex == 2
+                      ? Colors.green.withOpacity(0.1)
+                      : Colors.white.withOpacity(0.05),
+                ),
+                child: Icon(
+                  widget.tabIndex == 2 
+                      ? Icons.check_circle_outline_rounded
+                      : widget.tabIndex == 0 
+                          ? Icons.person_add_alt_1_rounded 
+                          : Icons.people_alt_rounded,
+                  size: 40,
+                  color: widget.tabIndex == 2 ? Colors.green : Colors.grey[400],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              Text(
+                widget.tabIndex == 2
+                    ? (widget.localeService.isVietnamese 
+                        ? 'Bạn đã xem hết video rồi!' 
+                        : 'You\'re all caught up!')
+                    : widget.tabIndex == 0 
+                        ? widget.localeService.get('no_videos_following')
+                        : widget.localeService.get('no_videos_yet'),
+                style: const TextStyle(
+                  color: Colors.white, 
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.tabIndex == 2
+                    ? (widget.localeService.isVietnamese 
+                        ? 'Kéo xuống để làm mới hoặc khám phá nội dung mới' 
+                        : 'Pull down to refresh or explore new content')
+                    : widget.tabIndex == 0
+                        ? widget.localeService.get('follow_others_hint')
+                        : widget.localeService.get('be_first_upload'),
+                style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              GestureDetector(
+                onTap: widget.onLoadVideos,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, size: 18, color: Colors.grey[400]),
+                    const SizedBox(width: 6),
+                    Text(
+                      widget.localeService.get('reload'),
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }

@@ -32,6 +32,7 @@ class ChatOptionsScreen extends StatefulWidget {
   final String? recipientAvatar;
   final Function(Color?)? onThemeColorChanged;
   final Function(String?)? onNicknameChanged;
+  final Function(bool)? onAutoTranslateChanged;
 
   const ChatOptionsScreen({
     super.key,
@@ -40,6 +41,7 @@ class ChatOptionsScreen extends StatefulWidget {
     this.recipientAvatar,
     this.onThemeColorChanged,
     this.onNicknameChanged,
+    this.onAutoTranslateChanged,
   });
 
   @override
@@ -57,6 +59,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
   bool _isBlocked = false;
   bool _isLoading = true;
   bool _isRecipientOnline = false;
+  bool _isAutoTranslate = false;
   
   // Chat customization
   Color? _selectedThemeColor;
@@ -125,6 +128,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
           _isBlocked = isBlocked;
           _nickname = settings['nickname'];
           _isRecipientOnline = isOnline;
+          _isAutoTranslate = settings['autoTranslate'] ?? false;
           // Parse theme color if saved
           final themeColorId = settings['themeColor'];
           if (themeColorId != null) {
@@ -183,6 +187,82 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
     } else {
       AppSnackBar.showInfo(context, message);
     }
+  }
+
+  Future<void> _toggleAutoTranslate(bool value) async {
+    setState(() => _isAutoTranslate = value);
+    try {
+      await _messageService.updateConversationSettings(
+        widget.recipientId,
+        autoTranslate: value,
+      );
+      widget.onAutoTranslateChanged?.call(value);
+      _showSnackBar(
+        _localeService.isVietnamese
+            ? (value ? 'Đã bật dịch tự động' : 'Đã tắt dịch tự động')
+            : (value ? 'Auto-translate enabled' : 'Auto-translate disabled'),
+        Colors.green,
+      );
+    } catch (e) {
+      setState(() => _isAutoTranslate = !value);
+      AppSnackBar.showError(context, _localeService.get('error_occurred'));
+    }
+  }
+
+  Widget _buildAutoTranslateToggle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.teal.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.translate_rounded, size: 20, color: Colors.teal),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _localeService.isVietnamese ? 'Dịch tự động' : 'Auto-translate',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: _themeService.textPrimaryColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _localeService.isVietnamese
+                      ? 'Tự động dịch tin nhắn sang Tiếng Việt'
+                      : 'Auto-translate messages to English',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _themeService.textSecondaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Transform.scale(
+            scale: 0.8,
+            child: Switch.adaptive(
+              value: _isAutoTranslate,
+              onChanged: _toggleAutoTranslate,
+              activeColor: Colors.teal,
+              activeTrackColor: Colors.teal.withOpacity(0.3),
+              inactiveThumbColor: _themeService.textSecondaryColor,
+              inactiveTrackColor: _themeService.dividerColor,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showThemeColorPicker() {
@@ -871,6 +951,8 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
                 ),
                 showChevron: true,
               ),
+              _buildDivider(),
+              _buildAutoTranslateToggle(),
             ],
           ),
         ),

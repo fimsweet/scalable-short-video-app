@@ -1,5 +1,8 @@
 ﻿import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
@@ -650,27 +653,41 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     final user = _authService.user;
     final hasEmail = user != null && user['email'] != null && _twoFactorMethods.contains('email');
     final hasPhone = user != null && user['phoneNumber'] != null && _twoFactorMethods.contains('sms');
+    final hasTotp = _twoFactorMethods.contains('totp');
     
-    // Default to email if available
-    String selectedMethod = hasEmail ? 'email' : 'sms';
+    // Build available methods list
+    final List<String> availableMethods = [];
+    if (hasTotp) availableMethods.add('totp');
+    if (hasEmail) availableMethods.add('email');
+    if (hasPhone) availableMethods.add('sms');
+    
+    // If no methods available (edge case), allow action
+    if (availableMethods.isEmpty) {
+      return true;
+    }
+    
+    // Default to first available method (TOTP preferred)
+    String selectedMethod = availableMethods.first;
     bool isSendingOtp = false;
-    bool isOtpSent = false;
+    bool isOtpSent = selectedMethod == 'totp'; // TOTP skips send step
     bool isVerifying = false;
     String otpCode = '';
     String? otpError;
+    String? actionError; // Error shown inside the modal
     
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false, // Prevent dismiss by tapping outside
+      isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
-          return WillPopScope(
-            onWillPop: () async {
-              completer.complete(false);
-              return true;
+          return PopScope(
+            onPopInvokedWithResult: (didPop, result) {
+              if (didPop && !completer.isCompleted) {
+                completer.complete(false);
+              }
             },
             child: Container(
               padding: EdgeInsets.only(
@@ -709,8 +726,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                               color: Colors.blue.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
-                              Icons.verified_user,
+                            child: Icon(
+                              isOtpSent ? Icons.pin : Icons.verified_user,
                               color: Colors.blue,
                               size: 24,
                             ),
@@ -744,7 +761,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                       
                       if (!isOtpSent) ...[
                         // Method selection
-                        if (hasEmail && hasPhone) ...[
+                        if (availableMethods.length > 1) ...[
                           Text(
                             _localeService.get('select_2fa_method'),
                             style: TextStyle(
@@ -754,27 +771,40 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           ),
                           const SizedBox(height: 12),
                           Row(
-                            children: [
-                              Expanded(
-                                child: _buildMethodChip(
-                                  icon: Icons.email_outlined,
-                                  label: 'Email',
-                                  isSelected: selectedMethod == 'email',
-                                  onTap: () => setSheetState(() => selectedMethod = 'email'),
+                            children: availableMethods.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final method = entry.value;
+                              return Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    left: index == 0 ? 0 : 5,
+                                    right: index == availableMethods.length - 1 ? 0 : 5,
+                                  ),
+                                  child: _buildMethodChip(
+                                    icon: method == 'email'
+                                        ? Icons.email_outlined
+                                        : method == 'totp'
+                                            ? Icons.app_settings_alt
+                                            : Icons.sms_outlined,
+                                    label: method == 'email'
+                                        ? 'Email'
+                                        : method == 'totp'
+                                            ? _localeService.get('authenticator_app')
+                                            : 'SMS',
+                                    isSelected: selectedMethod == method,
+                                    onTap: () {
+                                      setSheetState(() {
+                                        selectedMethod = method;
+                                        actionError = null;
+                                      });
+                                    },
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: _buildMethodChip(
-                                  icon: Icons.sms_outlined,
-                                  label: 'SMS',
-                                  isSelected: selectedMethod == 'sms',
-                                  onTap: () => setSheetState(() => selectedMethod = 'sms'),
-                                ),
-                              ),
-                            ],
+                              );
+                            }).toList(),
                           ),
                         ] else ...[
+                          // Single method display
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -784,15 +814,48 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                             child: Row(
                               children: [
                                 Icon(
-                                  selectedMethod == 'email' ? Icons.email_outlined : Icons.sms_outlined,
+                                  selectedMethod == 'email'
+                                      ? Icons.email_outlined
+                                      : selectedMethod == 'totp'
+                                          ? Icons.app_settings_alt
+                                          : Icons.sms_outlined,
                                   color: Colors.blue,
                                 ),
                                 const SizedBox(width: 12),
-                                Text(
-                                  selectedMethod == 'email' 
-                                      ? _localeService.get('send_otp_to_email')
-                                      : _localeService.get('send_otp_via_sms'),
-                                  style: TextStyle(color: _themeService.textPrimaryColor),
+                                Expanded(
+                                  child: Text(
+                                    selectedMethod == 'email'
+                                        ? _localeService.get('send_otp_to_email')
+                                        : selectedMethod == 'totp'
+                                            ? _localeService.get('authenticator_app')
+                                            : _localeService.get('send_otp_via_sms'),
+                                    style: TextStyle(color: _themeService.textPrimaryColor),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        
+                        // Error inside modal
+                        if (actionError != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.error_outline, color: Colors.red[400], size: 20),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    actionError!,
+                                    style: TextStyle(color: Colors.red[400], fontSize: 13),
+                                  ),
                                 ),
                               ],
                             ),
@@ -803,7 +866,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         Text(
                           selectedMethod == 'email'
                               ? _localeService.get('otp_sent_to_email')
-                              : _localeService.get('otp_via_sms'),
+                              : selectedMethod == 'totp'
+                                  ? _localeService.get('totp_enter_code')
+                                  : _localeService.get('otp_via_sms'),
                           style: TextStyle(
                             color: _themeService.textSecondaryColor,
                             fontSize: 14,
@@ -823,10 +888,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           ),
                           maxLength: 6,
                           onChanged: (value) {
-                            otpCode = value;
-                            if (otpError != null) {
-                              setSheetState(() => otpError = null);
-                            }
+                            setSheetState(() {
+                              otpCode = value;
+                              if (otpError != null) otpError = null;
+                            });
                           },
                           decoration: InputDecoration(
                             counterText: '',
@@ -855,15 +920,26 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           Expanded(
                             child: TextButton(
                               onPressed: () {
-                                Navigator.pop(context);
-                                completer.complete(false);
+                                if (isOtpSent && selectedMethod != 'totp') {
+                                  // Go back to method selection
+                                  setSheetState(() {
+                                    isOtpSent = false;
+                                    otpCode = '';
+                                    otpError = null;
+                                  });
+                                } else {
+                                  Navigator.pop(context);
+                                  if (!completer.isCompleted) completer.complete(false);
+                                }
                               },
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
                               child: Text(
-                                _localeService.get('cancel'),
+                                (isOtpSent && selectedMethod != 'totp')
+                                    ? _localeService.get('back')
+                                    : _localeService.get('cancel'),
                                 style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
                               ),
                             ),
@@ -878,23 +954,34 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                       final token = await _authService.getToken();
                                       if (token == null) {
                                         Navigator.pop(context);
-                                        completer.complete(false);
+                                        if (!completer.isCompleted) completer.complete(false);
                                         return;
                                       }
                                       
                                       if (!isOtpSent) {
-                                        // Send OTP
-                                        setSheetState(() => isSendingOtp = true);
+                                        // For TOTP: go directly to code entry
+                                        if (selectedMethod == 'totp') {
+                                          setSheetState(() {
+                                            isOtpSent = true;
+                                            actionError = null;
+                                          });
+                                          return;
+                                        }
+                                        
+                                        // Send OTP for email/sms
+                                        setSheetState(() {
+                                          isSendingOtp = true;
+                                          actionError = null;
+                                        });
                                         
                                         final result = await _apiService.send2FASettingsOtp(token, selectedMethod);
                                         
                                         if (result['success'] == true) {
                                           if (result['method'] == 'sms' && result['phoneNumber'] != null) {
-                                            // For SMS, we'd need Firebase verification
-                                            // For now, show not implemented
-                                            Navigator.pop(context);
-                                            _showSnackBar(_localeService.get('sms_otp_not_implemented'), Colors.orange);
-                                            completer.complete(false);
+                                            setSheetState(() {
+                                              isSendingOtp = false;
+                                              actionError = _localeService.get('sms_otp_not_implemented');
+                                            });
                                           } else {
                                             setSheetState(() {
                                               isOtpSent = true;
@@ -902,11 +989,13 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                             });
                                           }
                                         } else {
-                                          setSheetState(() => isSendingOtp = false);
-                                          _showSnackBar(result['message'] ?? _localeService.get('error'), Colors.red);
+                                          setSheetState(() {
+                                            isSendingOtp = false;
+                                            actionError = result['message'] ?? _localeService.get('error');
+                                          });
                                         }
                                       } else {
-                                        // Verify OTP
+                                        // Verify OTP / TOTP
                                         setSheetState(() => isVerifying = true);
                                         
                                         final result = await _apiService.verify2FASettings(
@@ -919,7 +1008,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                         
                                         if (result['success'] == true) {
                                           Navigator.pop(context);
-                                          completer.complete(true);
+                                          if (!completer.isCompleted) completer.complete(true);
                                         } else {
                                           setSheetState(() {
                                             isVerifying = false;
@@ -929,7 +1018,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                       }
                                     },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: (isOtpSent && otpCode.length != 6) ? Colors.grey : Colors.blue,
                                 foregroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -944,7 +1033,9 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                   : Text(
                                       isOtpSent 
                                           ? _localeService.get('verify')
-                                          : _localeService.get('send_otp'),
+                                          : selectedMethod == 'totp'
+                                              ? _localeService.get('next')
+                                              : _localeService.get('send_otp'),
                                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                     ),
                             ),
@@ -1314,6 +1405,27 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           });
                         } : null,
                       ),
+                      const SizedBox(height: 12),
+                      
+                      // Authenticator App option (TOTP)
+                      _build2FAMethodTile(
+                        icon: Icons.app_settings_alt,
+                        title: _localeService.get('authenticator_app'),
+                        subtitle: _localeService.get('authenticator_app_desc'),
+                        isEnabled: true,
+                        isSelected: selectedMethods.contains('totp'),
+                        onChanged: (value) {
+                          if (value) {
+                            // Start TOTP setup flow
+                            Navigator.pop(context);
+                            _showTotpSetupDialog(selectedMethods);
+                          } else {
+                            setSheetState(() {
+                              selectedMethods.remove('totp');
+                            });
+                          }
+                        },
+                      ),
                       
                       const SizedBox(height: 24),
                       
@@ -1364,10 +1476,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         ),
                         maxLength: 6,
                         onChanged: (value) {
-                          otpCode = value;
-                          if (otpError != null) {
-                            setSheetState(() => otpError = null);
-                          }
+                          setSheetState(() {
+                            otpCode = value;
+                            if (otpError != null) otpError = null;
+                          });
                         },
                         decoration: InputDecoration(
                           counterText: '',
@@ -1541,6 +1653,374 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     // State was never changed, no need to reset
   }
 
+  // Show TOTP (Google Authenticator) setup dialog
+  void _showTotpSetupDialog(List<String> existingMethods) {
+    bool isLoading = true;
+    bool isVerifying = false;
+    String? qrCodeUrl;
+    String? secret;
+    String? otpauthUrl;
+    String? error;
+    String totpCode = '';
+    int currentStep = 0; // 0: loading/QR, 1: enter code
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          // Fetch TOTP setup data on first build
+          if (isLoading && qrCodeUrl == null && error == null) {
+            _authService.getToken().then((token) async {
+              if (token == null) {
+                if (mounted) Navigator.pop(context);
+                return;
+              }
+              final result = await _apiService.setupTotp(token);
+              if (mounted) {
+                setSheetState(() {
+                  isLoading = false;
+                  if (result['success'] == true) {
+                    qrCodeUrl = result['qrCodeUrl'] as String?;
+                    secret = result['secret'] as String?;
+                    otpauthUrl = result['otpauthUrl'] as String?;
+                  } else {
+                    error = result['message'] ?? _localeService.get('totp_setup_failed');
+                  }
+                });
+              }
+            });
+          }
+
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.85,
+            ),
+            decoration: BoxDecoration(
+              color: _themeService.cardColor,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[600],
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Title
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(
+                            currentStep == 0 ? Icons.qr_code : Icons.pin,
+                            color: Colors.green,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _localeService.get('totp_setup_title'),
+                                style: TextStyle(
+                                  color: _themeService.textPrimaryColor,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                currentStep == 0
+                                    ? _localeService.get('totp_scan_qr')
+                                    : _localeService.get('totp_enter_code'),
+                                style: TextStyle(
+                                  color: _themeService.textSecondaryColor,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    if (isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(40),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (error != null)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Icon(Icons.error_outline, color: Colors.red, size: 48),
+                              const SizedBox(height: 12),
+                              Text(
+                                error!,
+                                style: TextStyle(color: Colors.red[400], fontSize: 14),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (currentStep == 0) ...[
+                      // Step 1: Show QR Code
+                      Text(
+                        _localeService.get('totp_scan_instruction'),
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // QR Code display
+                      if (qrCodeUrl != null)
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Builder(
+                              builder: (context) {
+                                // Parse data:image/png;base64,... format
+                                final base64Str = qrCodeUrl!.split(',').last;
+                                final Uint8List bytes = base64Decode(base64Str);
+                                return Image.memory(
+                                  bytes,
+                                  width: 200,
+                                  height: 200,
+                                  fit: BoxFit.contain,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+
+                      // Manual entry secret
+                      if (secret != null) ...[
+                        Text(
+                          _localeService.get('totp_manual_entry'),
+                          style: TextStyle(
+                            color: _themeService.textSecondaryColor,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: secret!));
+                            _showSnackBar(
+                              _localeService.get('totp_copied_secret'),
+                              Colors.green,
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: _themeService.inputBackground,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.grey[700]!),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    secret!,
+                                    style: TextStyle(
+                                      color: _themeService.textPrimaryColor,
+                                      fontSize: 14,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.copy,
+                                  color: _themeService.textSecondaryColor,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ] else ...[
+                      // Step 2: Enter verification code
+                      TextField(
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 8,
+                        ),
+                        maxLength: 6,
+                        onChanged: (value) {
+                          setSheetState(() {
+                            totpCode = value;
+                            if (error != null) error = null;
+                          });
+                        },
+                        decoration: InputDecoration(
+                          counterText: '',
+                          hintText: '000000',
+                          hintStyle: TextStyle(
+                            color: _themeService.textSecondaryColor.withOpacity(0.5),
+                            fontSize: 24,
+                            letterSpacing: 8,
+                          ),
+                          filled: true,
+                          fillColor: _themeService.inputBackground,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          errorText: error,
+                        ),
+                      ),
+                    ],
+
+                    const SizedBox(height: 24),
+
+                    // Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              if (currentStep == 1) {
+                                setSheetState(() {
+                                  currentStep = 0;
+                                  totpCode = '';
+                                  error = null;
+                                });
+                              } else {
+                                Navigator.pop(context);
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(
+                              currentStep == 1 ? _localeService.get('back') : _localeService.get('cancel'),
+                              style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: (isVerifying || (currentStep == 1 && totpCode.length != 6) || error != null && currentStep == 0)
+                                ? null
+                                : () async {
+                                    if (currentStep == 0) {
+                                      // Go to code entry step
+                                      setSheetState(() => currentStep = 1);
+                                    } else {
+                                      // Verify TOTP code
+                                      setSheetState(() => isVerifying = true);
+
+                                      final token = await _authService.getToken();
+                                      if (token == null) {
+                                        if (mounted) Navigator.pop(context);
+                                        return;
+                                      }
+
+                                      final result = await _apiService.verifyTotpSetup(token, totpCode, secret!);
+
+                                      if (mounted) {
+                                        if (result['success'] == true) {
+                                          Navigator.pop(context);
+                                          setState(() {
+                                            _twoFactorEnabled = true;
+                                            final methods = (result['methods'] as List?)?.cast<String>() ?? [...existingMethods, 'totp'];
+                                            _twoFactorMethods = methods;
+                                          });
+                                          _showSnackBar(
+                                            _localeService.get('totp_setup_success'),
+                                            Colors.green,
+                                          );
+                                        } else {
+                                          setSheetState(() {
+                                            isVerifying = false;
+                                            error = result['message'] ?? _localeService.get('totp_invalid_code');
+                                          });
+                                        }
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: (currentStep == 1 && totpCode.length != 6) ? Colors.grey : Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
+                            ),
+                            child: isVerifying
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : Text(
+                                    currentStep == 0
+                                        ? _localeService.get('next')
+                                        : _localeService.get('totp_verify_button'),
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   // Show dialog to disable 2FA with OTP verification
   void _showDisable2FADialog() {
     final user = _authService.user;
@@ -1645,10 +2125,10 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                         ),
                         maxLength: 6,
                         onChanged: (value) {
-                          otpCode = value;
-                          if (otpError != null) {
-                            setSheetState(() => otpError = null);
-                          }
+                          setSheetState(() {
+                            otpCode = value;
+                            if (otpError != null) otpError = null;
+                          });
                         },
                         decoration: InputDecoration(
                           counterText: '',

@@ -614,8 +614,9 @@ class ApiService {
     required String phone,
   }) async {
     try {
+      final encodedPhone = Uri.encodeComponent(phone);
       final response = await http.get(
-        Uri.parse('$_baseUrl/auth/link/phone/check?phone=$phone'),
+        Uri.parse('$_baseUrl/auth/link/phone/check?phone=$encodedPhone'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -1447,13 +1448,60 @@ class ApiService {
     }
   }
 
+  /// Setup TOTP - Generate secret and QR code
+  Future<Map<String, dynamic>> setupTotp(String token) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/totp/setup'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Thiết lập thất bại'};
+    } catch (e) {
+      print('Error setting up TOTP: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
+  /// Verify TOTP setup - Verify initial token and save secret
+  Future<Map<String, dynamic>> verifyTotpSetup(String token, String totpCode, String secret) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/auth/2fa/totp/verify-setup'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'token': totpCode,
+          'secret': secret,
+        }),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, ...jsonDecode(response.body)};
+      }
+      final body = jsonDecode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Xác thực thất bại'};
+    } catch (e) {
+      print('Error verifying TOTP setup: $e');
+      return {'success': false, 'message': 'Không thể kết nối đến server'};
+    }
+  }
+
   // ============= FORGOT PASSWORD WITH PHONE =============
 
   /// Check if phone exists for password reset
   Future<Map<String, dynamic>> checkPhoneForPasswordReset(String phone) async {
     try {
+      final encodedPhone = Uri.encodeComponent(phone);
       final response = await http.get(
-        Uri.parse('$_baseUrl/auth/forgot-password/check-phone?phone=$phone'),
+        Uri.parse('$_baseUrl/auth/forgot-password/check-phone?phone=$encodedPhone'),
         headers: {'Content-Type': 'application/json'},
       );
 
