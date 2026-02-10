@@ -105,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // Translation state management
   final Map<String, bool> _translatingMessages = {}; // messageId -> isTranslating
   final Map<String, String> _translatedMessages = {}; // messageId -> translated text
+  bool _isAutoTranslate = false; // Auto-translate incoming messages
   
   // Pinned message at top of chat
   Map<String, dynamic>? _pinnedMessage;
@@ -238,6 +239,14 @@ class _ChatScreenState extends State<ChatScreen> {
               _messages.insert(0, message);
             });
             _scrollToBottom();
+            
+            // Auto-translate incoming text messages if enabled
+            if (_isAutoTranslate) {
+              final content = message['content']?.toString() ?? '';
+              if (content.isNotEmpty && !content.startsWith('[')) {
+                _translateMessage(message);
+              }
+            }
           }
         }
         _messageService.markAsRead(_conversationId);
@@ -353,6 +362,9 @@ class _ChatScreenState extends State<ChatScreen> {
           
           // Set nickname
           _recipientNickname = settings['nickname'] as String?;
+          
+          // Set auto-translate
+          _isAutoTranslate = settings['autoTranslate'] == true;
         });
       }
       
@@ -1225,6 +1237,27 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Auto-translate recent untranslated messages from the recipient
+  Future<void> _autoTranslateExistingMessages() async {
+    // Only translate the most recent untranslated text messages from the other user (max 10)
+    final recipientMessages = _messages
+        .where((m) =>
+            m['senderId']?.toString() == widget.recipientId &&
+            (m['content']?.toString() ?? '').isNotEmpty &&
+            !(m['content']?.toString().startsWith('[') ?? true) &&
+            !_translatedMessages.containsKey(m['id']?.toString()) &&
+            _translatingMessages[m['id']?.toString()] != true)
+        .take(10)
+        .toList();
+
+    for (final message in recipientMessages) {
+      if (!mounted || !_isAutoTranslate) break;
+      _translateMessage(message);
+      // Small delay to avoid overwhelming the API
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+  }
+
   // Forward message (placeholder)
   void _forwardMessage(Map<String, dynamic> message) {
     // TODO: Implement forward to other conversations
@@ -1581,6 +1614,17 @@ class _ChatScreenState extends State<ChatScreen> {
               setState(() {
                 _recipientNickname = nickname;
               });
+            }
+          },
+          onAutoTranslateChanged: (enabled) {
+            if (mounted) {
+              setState(() {
+                _isAutoTranslate = enabled;
+              });
+              // When enabled, auto-translate recent untranslated messages from recipient
+              if (enabled) {
+                _autoTranslateExistingMessages();
+              }
             }
           },
         ),

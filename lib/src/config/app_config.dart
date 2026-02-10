@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 
 /// Environment configuration for the app
 /// 
-/// HOW TO SWITCH ENVIRONMENT:
+/// SWITCH ENVIRONMENT:
 /// ================================
 /// Option 1: Build Mode (Automatic)
 ///   - Debug mode (F5) → Development URLs
@@ -14,7 +14,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 /// ================================
 class AppConfig {
   // ============================================
-  // 🔧 MANUAL OVERRIDE - Set to true to test production URLs in debug mode
+  // MANUAL OVERRIDE - Set to true to test production URLs in debug mode
   // ============================================
   static const bool _forceProduction = false;
 
@@ -24,24 +24,22 @@ class AppConfig {
   static bool get isProduction => _forceProduction || kReleaseMode;
 
   // ============================================
-  // 🌐 PRODUCTION URLs (AWS) - Update these before deploying
+  //  PRODUCTION URLs (AWS EC2) - THESIS DEPLOYMENT
   // ============================================
-  // Option 1: Single API Gateway (recommended)
-  static const String _prodApiBaseUrl = 'https://api.your-domain.com';
+  // EC2 Public IP: 18.141.239.82
+  // User Service: port 3000
+  // Video Service: port 3002
+  // ============================================
   
-  // CloudFront CDN for video/image delivery (optional but recommended)
-  static const String? _prodCloudFrontUrl = null; // e.g., 'https://d123456.cloudfront.net'
+  // EC2 direct access (no API Gateway - saves cost for thesis)
+  static const String _prodUserServiceUrl = 'http://18.141.239.82:3000';
+  static const String _prodVideoServiceUrl = 'http://18.141.239.82:3002';
   
-  // All services behind API Gateway
-  static String get _prodUserServiceUrl => _prodApiBaseUrl;
-  static String get _prodVideoServiceUrl => _prodApiBaseUrl;
-
-  // Option 2: Separate URLs (if not using API Gateway)
-  // static const String _prodUserServiceUrl = 'https://user-api.your-domain.com';
-  // static const String _prodVideoServiceUrl = 'https://video-api.your-domain.com';
+  // CloudFront CDN for video/image delivery
+  static const String? _prodCloudFrontUrl = 'https://d3ucy55nukq6p9.cloudfront.net';
 
   // ============================================
-  // 🖥️ DEVELOPMENT URLs (Local)
+  // DEVELOPMENT URLs (Local)
   // ============================================
   static String get _devUserServiceUrl {
     if (kIsWeb) {
@@ -64,7 +62,7 @@ class AppConfig {
   }
 
   // ============================================
-  // 📍 GETTERS - Use these in services
+  // GETTERS - Use these in services
   // ============================================
   
   /// User Service URL (auth, users, follow)
@@ -80,8 +78,8 @@ class AppConfig {
   /// WebSocket URL for real-time features
   static String get webSocketUrl {
     if (isProduction) {
-      // WSS for production (secure)
-      return _prodVideoServiceUrl.replaceFirst('https://', 'wss://');
+      // WS for EC2 (no SSL - saves cost for thesis)
+      return 'ws://18.141.239.82:3002';
     } else {
       // WS for development
       if (kIsWeb) {
@@ -101,26 +99,26 @@ class AppConfig {
   }
 
   // ============================================
-  // 📱 APP INFO
+  // APP INFO
   // ============================================
   static const String appName = 'Short Video App';
   static const String appVersion = '1.0.0';
 
   // ============================================
-  // ⏱️ TIMEOUTS
+  // TIMEOUTS
   // ============================================
   static const Duration connectionTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
 
   // ============================================
-  // 🔍 DEBUG - Print config at startup
+  // DEBUG - Print config at startup
   // ============================================
   static void printConfig() {
     print('');
     print('');
     print(' APP CONFIGURATION             ║');
     print('');
-    print('Environment: ${isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"}');
+    print('Environment: ${isProduction ? "PRODUCTION" : "DEVELOPMENT"}');
     print('Force Prod:  $_forceProduction');
     print('User API:    $userServiceUrl');
     print('Video API:   $videoServiceUrl');

@@ -399,6 +399,7 @@ class MessageService {
         'isPinned': false,
         'themeColor': null,
         'nickname': null,
+        'autoTranslate': false,
       };
     } catch (e) {
       print('Error getting conversation settings: $e');
@@ -407,6 +408,7 @@ class MessageService {
         'isPinned': false,
         'themeColor': null,
         'nickname': null,
+        'autoTranslate': false,
       };
     }
   }
@@ -418,6 +420,7 @@ class MessageService {
     bool? isPinned,
     String? themeColor,
     String? nickname,
+    bool? autoTranslate,
   }) async {
     try {
       final currentUserId = _currentUserId ?? '';
@@ -426,6 +429,7 @@ class MessageService {
       if (isPinned != null) body['isPinned'] = isPinned;
       if (themeColor != null) body['themeColor'] = themeColor;
       if (nickname != null) body['nickname'] = nickname;
+      if (autoTranslate != null) body['autoTranslate'] = autoTranslate;
 
       final response = await http.put(
         Uri.parse('$_baseUrl/messages/settings/$recipientId?userId=$currentUserId'),
