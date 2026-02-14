@@ -55,6 +55,122 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
     if (mounted) setState(() {});
   }
 
+  bool get _hasChanges =>
+      _selectedVisibility != widget.currentVisibility ||
+      _allowComments != widget.allowComments ||
+      _allowDuet != widget.allowDuet;
+
+  Future<void> _handleDismiss() async {
+    if (_hasChanges) {
+      final result = await _showUnsavedChangesDialog();
+      if (result == 'save') {
+        await _updatePrivacy();
+      } else if (result == 'discard') {
+        if (mounted) Navigator.pop(context);
+      }
+      // result == null means user tapped outside dialog or cancelled → stay
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  Future<String?> _showUnsavedChangesDialog() {
+    return showDialog<String>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => Dialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF2D55).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Color(0xFFFF2D55),
+                  size: 26,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _localeService.isVietnamese
+                    ? 'Thay đổi chưa được lưu'
+                    : 'Unsaved Changes',
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _localeService.isVietnamese
+                    ? 'Bạn có muốn lưu thay đổi trước khi thoát không?'
+                    : 'Do you want to save your changes before leaving?',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Save button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, 'save'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF2D55),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    _localeService.isVietnamese ? 'Lưu thay đổi' : 'Save Changes',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Discard button
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'discard'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    _localeService.isVietnamese ? 'Hủy thay đổi' : 'Discard',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: _themeService.textSecondaryColor,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _updatePrivacy() async {
     if (_isUpdating) return;
     
@@ -91,12 +207,19 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: _themeService.cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _handleDismiss();
+        }
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: _themeService.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -116,7 +239,7 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => Navigator.pop(context),
+                    onTap: _handleDismiss,
                     child: Icon(Icons.close, color: _themeService.iconColor),
                   ),
                 ],
@@ -178,18 +301,6 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
                     value: _allowComments,
                     onChanged: (v) => setState(() => _allowComments = v),
                   ),
-                  
-                  // Allow duet/stitch toggle
-                  _buildToggleOption(
-                    label: _localeService.isVietnamese 
-                        ? 'Cho phép sử dụng lại nội dung' 
-                        : 'Allow reuse content',
-                    subtitle: _localeService.isVietnamese 
-                        ? 'Duet, Ghép nối, nhãn dán và thêm vào Nhật ký' 
-                        : 'Duet, Stitch, stickers and add to diary',
-                    value: _allowDuet,
-                    onChanged: (v) => setState(() => _allowDuet = v),
-                  ),
                 ],
               ),
             ),
@@ -227,6 +338,7 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -347,9 +459,9 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
             value: value,
             onChanged: onChanged,
             activeColor: Colors.white,
-            activeTrackColor: const Color(0xFF6AD4DD),
+            activeTrackColor: const Color(0xFF34C759),
             inactiveThumbColor: Colors.white,
-            inactiveTrackColor: _themeService.textSecondaryColor.withOpacity(0.3),
+            inactiveTrackColor: _themeService.switchInactiveTrackColor,
           ),
         ],
       ),

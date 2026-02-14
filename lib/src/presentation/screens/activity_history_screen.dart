@@ -28,6 +28,8 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
   int _currentPage = 1;
   String _currentFilter = 'all';
   final ScrollController _scrollController = ScrollController();
+  final Set<String> _expandedDates = {};
+  static const int _initialShowCount = 3;
 
   final List<Map<String, dynamic>> _filters = [
     {'key': 'all', 'icon': Icons.grid_view_rounded},
@@ -141,6 +143,7 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
       setState(() {
         _currentFilter = filter;
         _activities.clear();
+        _expandedDates.clear();
       });
       _loadActivities();
     }
@@ -955,6 +958,7 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
       _activities = [];
       _currentPage = 1;
       _hasMore = true;
+      _expandedDates.clear();
     });
     _loadActivities();
   }
@@ -1084,31 +1088,158 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
         itemBuilder: (context, index) {
           if (index == groupedActivities.length) {
             return _isLoading
-                ? const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Center(child: CircularProgressIndicator()),
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Center(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: ThemeService.accentColor,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            _localeService.isVietnamese ? 'Đang tải thêm...' : 'Loading more...',
+                            style: TextStyle(
+                              color: _themeService.textSecondaryColor,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   )
                 : const SizedBox.shrink();
           }
 
           final dateKey = groupedActivities.keys.elementAt(index);
           final activities = groupedActivities[dateKey]!;
+          final isExpanded = _expandedDates.contains(dateKey);
+          final hasMore = activities.length > _initialShowCount;
+          final visibleActivities = isExpanded
+              ? activities
+              : activities.take(_initialShowCount).toList();
+          final remainingCount = activities.length - _initialShowCount;
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  dateKey,
-                  style: TextStyle(
-                    color: _themeService.textSecondaryColor,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+              // Date header with count — tappable to toggle expand/collapse
+              GestureDetector(
+                onTap: hasMore ? () {
+                  setState(() {
+                    if (isExpanded) {
+                      _expandedDates.remove(dateKey);
+                    } else {
+                      _expandedDates.add(dateKey);
+                    }
+                  });
+                } : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      Text(
+                        dateKey,
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _themeService.isLightMode
+                              ? Colors.grey[200]
+                              : Colors.grey[800],
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${activities.length}',
+                          style: TextStyle(
+                            color: _themeService.textSecondaryColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (hasMore) ...[
+                        const Spacer(),
+                        Icon(
+                          isExpanded
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                          size: 20,
+                          color: _themeService.textSecondaryColor,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
-              ...activities.map((activity) => _buildActivityItem(activity)),
+              // Activity items
+              ...visibleActivities.map((activity) => _buildActivityItem(activity)),
+              // "Show more" button
+              if (hasMore && !isExpanded)
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _expandedDates.add(dateKey);
+                    });
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _themeService.isLightMode
+                          ? Colors.grey[100]
+                          : Colors.grey[850],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _themeService.isLightMode
+                            ? Colors.grey[300]!
+                            : Colors.grey[700]!,
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.expand_more,
+                          size: 18,
+                          color: ThemeService.accentColor,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _localeService.isVietnamese
+                              ? 'Xem thêm $remainingCount hoạt động'
+                              : 'Show $remainingCount more',
+                          style: TextStyle(
+                            color: ThemeService.accentColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (index < groupedActivities.length - 1)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+                  child: Divider(
+                    color: _themeService.dividerColor.withValues(alpha: 0.3),
+                    thickness: 0.5,
+                  ),
+                ),
             ],
           );
         },
@@ -1275,7 +1406,7 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
                           ],
                           const SizedBox(height: 4),
                           Text(
-                            DateFormat('HH:mm').format(createdAt),
+                            _formatRelativeTime(createdAt),
                             style: TextStyle(
                               color: _themeService.textSecondaryColor.withValues(alpha: 0.6),
                               fontSize: 11,
@@ -1544,6 +1675,24 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
       return metadata['videoThumbnail'] as String?;
     }
     return null;
+  }
+
+  String _formatRelativeTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final diff = now.difference(dateTime);
+    final isVi = _localeService.isVietnamese;
+
+    if (diff.inMinutes < 1) {
+      return isVi ? 'Vừa xong' : 'Just now';
+    } else if (diff.inMinutes < 60) {
+      return isVi ? '${diff.inMinutes} phút trước' : '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24) {
+      return isVi ? '${diff.inHours} giờ trước' : '${diff.inHours}h ago';
+    } else if (diff.inDays < 7) {
+      return isVi ? '${diff.inDays} ngày trước' : '${diff.inDays}d ago';
+    } else {
+      return DateFormat('HH:mm').format(dateTime);
+    }
   }
 
   String _getDateKey(DateTime date) {

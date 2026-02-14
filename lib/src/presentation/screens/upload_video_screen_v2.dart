@@ -40,10 +40,19 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
   bool _uploadSuccess = false;
   String? _uploadError;
 
+  // Track background upload so we can await it before navigating back
+  Future<void>? _backgroundUploadFuture;
+  bool _uploadCompleted = false;
+
   // Categories
   List<Map<String, dynamic>> _categories = [];
   Set<int> _selectedCategoryIds = {};
   bool _isCategoriesLoading = true;
+
+  // Privacy settings
+  String _selectedVisibility = 'public'; // 'public', 'friends', 'private'
+  bool _allowComments = true;
+  bool _isPrivacyExpanded = false;
 
   // Video thumbnail
   VideoPlayerController? _thumbnailController;
@@ -364,29 +373,17 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     }
 
     HapticFeedback.heavyImpact();
-    // OPTIMISTIC UPDATE: Show success immediately
+    // Show uploading state and go to stage 3
     setState(() {
       _isUploading = true;
-      _uploadProgress = 1.0;
+      _uploadProgress = 0.0;
       _uploadError = null;
+      _uploadSuccess = false;
+      _uploadCompleted = false;
     });
     _goToNextStage();
 
-    // Show success animation after transition
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) {
-        setState(() {
-          _isUploading = false; 
-          _uploadSuccess = true;
-        });
-        _successAnimController.forward();
-        HapticFeedback.heavyImpact();
-        
-        // Removed auto-close to allow user to tap "Done" manually
-      }
-    });
-
-    // BACKGROUND UPLOAD (Fire and forget)
+    // ACTUAL UPLOAD - wait for it to complete before showing success
     final description = _descriptionController.text.trim();
     final categoryIds = _selectedCategoryIds.toList();
     final userId = user['id'].toString();
@@ -396,10 +393,9 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
         ? _framePositions[_selectedFrameIndex].inMilliseconds / 1000.0
         : null;
     
-    // Define background worker inside the method (local function)
-    Future<void> performBackgroundUpload() async {
+    Future<void> performUpload() async {
       try {
-        print('Background upload started for ${_selectedVideo!.name}');
+        print('Upload started for ${_selectedVideo!.name}');
         if (_selectedThumbnail != null) {
           await _videoService.uploadVideoWithThumbnail(
             videoFile: _selectedVideo!,
@@ -409,6 +405,8 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             description: description,
             token: token,
             categoryIds: categoryIds.isNotEmpty ? categoryIds : null,
+            visibility: _selectedVisibility,
+            allowComments: _allowComments,
           );
         } else {
           await _videoService.uploadVideo(
@@ -419,16 +417,33 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             token: token,
             categoryIds: categoryIds.isNotEmpty ? categoryIds : null,
             thumbnailTimestamp: thumbTimestamp,
+            visibility: _selectedVisibility,
+            allowComments: _allowComments,
           );
         }
-        print('Background upload success');
+        print('Upload success');
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+            _uploadSuccess = true;
+            _uploadCompleted = true;
+          });
+          _successAnimController.forward();
+          HapticFeedback.heavyImpact();
+        }
       } catch (e) {
-        print('Background upload failed: $e');
+        print('Upload failed: $e');
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+            _uploadError = e.toString();
+          });
+        }
       }
     }
     
-    // Execute detached
-    performBackgroundUpload();
+    _backgroundUploadFuture = performUpload();
+    _startProgressSimulation();
   }
 
   void _startProgressSimulation() {
@@ -803,6 +818,10 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
           ),
           const SizedBox(height: 12),
           _buildCategoriesGrid(isDark),
+          const SizedBox(height: 32),
+
+          // Privacy settings
+          _buildPrivacySection(isDark),
           const SizedBox(height: 32),
 
           // Upload button
@@ -1250,6 +1269,233 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     );
   }
 
+  Widget _buildPrivacySection(bool isDark) {
+    final visibilityOptions = [
+      {
+        'value': 'public',
+        'icon': Icons.public_rounded,
+        'label': _localeService.isVietnamese ? 'Mọi người' : 'Everyone',
+        'desc': _localeService.isVietnamese ? 'Tất cả mọi người có thể xem' : 'Anyone can view',
+      },
+      {
+        'value': 'friends',
+        'icon': Icons.people_rounded,
+        'label': _localeService.isVietnamese ? 'Bạn bè' : 'Friends',
+        'desc': _localeService.isVietnamese ? 'Chỉ bạn bè theo dõi lẫn nhau' : 'Only mutual followers',
+      },
+      {
+        'value': 'private',
+        'icon': Icons.lock_rounded,
+        'label': _localeService.isVietnamese ? 'Chỉ mình tôi' : 'Only me',
+        'desc': _localeService.isVietnamese ? 'Chỉ bạn có thể xem' : 'Only you can view',
+      },
+    ];
+
+    // Find the currently selected option for preview
+    final currentOption = visibilityOptions.firstWhere(
+      (o) => o['value'] == _selectedVisibility,
+      orElse: () => visibilityOptions.first,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section header
+        Text(
+          _localeService.isVietnamese ? 'Quyền riêng tư' : 'Privacy',
+          style: TextStyle(
+            color: _themeService.textPrimaryColor,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1A1A1A) : Colors.grey[50],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
+          ),
+          child: Column(
+            children: [
+              // Collapsed header - shows current selection + expand arrow
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() => _isPrivacyExpanded = !_isPrivacyExpanded);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: _isPrivacyExpanded
+                        ? const BorderRadius.vertical(top: Radius.circular(16))
+                        : BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.visibility_rounded, size: 18, color: _themeService.textSecondaryColor),
+                      const SizedBox(width: 8),
+                      Text(
+                        _localeService.isVietnamese ? 'Ai có thể xem video này' : 'Who can view this video',
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Current selection preview
+                      Icon(
+                        currentOption['icon'] as IconData,
+                        size: 16,
+                        color: ThemeService.accentColor,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        currentOption['label'] as String,
+                        style: TextStyle(
+                          color: ThemeService.accentColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      AnimatedRotation(
+                        turns: _isPrivacyExpanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 20,
+                          color: _themeService.textSecondaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Expandable visibility options
+              AnimatedCrossFade(
+                firstChild: const SizedBox.shrink(),
+                secondChild: Column(
+                  children: [
+                    Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
+                    ...visibilityOptions.map((option) {
+                      final isSelected = _selectedVisibility == option['value'];
+                      return GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          setState(() => _selectedVisibility = option['value'] as String);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? ThemeService.accentColor.withOpacity(0.08)
+                                : Colors.transparent,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                option['icon'] as IconData,
+                                size: 22,
+                                color: isSelected ? ThemeService.accentColor : _themeService.textSecondaryColor,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      option['label'] as String,
+                                      style: TextStyle(
+                                        color: isSelected ? ThemeService.accentColor : _themeService.textPrimaryColor,
+                                        fontSize: 14,
+                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                      ),
+                                    ),
+                                    Text(
+                                      option['desc'] as String,
+                                      style: TextStyle(
+                                        color: _themeService.textSecondaryColor,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected ? ThemeService.accentColor : _themeService.textSecondaryColor,
+                                    width: isSelected ? 6 : 2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+                crossFadeState: _isPrivacyExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 250),
+              ),
+
+              // Divider
+              Divider(height: 1, color: isDark ? Colors.grey[800] : Colors.grey[300]),
+
+              // Allow comments toggle (always visible)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.chat_bubble_outline_rounded,
+                      size: 22,
+                      color: _themeService.textSecondaryColor,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _localeService.isVietnamese ? 'Cho phép bình luận' : 'Allow comments',
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 28,
+                      child: Switch(
+                        value: _allowComments,
+                        onChanged: (val) {
+                          HapticFeedback.lightImpact();
+                          setState(() => _allowComments = val);
+                        },
+                        activeColor: ThemeService.accentColor,
+                        inactiveTrackColor: _themeService.switchInactiveTrackColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildUploadButtonStage2() {
     final canUpload = _descriptionController.text.trim().isNotEmpty;
 
@@ -1292,102 +1538,62 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
 
   // ========== STAGE 3: UPLOADING/SUCCESS ==========
   Widget _buildStage3Upload(bool isDark) {
-    if (_uploadSuccess) {
-      return _buildSuccessView(isDark);
-    }
-
     if (_uploadError != null) {
       return _buildErrorView(isDark);
     }
 
-    return _buildUploadingView(isDark);
+    // Unified view: shows loading → then success, in ONE screen
+    return _buildUploadStatusView(isDark);
   }
 
-  Widget _buildUploadingView(bool isDark) {
+  Widget _buildUploadStatusView(bool isDark) {
+    final isComplete = _uploadSuccess && _uploadCompleted;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Progress circle
-            SizedBox(
-              width: 120,
-              height: 120,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: CircularProgressIndicator(
-                      value: _uploadProgress,
-                      strokeWidth: 6,
-                      backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
-                      valueColor: AlwaysStoppedAnimation(ThemeService.accentColor),
+            // Tick area: loading spinner OR success tick
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: isComplete
+                  ? Container(
+                      key: const ValueKey('tick'),
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: ThemeService.accentColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: ThemeService.accentColor.withOpacity(0.3),
+                            blurRadius: 24,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.check_rounded, size: 64, color: Colors.white),
+                    )
+                  : SizedBox(
+                      key: const ValueKey('loading'),
+                      width: 112,
+                      height: 112,
+                      child: CircularProgressIndicator(
+                        value: _uploadProgress > 0 ? _uploadProgress : null,
+                        strokeWidth: 5,
+                        color: ThemeService.accentColor,
+                        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                      ),
                     ),
-                  ),
-                  Text(
-                    '${(_uploadProgress * 100).toInt()}%',
-                    style: TextStyle(
-                      color: _themeService.textPrimaryColor,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
             ),
             const SizedBox(height: 32),
             Text(
-              _localeService.isVietnamese ? 'Đang tải lên...' : 'Uploading...',
-              style: TextStyle(
-                color: _themeService.textPrimaryColor,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _localeService.isVietnamese
-                  ? 'Vui lòng không đóng ứng dụng'
-                  : 'Please don\'t close the app',
-              style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSuccessView(bool isDark) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Success icon
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.green.shade400, Colors.teal.shade400],
-                ),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.withOpacity(0.3),
-                    blurRadius: 24,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child: const Icon(Icons.check_rounded, size: 64, color: Colors.white),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              _localeService.get('video_uploaded'),
+              isComplete
+                  ? _localeService.get('video_uploaded')
+                  : (_localeService.isVietnamese ? 'Đang xử lý...' : 'Processing...'),
               style: TextStyle(
                 color: _themeService.textPrimaryColor,
                 fontSize: 24,
@@ -1396,19 +1602,26 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             ),
             const SizedBox(height: 12),
             Text(
-              _localeService.get('video_processing'),
+              isComplete
+                  ? _localeService.get('video_processing')
+                  : (_localeService.isVietnamese
+                      ? 'Quá trình này có thể mất vài giây'
+                      : 'This may take a moment'),
               style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 40),
+            // "Done" button — grey & disabled while uploading, accent when done
             SizedBox(
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: isComplete ? () => Navigator.pop(context, true) : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: ThemeService.accentColor,
+                  backgroundColor: isComplete ? ThemeService.accentColor : (isDark ? Colors.grey[700] : Colors.grey[400]),
                   foregroundColor: Colors.white,
+                  disabledBackgroundColor: isDark ? Colors.grey[700] : Colors.grey[400],
+                  disabledForegroundColor: Colors.white60,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
                 ),

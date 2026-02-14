@@ -367,6 +367,7 @@ class ApiService {
     String? bio,
     String? gender,
     String? dateOfBirth,
+    String? fullName,
   }) async {
     try {
       final response = await http.put(
@@ -379,6 +380,7 @@ class ApiService {
           if (bio != null) 'bio': bio,
           if (gender != null) 'gender': gender,
           if (dateOfBirth != null) 'dateOfBirth': dateOfBirth,
+          if (fullName != null) 'fullName': fullName,
         }),
       );
 
@@ -402,6 +404,69 @@ class ApiService {
         'success': false,
         'message': e.toString(),
       };
+    }
+  }
+
+  /// Get display name change info (7-day cooldown)
+  Future<Map<String, dynamic>> getDisplayNameChangeInfo({required String token}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/display-name-change-info'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'success': false, 'message': 'Failed to get display name change info'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Change display name (with 7-day cooldown like TikTok)
+  Future<Map<String, dynamic>> changeDisplayName({
+    required String token,
+    required String newDisplayName,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/change-display-name'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({'newDisplayName': newDisplayName}),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      final body = json.decode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Failed to change display name'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Remove display name (with 7-day cooldown)
+  Future<Map<String, dynamic>> removeDisplayName({required String token}) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$_baseUrl/users/remove-display-name'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      final body = json.decode(response.body);
+      return {'success': false, 'message': body['message'] ?? 'Failed to remove display name'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
     }
   }
 
@@ -1227,6 +1292,55 @@ class ApiService {
     }
   }
 
+  // ============= PRIVACY CHECK METHODS =============
+
+  /// Check if requester can perform action on target user
+  /// action: 'view_video', 'send_message', 'comment'
+  Future<Map<String, dynamic>> checkPrivacyPermission(
+    String requesterId,
+    String targetUserId,
+    String action,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/users/privacy/check'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'requesterId': requesterId,
+          'targetUserId': targetUserId,
+          'action': action,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+      return {'allowed': true}; // Default to allowed on error
+    } catch (e) {
+      print('Error checking privacy permission: $e');
+      return {'allowed': true};
+    }
+  }
+
+  /// Get privacy settings for a specific user (public endpoint)
+  Future<Map<String, dynamic>> getPrivacySettings(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/users/privacy/$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['settings'] ?? {};
+      }
+      return {};
+    } catch (e) {
+      print('Error getting privacy settings: $e');
+      return {};
+    }
+  }
+
   // ============= ACCOUNT LINKING (TikTok-style) =============
 
   /// Get full account info with linked accounts
@@ -1813,6 +1927,34 @@ class ApiService {
       }
     } catch (e) {
       print('Error fetching video categories: $e');
+      return {'success': false, 'message': 'Cannot connect to server'};
+    }
+  }
+
+  /// Get categories for a specific video with AI suggestion info
+  Future<Map<String, dynamic>> getVideoCategoriesWithAiInfo(String videoId) async {
+    try {
+      final url = Uri.parse('$_videoServiceBaseUrl/categories/video/$videoId/with-ai-info');
+      final response = await http.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      final body = jsonDecode(response.body);
+      
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'data': body['data'] ?? [],
+        };
+      } else {
+        return {
+          'success': false,
+          'message': body['message'] ?? 'Failed to load video categories',
+        };
+      }
+    } catch (e) {
+      print('Error fetching video categories with AI info: $e');
       return {'success': false, 'message': 'Cannot connect to server'};
     }
   }

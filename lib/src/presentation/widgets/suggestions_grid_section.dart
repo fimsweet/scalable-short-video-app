@@ -123,17 +123,61 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
     }
 
     if (visibleSuggestions.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: Text(
-            _localeService.get('no_suggestions'),
-            style: TextStyle(
-              color: _themeService.textSecondaryColor,
-              fontSize: 14,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 12),
+            child: Text(
+              _localeService.get('discover_people'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+            decoration: BoxDecoration(
+              color: _themeService.isLightMode
+                  ? Colors.grey[50]
+                  : const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(12),
+              border: _themeService.isLightMode
+                  ? Border.all(color: Colors.grey[200]!, width: 0.5)
+                  : null,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.people_outline_rounded,
+                  size: 40,
+                  color: _themeService.textSecondaryColor.withOpacity(0.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _localeService.get('no_suggestions_title'),
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _localeService.get('no_suggestions_desc'),
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 12,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
@@ -302,7 +346,7 @@ class _SuggestionCard extends StatelessWidget {
 
                     // Reason
                     Text(
-                      user.getReasonText(localeService.get),
+                      user.getReasonText(localeService.get, isVietnamese: localeService.isVietnamese),
                       style: TextStyle(
                         color: themeService.textSecondaryColor,
                         fontSize: 12,

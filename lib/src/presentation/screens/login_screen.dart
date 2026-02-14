@@ -608,7 +608,17 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       
       if (!mounted) return;
       
-      // Step 3: Check if 2FA is required
+      // Step 3: Check if account requires reactivation (deactivated)
+      if (backendResult['requiresReactivation'] == true) {
+        setState(() => _isGoogleLoading = false);
+        _showReactivationDialog(
+          userId: backendResult['userId'],
+          daysRemaining: backendResult['daysRemaining'] ?? 30,
+        );
+        return;
+      }
+
+      // Step 4: Check if 2FA is required
       if (backendResult['requires2FA'] == true) {
         setState(() => _isGoogleLoading = false);
         _show2FAVerificationDialog(
@@ -618,7 +628,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         return;
       }
       
-      // Step 4: Check if user needs to complete registration
+      // Step 5: Check if user needs to complete registration
       if (backendResult['isNewUser'] == true) {
         // User not found - need to register first
         // Show confirmation dialog

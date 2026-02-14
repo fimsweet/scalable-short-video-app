@@ -15,6 +15,9 @@ class HLSVideoPlayer extends StatefulWidget {
   final String videoId; // Video ID for saving state
   final Duration? initialPosition; // Initial position to seek to
   final String? thumbnailUrl; // Thumbnail to show while loading
+  final double progressBarBottom; // Bottom offset for progress bar (to sit above bottom bar)
+  final VoidCallback? onLongPress; // Callback for long press on video
+  final VoidCallback? onVideoEnd; // Callback when video reaches the end
 
   const HLSVideoPlayer({
     super.key,
@@ -26,6 +29,9 @@ class HLSVideoPlayer extends StatefulWidget {
     this.videoId = '',
     this.initialPosition,
     this.thumbnailUrl,
+    this.progressBarBottom = 0,
+    this.onLongPress,
+    this.onVideoEnd,
   });
 
   @override
@@ -43,6 +49,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   bool _isFullscreen = false;
   bool _isDisposed = false;
   bool _hasRestoredPosition = false; // Track if we've already restored position
+  bool _isSeeking = false; // Whether user is dragging the seekbar
+  double _seekValue = 0.0; // Current seek position (0.0 to 1.0) during drag
 
   @override
   bool get wantKeepAlive => true; // Keep state alive when switching tabs
@@ -94,6 +102,14 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       _controller?.setVolume(_isMuted ? 0.0 : 1.0);
       _controller?.play();
     }
+  }
+
+  void setPlaybackSpeed(double speed) {
+    _controller?.setPlaybackSpeed(speed);
+  }
+
+  void setLooping(bool looping) {
+    _controller?.setLooping(looping);
   }
 
   Future<void> _initializePlayer() async {
@@ -178,13 +194,28 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   }
 
   void _videoListener() {
+    if (_isDisposed || !mounted) return;
     if (_controller?.value.hasError ?? false) {
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = _controller?.value.errorDescription ?? 'Unknown error';
-        });
+      setState(() {
+        _hasError = true;
+        _errorMessage = _controller?.value.errorDescription ?? 'Unknown error';
+      });
+      return;
+    }
+    // Detect video end (position >= duration - small threshold)
+    if (_isInitialized && _controller != null && !_isSeeking) {
+      final duration = _controller!.value.duration;
+      final position = _controller!.value.position;
+      if (duration.inMilliseconds > 0 &&
+          position.inMilliseconds > 0 &&
+          (duration - position).inMilliseconds < 300 &&
+          !_controller!.value.isPlaying) {
+        widget.onVideoEnd?.call();
       }
+    }
+    // Rebuild to update progress bar in real-time
+    if (_isInitialized && !_isSeeking) {
+      setState(() {});
     }
   }
 
@@ -391,6 +422,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
         // Video player - Smart display based on aspect ratio
         GestureDetector(
           onTap: _togglePlayPause,
+          onLongPress: widget.onLongPress,
           behavior: HitTestBehavior.opaque,
           child: _isPortraitVideo
               ? SizedBox.expand(
@@ -542,25 +574,181 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
             ),
           ),
         
-        // Video progress bar (at the very bottom)
+        // TikTok-style interactive seekbar
         Positioned(
-          bottom: 0,
+          bottom: widget.progressBarBottom,
           left: 0,
           right: 0,
-          child: VideoProgressIndicator(
-            _controller!,
-            allowScrubbing: true,
-            colors: const VideoProgressColors(
-              playedColor: Colors.white,
-              bufferedColor: Colors.white30,
-              backgroundColor: Colors.white10,
-            ),
-            padding: const EdgeInsets.symmetric(vertical: 0, horizontal: 0),
-          ),
+          child: _buildTikTokSeekBar(),
         ),
       ],
     );
   }
+
+  Widget _buildTikTokSeekBar() {
+    final duration = _controller!.value.duration;
+    final position = _controller!.value.position;
+    final buffered = _controller!.value.buffered;
+
+    double progress = duration.inMilliseconds > 0
+        ? position.inMilliseconds / duration.inMilliseconds
+        : 0.0;
+    progress = progress.clamp(0.0, 1.0);
+
+    double bufferedProgress = 0.0;
+    if (buffered.isNotEmpty && duration.inMilliseconds > 0) {
+      bufferedProgress =
+          buffered.last.end.inMilliseconds / duration.inMilliseconds;
+      bufferedProgress = bufferedProgress.clamp(0.0, 1.0);
+    }
+
+    final displayProgress = _isSeeking ? _seekValue : progress;
+    final barHeight = _isSeeking ? 6.0 : 2.5;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (details) {
+        setState(() {
+          _isSeeking = true;
+          _seekValue = _clampSeek(details.localPosition.dx, context);
+        });
+      },
+      onHorizontalDragUpdate: (details) {
+        setState(() {
+          _seekValue = _clampSeek(details.localPosition.dx, context);
+        });
+      },
+      onHorizontalDragEnd: (details) {
+        final targetPosition = duration * _seekValue;
+        _controller!.seekTo(targetPosition);
+        setState(() {
+          _isSeeking = false;
+        });
+      },
+      onHorizontalDragCancel: () {
+        setState(() {
+          _isSeeking = false;
+        });
+      },
+      onTapDown: (details) {
+        final tapPosition = _clampSeek(details.localPosition.dx, context);
+        setState(() {
+          _isSeeking = true;
+          _seekValue = tapPosition;
+        });
+      },
+      onTapUp: (details) {
+        final tapPosition = _clampSeek(details.localPosition.dx, context);
+        final targetPosition = duration * tapPosition;
+        _controller!.seekTo(targetPosition);
+        setState(() {
+          _isSeeking = false;
+        });
+      },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.only(top: 20, bottom: 4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          height: barHeight,
+          child: CustomPaint(
+            size: Size(MediaQuery.of(context).size.width, barHeight),
+            painter: _TikTokSeekBarPainter(
+              progress: displayProgress,
+              buffered: bufferedProgress,
+              isSeeking: _isSeeking,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  double _clampSeek(double dx, BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return (dx / width).clamp(0.0, 1.0);
+  }
 }
 
+/// Custom painter for TikTok-style seekbar
+class _TikTokSeekBarPainter extends CustomPainter {
+  final double progress;
+  final double buffered;
+  final bool isSeeking;
 
+  _TikTokSeekBarPainter({
+    required this.progress,
+    required this.buffered,
+    required this.isSeeking,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final trackPaint = Paint()
+      ..color = Colors.white.withOpacity(0.15)
+      ..style = PaintingStyle.fill;
+
+    final bufferedPaint = Paint()
+      ..color = Colors.white.withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+
+    final progressPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final radius = Radius.circular(size.height / 2);
+
+    // Background track
+    canvas.drawRRect(
+      RRect.fromLTRBR(0, 0, size.width, size.height, radius),
+      trackPaint,
+    );
+
+    // Buffered portion
+    if (buffered > 0) {
+      canvas.drawRRect(
+        RRect.fromLTRBR(0, 0, size.width * buffered, size.height, radius),
+        bufferedPaint,
+      );
+    }
+
+    // Played portion
+    final playedWidth = size.width * progress;
+    if (playedWidth > 0) {
+      canvas.drawRRect(
+        RRect.fromLTRBR(0, 0, playedWidth, size.height, radius),
+        progressPaint,
+      );
+    }
+
+    // Thumb circle (only when seeking)
+    if (isSeeking) {
+      final thumbRadius = size.height * 1.8;
+      final thumbPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.fill;
+
+      final shadowPaint = Paint()
+        ..color = Colors.black.withOpacity(0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
+
+      canvas.drawCircle(
+        Offset(playedWidth, size.height / 2),
+        thumbRadius + 1,
+        shadowPaint,
+      );
+      canvas.drawCircle(
+        Offset(playedWidth, size.height / 2),
+        thumbRadius,
+        thumbPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TikTokSeekBarPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.buffered != buffered ||
+        oldDelegate.isSeeking != isSeeking;
+  }
+}

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
+import 'auth_service.dart';
 
 class MessageService {
   static final MessageService _instance = MessageService._internal();
@@ -30,6 +31,12 @@ class MessageService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _onlineStatusController = 
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageUnsentController = 
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageEditedController = 
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageDeletedForMeController = 
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Streams
   Stream<Map<String, dynamic>> get newMessageStream => _newMessageController.stream;
@@ -37,6 +44,9 @@ class MessageService {
   Stream<Map<String, dynamic>> get messagesReadStream => _messagesReadController.stream;
   Stream<Map<String, dynamic>> get userTypingStream => _userTypingController.stream;
   Stream<Map<String, dynamic>> get onlineStatusStream => _onlineStatusController.stream;
+  Stream<Map<String, dynamic>> get messageUnsentStream => _messageUnsentController.stream;
+  Stream<Map<String, dynamic>> get messageEditedStream => _messageEditedController.stream;
+  Stream<Map<String, dynamic>> get messageDeletedForMeStream => _messageDeletedForMeController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -113,6 +123,22 @@ class MessageService {
       print('User online status update: $data');
       if (data != null) {
         _onlineStatusController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for message unsent (real-time)
+    _socket!.on('messageUnsent', (data) {
+      print('Message unsent: $data');
+      if (data != null) {
+        _messageUnsentController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for message edited (real-time)
+    _socket!.on('messageEdited', (data) {
+      print('Message edited: $data');
+      if (data != null) {
+        _messageEditedController.add(Map<String, dynamic>.from(data));
       }
     });
 
@@ -280,6 +306,7 @@ class MessageService {
         'senderId': actualSenderId,
         'recipientId': recipientId,
         'content': content,
+        'senderName': AuthService().fullName ?? AuthService().username ?? 'User $actualSenderId',
       };
       
       // Add reply data if replying to a message
@@ -556,6 +583,7 @@ class MessageService {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = json.decode(response.body);
+        _messageDeletedForMeController.add({'messageId': messageId});
         return {'success': data['success'] ?? true};
       }
       return {'success': false, 'message': 'Failed to delete message'};
@@ -610,6 +638,47 @@ class MessageService {
     final messageAge = DateTime.now().difference(createdAt);
     final remainingSeconds = (10 * 60) - messageAge.inSeconds;
     return remainingSeconds > 0 ? remainingSeconds : 0;
+  }
+
+  // ========== MESSAGE EDITING ==========
+
+  /// Edit a message — only sender, within 15 minutes, text only
+  Future<Map<String, dynamic>> editMessage(String messageId, String newContent) async {
+    try {
+      final currentUserId = _currentUserId ?? '';
+      final response = await http.post(
+        Uri.parse('$_baseUrl/messages/$messageId/edit?userId=$currentUserId'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'content': newContent}),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = json.decode(response.body);
+        return {
+          'success': data['success'] ?? false,
+          'message': data['message'],
+          'editedMessage': data['editedMessage'],
+        };
+      }
+      return {'success': false, 'message': 'Failed to edit message'};
+    } catch (e) {
+      print('Error editing message: $e');
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  /// Check if a message can still be edited (within 15 minutes, sender only, text only)
+  bool canEditMessage(Map<String, dynamic> message, String currentUserId) {
+    if (message['senderId'] != currentUserId) return false;
+    if (message['isDeletedForEveryone'] == true) return false;
+    final content = message['content']?.toString() ?? '';
+    if (content.startsWith('[IMAGE:') || content.startsWith('[VIDEO_SHARE:') ||
+        content.startsWith('[STACKED_IMAGE:') || content.startsWith('[STICKER:') ||
+        content.startsWith('[VOICE:')) return false;
+    
+    final createdAt = DateTime.tryParse(message['createdAt']?.toString() ?? '');
+    if (createdAt == null) return false;
+    return DateTime.now().difference(createdAt).inMinutes < 15;
   }
 
   /// Translate message using Gemini AI

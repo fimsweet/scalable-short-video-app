@@ -13,6 +13,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/activity_histo
 import 'package:scalable_short_video_app/src/presentation/screens/analytics_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/logged_devices_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/phone_management_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/change_password_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 class AccountManagementScreen extends StatefulWidget {
@@ -145,7 +146,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                           iconColor: Colors.orange,
                           title: _localeService.get('change_password'),
                           subtitle: _localeService.get('change_password_subtitle'),
-                          onTap: () => _showChangePasswordDialog(),
+                          onTap: () => _navigateToChangePassword(),
                           showDivider: true,
                         )
                       : _buildMenuItem(
@@ -312,8 +313,20 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: _themeService.inputBackground,
+        color: _themeService.isLightMode ? Colors.white : _themeService.inputBackground,
         borderRadius: BorderRadius.circular(12),
+        border: _themeService.isLightMode
+            ? Border.all(color: const Color(0xFFE0E0E0), width: 0.8)
+            : null,
+        boxShadow: _themeService.isLightMode
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
@@ -1091,7 +1104,15 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     );
   }
 
-  // Change Password Dialog
+  // Change Password — verify 2FA first, then navigate to full screen
+  void _navigateToChangePassword() async {
+    final verified = await _verify2FAForSensitiveAction(_localeService.get('change_password_2fa_reason'));
+    if (!verified) return;
+    if (!mounted) return;
+    NavigationUtils.slideToScreen(context, const ChangePasswordScreen());
+  }
+
+  // Legacy change password dialog (kept for reference)
   void _showChangePasswordDialog() async {
     // Verify 2FA if enabled before allowing password change
     final verified = await _verify2FAForSensitiveAction(_localeService.get('change_password_2fa_reason'));

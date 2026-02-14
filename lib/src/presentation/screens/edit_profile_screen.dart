@@ -5,6 +5,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_username_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/edit_display_name_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -573,6 +574,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             // Section: Basic Info
             _buildSectionTitle(_localeService.get('basic_info')),
             _buildSettingsGroup([
+              _buildDisplayNameTapField(showDivider: true),
               _buildUsernameTapField(showDivider: true),
               _buildCollapsibleBioField(showDivider: false),
             ]),
@@ -656,8 +658,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: _themeService.inputBackground,
+        color: _themeService.isLightMode ? Colors.white : _themeService.inputBackground,
         borderRadius: BorderRadius.circular(12),
+        border: _themeService.isLightMode
+            ? Border.all(color: const Color(0xFFE0E0E0), width: 0.8)
+            : null,
+        boxShadow: _themeService.isLightMode
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
@@ -702,6 +716,63 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Widget _buildDisplayNameTapField({bool showDivider = false}) {
+    final currentDisplayName = _authService.fullName ?? '';
+    
+    return Column(
+      children: [
+        InkWell(
+          onTap: () async {
+            final result = await NavigationUtils.slideToScreen(
+              context,
+              const EditDisplayNameScreen(),
+            );
+            if (result == true && mounted) {
+              setState(() {});
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 80,
+                  child: Text(
+                    _localeService.isVietnamese ? 'Tên' : 'Name',
+                    style: TextStyle(
+                      color: _themeService.textSecondaryColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    currentDisplayName.isEmpty
+                        ? (_localeService.isVietnamese ? 'Thêm tên' : 'Add name')
+                        : currentDisplayName,
+                    style: TextStyle(
+                      color: currentDisplayName.isEmpty
+                          ? _themeService.textSecondaryColor
+                          : _themeService.textPrimaryColor,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 20),
+              ],
+            ),
+          ),
+        ),
+        if (showDivider)
+          Container(
+            margin: const EdgeInsets.only(left: 16),
+            height: 0.5,
+            color: _themeService.dividerColor,
+          ),
+      ],
+    );
+  }
+
   Widget _buildUsernameTapField({bool showDivider = false}) {
     final currentUsername = _authService.username ?? '';
     
@@ -714,39 +785,42 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               const EditUsernameScreen(),
             );
             if (result == true && mounted) {
-              // Username was changed, update the controller
               _nameController.text = _authService.username ?? '';
               setState(() {});
             }
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
+            child: Column(
               children: [
-                SizedBox(
-                  width: 80,
-                  child: Text(
-                    _localeService.get('name'),
-                    style: TextStyle(
-                      color: _themeService.textSecondaryColor,
-                      fontSize: 14,
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 80,
+                      child: Text(
+                        'ID',
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 14,
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    currentUsername.isEmpty 
-                        ? _localeService.get('add_name')
-                        : currentUsername,
-                    style: TextStyle(
-                      color: currentUsername.isEmpty 
-                          ? _themeService.textSecondaryColor 
-                          : _themeService.textPrimaryColor,
-                      fontSize: 16,
+                    Expanded(
+                      child: Text(
+                        currentUsername.isEmpty
+                            ? (_localeService.isVietnamese ? 'Thêm ID' : 'Add ID')
+                            : currentUsername,
+                        style: TextStyle(
+                          color: currentUsername.isEmpty
+                              ? _themeService.textSecondaryColor
+                              : _themeService.textPrimaryColor,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
-                  ),
+                    Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 20),
+                  ],
                 ),
-                Icon(Icons.chevron_right, color: _themeService.textSecondaryColor, size: 20),
               ],
             ),
           ),

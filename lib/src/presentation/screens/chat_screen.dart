@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -10,9 +11,11 @@ import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/in_app_notification_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 class ChatScreen extends StatefulWidget {
   final String recipientId;
@@ -85,6 +88,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _messageSentSubscription;
   StreamSubscription? _typingSubscription;
   StreamSubscription? _onlineStatusSubscription;
+  StreamSubscription? _messageUnsentSubscription;
+  StreamSubscription? _messageEditedSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
   String get _conversationId {
@@ -96,6 +101,13 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showEmojiPicker = false;
   bool _isUserBlocked = false; // Track if I blocked the recipient
   bool _amIBlocked = false; // Track if recipient blocked me
+  bool _isMessageRestricted = false; // Track if messaging is restricted by privacy
+  String? _messageRestrictedReason; // Reason for restriction
+  bool _isRecipientDeactivated = false; // Track if recipient account is deactivated
+
+  // Editing state
+  bool _isEditing = false;
+  String? _editingMessageId;
   bool _isCheckingBlockStatus = true; // Track if we're still checking block status
   
   // Chat customization: theme color and nickname
@@ -114,7 +126,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _recipientIsOnline = false;
   String _recipientStatusText = 'Offline';
   Timer? _onlineStatusTimer;
-  Timer? _heartbeatTimer;
 
   // Common emojis for quick access - CHANGED TO STATIC CONST
   static const List<String> _commonEmojis = [
@@ -142,9 +153,11 @@ class _ChatScreenState extends State<ChatScreen> {
     _initChat();
     _messageController.addListener(_onTextChanged);
     
-    // Start online status polling and heartbeat
+    // Suppress in-app notifications from this chat partner
+    InAppNotificationService().setActiveChatUser(widget.recipientId);
+    
+    // Start online status polling (heartbeat is handled globally in MainScreen)
     _startOnlineStatusPolling();
-    _startHeartbeat();
   }
 
   void _onThemeChanged() {
@@ -179,7 +192,13 @@ class _ChatScreenState extends State<ChatScreen> {
         final isOnline = data['isOnline'] == true;
         setState(() {
           _recipientIsOnline = isOnline;
-          _recipientStatusText = isOnline ? 'Online' : 'Offline';
+          if (isOnline) {
+            _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Active now';
+          } else {
+            _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+            // Fetch proper lastSeen text from user-service
+            _fetchOnlineStatus();
+          }
         });
       }
     });
@@ -187,6 +206,20 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _fetchOnlineStatus() async {
     try {
+      // First, try WebSocket (real-time, checks gateway's live connections)
+      final wsStatus = await _messageService.getOnlineStatus(widget.recipientId);
+      if (mounted) {
+        final isOnline = wsStatus['isOnline'] == true;
+        if (isOnline) {
+          setState(() {
+            _recipientIsOnline = true;
+            _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Active now';
+          });
+          return;
+        }
+      }
+      
+      // Fallback to REST API for lastSeen-based status text (e.g., "3 phút trước")
       final status = await _apiService.getOnlineStatus(widget.recipientId);
       if (mounted) {
         setState(() {
@@ -199,25 +232,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // Send heartbeat to update my online status
-  void _startHeartbeat() {
-    if (_currentUserId.isEmpty) return;
-    
-    // Send immediately
-    _apiService.sendHeartbeat(_currentUserId);
-    
-    // Then send every 60 seconds
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 60), (_) {
-      _apiService.sendHeartbeat(_currentUserId);
-    });
-  }
+  // Heartbeat is now handled globally in MainScreen
 
   void _initChat() async {
     if (_currentUserId.isNotEmpty) {
-      _messageService.connect(_currentUserId);
+      // WebSocket is connected globally in MainScreen — ensure connected
+      if (!_messageService.isConnected) {
+        _messageService.connect(_currentUserId);
+      }
       
       // Check if user is blocked
       _checkBlockedStatus();
+      
+      // [PRIVACY] Check if messaging is allowed
+      _checkMessagePermission();
       
       // Load conversation settings (theme color, nickname)
       _loadConversationSettings();
@@ -291,6 +319,46 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
+    // Listen for message unsent (real-time from other user)
+    _messageUnsentSubscription = _messageService.messageUnsentStream.listen((data) {
+      if (mounted) {
+        final messageId = data['messageId']?.toString();
+        if (messageId != null) {
+          setState(() {
+            final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+            if (index != -1) {
+              _messages[index] = {
+                ..._messages[index],
+                'content': '[MESSAGE_DELETED]',
+                'isDeletedForEveryone': true,
+                'imageUrls': [],
+              };
+            }
+          });
+        }
+      }
+    });
+
+    // Listen for message edited (real-time from other user)
+    _messageEditedSubscription = _messageService.messageEditedStream.listen((data) {
+      if (mounted) {
+        final messageId = data['id']?.toString();
+        if (messageId != null) {
+          setState(() {
+            final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+            if (index != -1) {
+              _messages[index] = {
+                ..._messages[index],
+                'content': data['content'],
+                'isEdited': true,
+                'editedAt': data['editedAt'],
+              };
+            }
+          });
+        }
+      }
+    });
+
     await _loadMessages();
   }
 
@@ -343,6 +411,29 @@ class _ChatScreenState extends State<ChatScreen> {
           _isCheckingBlockStatus = false;
         });
       }
+    }
+  }
+
+  Future<void> _checkMessagePermission() async {
+    try {
+      final result = await _apiService.checkPrivacyPermission(
+        _currentUserId,
+        widget.recipientId,
+        'send_message',
+      );
+      
+      if (mounted && result['allowed'] != true) {
+        setState(() {
+          if (result['isDeactivated'] == true) {
+            _isRecipientDeactivated = true;
+          } else {
+            _isMessageRestricted = true;
+            _messageRestrictedReason = result['reason'] as String?;
+          }
+        });
+      }
+    } catch (e) {
+      print('Error checking message permission: $e');
     }
   }
 
@@ -629,13 +720,16 @@ class _ChatScreenState extends State<ChatScreen> {
     _focusNode.dispose();
     _typingTimer?.cancel();
     _onlineStatusTimer?.cancel();
-    _heartbeatTimer?.cancel();
     _newMessageSubscription?.cancel();
     _messageSentSubscription?.cancel();
     _typingSubscription?.cancel();
     _onlineStatusSubscription?.cancel();
+    _messageUnsentSubscription?.cancel();
+    _messageEditedSubscription?.cancel();
     // Unsubscribe from online status updates
     _messageService.unsubscribeOnlineStatus(widget.recipientId);
+    // Clear active chat user for in-app notification suppression
+    InAppNotificationService().setActiveChatUser(null);
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -930,6 +1024,10 @@ class _ChatScreenState extends State<ChatScreen> {
     if (messageId == null) return;
     if (isDeletedForEveryone) return;
     
+    // Check if message is already translated
+    final isTranslated = _translatedMessages.containsKey(messageId);
+    final canEdit = _messageService.canEditMessage(message, _currentUserId);
+    
     // Show Messenger-style overlay
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -948,9 +1046,10 @@ class _ChatScreenState extends State<ChatScreen> {
             tapPosition: tapPosition,
             bubbleSize: bubbleSize,
             isMe: isMe,
+            isTranslated: isTranslated,
+            canEdit: canEdit,
             onReply: () {
               Navigator.pop(context);
-              // Set reply state
               _setReplyTo(message);
             },
             onCopy: () {
@@ -959,32 +1058,26 @@ class _ChatScreenState extends State<ChatScreen> {
             },
             onTranslate: () async {
               Navigator.pop(context);
-              await _translateMessage(message);
-            },
-            onForward: () {
-              Navigator.pop(context);
-              _forwardMessage(message);
+              if (isTranslated) {
+                setState(() {
+                  _translatedMessages.remove(messageId);
+                });
+              } else {
+                await _translateMessage(message);
+              }
             },
             onPin: () async {
               Navigator.pop(context);
               final isPinned = message['pinnedBy'] != null;
               await _togglePinMessage(messageId, isPinned);
             },
-            onRemind: () {
+            onEdit: canEdit ? () {
               Navigator.pop(context);
-              _showReminderDialog(message);
-            },
-            onReport: () {
+              _startEditMessage(message);
+            } : null,
+            onDelete: () {
               Navigator.pop(context);
-              _reportMessage(message);
-            },
-            onDeleteForMe: () async {
-              Navigator.pop(context);
-              await _deleteMessageForMe(messageId);
-            },
-            onDeleteForEveryone: () async {
-              Navigator.pop(context);
-              await _deleteMessageForEveryone(messageId);
+              _showDeleteBottomSheet(message);
             },
             animation: animation,
           );
@@ -1297,19 +1390,8 @@ class _ChatScreenState extends State<ChatScreen> {
       
       if (result['success'] == true && mounted) {
         setState(() {
-          // Remove the message from local list
           _messages.removeWhere((m) => m['id']?.toString() == messageId);
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _localeService.isVietnamese ? 'Đã gỡ tin nhắn' : 'Message deleted',
-            ),
-            duration: const Duration(seconds: 2),
-            backgroundColor: _chatThemeColor ?? Colors.blue,
-          ),
-        );
       }
     } catch (e) {
       print('Error deleting message for me: $e');
@@ -1317,49 +1399,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteMessageForEveryone(String messageId) async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _themeService.isLightMode ? Colors.white : const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          _localeService.isVietnamese ? 'Gỡ tin nhắn?' : 'Unsend message?',
-          style: TextStyle(color: _themeService.textPrimaryColor),
-        ),
-        content: Text(
-          _localeService.isVietnamese 
-              ? 'Tin nhắn này sẽ bị gỡ với tất cả mọi người trong cuộc trò chuyện.'
-              : 'This message will be removed for everyone in this conversation.',
-          style: TextStyle(color: _themeService.textSecondaryColor),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(
-              _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
-              style: TextStyle(color: _themeService.textSecondaryColor),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed != true) return;
-    
     try {
       final result = await _messageService.deleteForEveryone(messageId);
       
       if (result['success'] == true && mounted) {
         setState(() {
-          // Update the message in local list to show as deleted
           final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
           if (index != -1) {
             _messages[index] = {
@@ -1370,24 +1414,13 @@ class _ChatScreenState extends State<ChatScreen> {
             };
           }
         });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _localeService.isVietnamese ? 'Đã gỡ tin nhắn với mọi người' : 'Message unsent',
-            ),
-            duration: const Duration(seconds: 2),
-            backgroundColor: _chatThemeColor ?? Colors.blue,
-          ),
-        );
       } else if (result['canUnsend'] == false && mounted) {
-        // Time expired
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               _localeService.isVietnamese 
-                  ? 'Không thể gỡ tin nhắn sau 10 phút'
-                  : 'Cannot unsend message after 10 minutes',
+                  ? 'Không thể thu hồi sau 10 phút'
+                  : 'Cannot unsend after 10 minutes',
             ),
             duration: const Duration(seconds: 3),
             backgroundColor: Colors.red,
@@ -1396,6 +1429,103 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } catch (e) {
       print('Error deleting message for everyone: $e');
+    }
+  }
+
+  /// Show Messenger-style delete bottom sheet
+  void _showDeleteBottomSheet(Map<String, dynamic> message) {
+    final messageId = message['id']?.toString();
+    if (messageId == null) return;
+    
+    final isMe = message['senderId'] == _currentUserId;
+    final canUnsend = isMe && _messageService.canUnsendMessage(message, _currentUserId);
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _DeleteMessageSheet(
+        isMe: isMe,
+        canUnsend: canUnsend,
+        themeService: _themeService,
+        localeService: _localeService,
+        chatThemeColor: _chatThemeColor,
+        onDeleteForMe: () async {
+          Navigator.pop(context);
+          await _deleteMessageForMe(messageId);
+          if (mounted) {
+            AppSnackBar.showSuccess(context, 
+              _localeService.isVietnamese ? 'Đã xoá tin nhắn' : 'Message deleted',
+            );
+          }
+        },
+        onUnsendForEveryone: canUnsend ? () async {
+          Navigator.pop(context);
+          await _deleteMessageForEveryone(messageId);
+          if (mounted) {
+            AppSnackBar.showSuccess(context, 
+              _localeService.isVietnamese ? 'Đã thu hồi tin nhắn' : 'Message unsent',
+            );
+          }
+        } : null,
+      ),
+    );
+  }
+
+  /// Start editing a message
+  void _startEditMessage(Map<String, dynamic> message) {
+    final messageId = message['id']?.toString();
+    if (messageId == null) return;
+    
+    setState(() {
+      _isEditing = true;
+      _editingMessageId = messageId;
+      _messageController.text = message['content']?.toString() ?? '';
+    });
+    _focusNode.requestFocus();
+  }
+
+  /// Cancel editing
+  void _cancelEdit() {
+    setState(() {
+      _isEditing = false;
+      _editingMessageId = null;
+      _messageController.clear();
+    });
+  }
+
+  /// Submit edit
+  Future<void> _submitEdit() async {
+    if (_editingMessageId == null) return;
+    final newContent = _messageController.text.trim();
+    if (newContent.isEmpty) return;
+    
+    final messageId = _editingMessageId!;
+    _cancelEdit();
+    
+    try {
+      final result = await _messageService.editMessage(messageId, newContent);
+      if (result['success'] == true && mounted) {
+        setState(() {
+          final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+          if (index != -1) {
+            _messages[index] = {
+              ..._messages[index],
+              'content': newContent,
+              'isEdited': true,
+            };
+          }
+        });
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message']?.toString() ?? 'Edit failed'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error editing message: $e');
     }
   }
 
@@ -1620,6 +1750,11 @@ class _ChatScreenState extends State<ChatScreen> {
             if (mounted) {
               setState(() {
                 _isAutoTranslate = enabled;
+                // When disabled, clear all cached translations so messages show original text
+                if (!enabled) {
+                  _translatedMessages.clear();
+                  _translatingMessages.clear();
+                }
               });
               // When enabled, auto-translate recent untranslated messages from recipient
               if (enabled) {
@@ -1672,15 +1807,33 @@ class _ChatScreenState extends State<ChatScreen> {
           behavior: HitTestBehavior.opaque,
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
-                backgroundImage: widget.recipientAvatar != null
-                    ? NetworkImage(widget.recipientAvatar!)
-                    : null,
-                child: widget.recipientAvatar == null
-                    ? Icon(Icons.person, color: _themeService.iconColor, size: 18)
-                    : null,
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                    backgroundImage: widget.recipientAvatar != null
+                        ? NetworkImage(widget.recipientAvatar!)
+                        : null,
+                    child: widget.recipientAvatar == null
+                        ? Icon(Icons.person, color: _themeService.iconColor, size: 18)
+                        : null,
+                  ),
+                  if (_recipientIsOnline)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _themeService.appBarBackground, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1695,39 +1848,15 @@ class _ChatScreenState extends State<ChatScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (_otherUserTyping)
-                      Text(
-                        _localeService.isVietnamese ? 'Đang nhập...' : 'Typing...',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontSize: 12,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      )
-                    else
-                      Row(
-                        children: [
-                          if (_recipientIsOnline)
-                            Container(
-                              width: 8,
-                              height: 8,
-                              margin: const EdgeInsets.only(right: 4),
-                              decoration: const BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          Text(
-                            _recipientIsOnline 
-                                ? (_localeService.isVietnamese ? 'Đang hoạt động' : 'Active now')
-                                : _recipientStatusText,
-                            style: TextStyle(
-                              color: _recipientIsOnline ? Colors.green : _themeService.textSecondaryColor, 
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                    Text(
+                      _recipientIsOnline 
+                          ? (_localeService.isVietnamese ? 'Đang hoạt động' : 'Active now')
+                          : _recipientStatusText,
+                      style: TextStyle(
+                        color: _recipientIsOnline ? Colors.green : _themeService.textSecondaryColor, 
+                        fontSize: 12,
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -1755,15 +1884,23 @@ class _ChatScreenState extends State<ChatScreen> {
               },
               child: _isLoading
                   ? Center(child: CircularProgressIndicator(color: _themeService.textPrimaryColor))
-                  : _messages.isEmpty
+                  : _messages.isEmpty && !_otherUserTyping
                       ? _buildEmptyState()
                       : ListView.builder(
                           controller: _scrollController,
                           reverse: true,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          itemCount: _messages.length,
+                          itemCount: _messages.length + (_otherUserTyping ? 1 : 0),
                           itemBuilder: (context, index) {
-                            final message = _messages[index];
+                            // Show typing bubble at index 0 (bottom of reversed list)
+                            if (_otherUserTyping && index == 0) {
+                              return _TypingBubble(
+                                recipientAvatar: widget.recipientAvatar,
+                                themeService: _themeService,
+                              );
+                            }
+                            final actualIndex = _otherUserTyping ? index - 1 : index;
+                            final message = _messages[actualIndex];
                             final isMe = message['senderId'] == _currentUserId;
                             final content = message['content']?.toString() ?? '';
                             final status = message['status']?.toString();
@@ -1775,17 +1912,17 @@ class _ChatScreenState extends State<ChatScreen> {
                             bool showAvatar = false;
                             if (!isMe) {
                               // Check if next message (older, higher index) is from different sender
-                              final isLastInGroup = index == _messages.length - 1 ||
-                                  _messages[index + 1]['senderId'] == _currentUserId;
+                              final isLastInGroup = actualIndex == _messages.length - 1 ||
+                                  _messages[actualIndex + 1]['senderId'] == _currentUserId;
                               
                               // Check if there's a time gap from previous message in same direction
                               bool hasTimeGap = false;
-                              if (index < _messages.length - 1 && 
-                                  _messages[index + 1]['senderId'] != _currentUserId) {
+                              if (actualIndex < _messages.length - 1 && 
+                                  _messages[actualIndex + 1]['senderId'] != _currentUserId) {
                                 // Previous message is also from recipient, check time gap
                                 hasTimeGap = _hasSignificantTimeGap(
                                   message['createdAt']?.toString(),
-                                  _messages[index + 1]['createdAt']?.toString(),
+                                  _messages[actualIndex + 1]['createdAt']?.toString(),
                                 );
                               }
                               
@@ -1799,7 +1936,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             if (isMe) {
                               // Kiểm tra xem có tin nhắn nào của mình trước đó (index nhỏ hơn) không
                               isLastMyMessage = true;
-                              for (int i = 0; i < index; i++) {
+                              for (int i = 0; i < actualIndex; i++) {
                                 if (_messages[i]['senderId'] == _currentUserId) {
                                   isLastMyMessage = false;
                                   break;
@@ -1890,14 +2027,16 @@ class _ChatScreenState extends State<ChatScreen> {
                               // Translation support
                               isTranslating: _translatingMessages[message['id']?.toString()] ?? false,
                               translatedText: _translatedMessages[message['id']?.toString()],
+                              // Edited support
+                              isEdited: message['isEdited'] == true,
                             );
                           },
                         ),
             ),
           ),
           // Image attachment preview - use safe getter
-          if (_hasSelectedImages && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus) _buildImageAttachmentPreview(),
-          // Show blocked message, cannot contact message, or input area
+          if (_hasSelectedImages && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus && !_isMessageRestricted && !_isRecipientDeactivated) _buildImageAttachmentPreview(),
+          // Show blocked message, cannot contact message, privacy restriction, or input area
           // Hide input while checking block status to prevent flicker
           if (_isCheckingBlockStatus)
             const SizedBox.shrink() // Don't show anything while checking
@@ -1905,9 +2044,43 @@ class _ChatScreenState extends State<ChatScreen> {
             _buildBlockedMessage()
           else if (_amIBlocked)
             _buildCannotContactMessage()
+          else if (_isRecipientDeactivated)
+            _buildDeactivatedUserMessage()
+          else if (_isMessageRestricted)
+            _buildMessageRestrictedBanner()
           else
             _buildInputArea(bottomInset, bottomPadding),
-          if (_showEmojiPicker && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus) _buildEmojiPicker(),
+          if (_showEmojiPicker && !_isUserBlocked && !_amIBlocked && !_isCheckingBlockStatus && !_isMessageRestricted && !_isRecipientDeactivated) _buildEmojiPicker(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeactivatedUserMessage() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.info_outline, color: Colors.orange, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              _localeService.isVietnamese
+                  ? 'Tài khoản này đã bị vô hiệu hóa, tạm thời không thể nhắn tin'
+                  : 'This account has been deactivated, messaging is temporarily unavailable',
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 13,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1925,6 +2098,37 @@ class _ChatScreenState extends State<ChatScreen> {
             fontSize: 13,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMessageRestrictedBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, color: _themeService.textSecondaryColor, size: 18),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              _messageRestrictedReason ?? 
+                (_localeService.isVietnamese 
+                    ? 'Bạn không thể gửi tin nhắn cho người dùng này'
+                    : 'You cannot send messages to this user'),
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2160,8 +2364,12 @@ class _ChatScreenState extends State<ChatScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Edit preview bar
+        if (_isEditing)
+          _buildEditPreview(),
+        
         // Reply preview bar
-        if (_replyToMessage != null)
+        if (_replyToMessage != null && !_isEditing)
           _buildReplyPreview(),
         
         Container(
@@ -2181,8 +2389,10 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Camera/Image picker button
-                if (kIsWeb) ...[
+                // Camera/Image picker button (hidden when editing)
+                if (_isEditing) ...[
+                  const SizedBox(width: 4),
+                ] else if (kIsWeb) ...[
                   GestureDetector(
                     onTap: _pickImageFromGallery,
                     child: Container(
@@ -2242,7 +2452,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                             maxLines: null,
                             textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _sendMessage(),
+                            onSubmitted: (_) => _isEditing ? _submitEdit() : _sendMessage(),
                             onTap: () {
                               if (_showEmojiPicker) {
                                 setState(() => _showEmojiPicker = false);
@@ -2272,13 +2482,13 @@ class _ChatScreenState extends State<ChatScreen> {
                 
                 // Send button - Messenger/Instagram style (no circle background)
                 GestureDetector(
-                  onTap: _sendMessage, // Always allow tap
+                  onTap: _isEditing ? _submitEdit : _sendMessage,
                   child: Container(
                     width: 44,
                     height: 44,
                     alignment: Alignment.center,
                     child: Icon(
-                      Icons.send_rounded,
+                      _isEditing ? Icons.check_rounded : Icons.send_rounded,
                       color: canSend ? (_chatThemeColor ?? Colors.blue) : _themeService.textSecondaryColor,
                       size: 28,
                     ),
@@ -2292,6 +2502,72 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
   
+  Widget _buildEditPreview() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: _themeService.isLightMode 
+            ? Colors.grey[100] 
+            : Colors.grey[900],
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Blue bar indicator
+          Container(
+            width: 3,
+            height: 36,
+            decoration: BoxDecoration(
+              color: _chatThemeColor ?? Colors.blue,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Edit icon
+          Icon(
+            Icons.edit_rounded,
+            size: 18,
+            color: _chatThemeColor ?? Colors.blue,
+          ),
+          const SizedBox(width: 8),
+          // Edit label
+          Expanded(
+            child: Text(
+              _localeService.isVietnamese 
+                  ? 'Đang chỉnh sửa tin nhắn'
+                  : 'Editing message',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _chatThemeColor ?? Colors.blue,
+              ),
+            ),
+          ),
+          // Close button
+          GestureDetector(
+            onTap: _cancelEdit,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[300] 
+                    : Colors.grey[700],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: _themeService.textPrimaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildReplyPreview() {
     final replyContent = _replyToMessage?['content'] ?? '';
     final replySenderId = _replyToMessage?['senderId'] ?? '';
@@ -2482,6 +2758,8 @@ class _MessageBubble extends StatefulWidget {
   // Translation support
   final bool isTranslating;
   final String? translatedText;
+  // Edited support
+  final bool isEdited;
 
   const _MessageBubble({
     required this.message,
@@ -2508,6 +2786,8 @@ class _MessageBubble extends StatefulWidget {
     // Translation support
     this.isTranslating = false,
     this.translatedText,
+    // Edited support
+    this.isEdited = false,
   });
 
   @override
@@ -2707,7 +2987,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.done_all, size: 14, color: Colors.lightBlue),
+          Icon(Icons.done_all, size: 14, color: widget.chatThemeColor ?? ThemeService.accentColor),
           const SizedBox(width: 4),
           Text(
             'Đã xem',
@@ -2777,6 +3057,30 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                           crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Edited indicator - above the bubble
+                            if (widget.isEdited)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 3),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.edit,
+                                      size: 11,
+                                      color: widget.themeService.textSecondaryColor,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      widget.localeService.isVietnamese ? 'Đã chỉnh sửa' : 'Edited',
+                                      style: TextStyle(
+                                        color: widget.themeService.textSecondaryColor,
+                                        fontSize: 10,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             // Reply preview (if replying to a message) - connected to main bubble
                             if (hasReply) _buildReplyBubble(),
                             
@@ -3290,7 +3594,7 @@ class _ImageMessageBubbleState extends State<_ImageMessageBubble> with SingleTic
         Icon(
           widget.isRead ? Icons.done_all : Icons.done,
           size: 14,
-          color: widget.isRead ? Colors.lightBlue : Colors.grey[600],
+          color: widget.isRead ? (widget.chatThemeColor ?? ThemeService.accentColor) : Colors.grey[600],
         ),
         if (widget.isRead) ...[
           const SizedBox(width: 4),
@@ -3935,7 +4239,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.isRead) ...[
-          Icon(Icons.done_all, color: Colors.blue[400], size: 14),
+          Icon(Icons.done_all, color: widget.chatThemeColor ?? ThemeService.accentColor, size: 14),
           const SizedBox(width: 4),
           Text('Đã xem', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
         ] else ...[
@@ -4295,7 +4599,7 @@ class _PinnedMessagesModalState extends State<_PinnedMessagesModal> {
             _isLoading
                 ? const Padding(
                     padding: EdgeInsets.all(32),
-                    child: CircularProgressIndicator(),
+                    child: CircularProgressIndicator(color: ThemeService.accentColor),
                   )
                 : _pinnedMessages.isEmpty
                     ? Padding(
@@ -4489,13 +4793,12 @@ class _MessageOptionsOverlay extends StatefulWidget {
   final VoidCallback onReply;
   final VoidCallback onCopy;
   final VoidCallback onTranslate;
-  final VoidCallback onForward;
   final VoidCallback onPin;
-  final VoidCallback onRemind;
-  final VoidCallback onReport;
-  final VoidCallback onDeleteForMe;
-  final VoidCallback onDeleteForEveryone;
+  final VoidCallback onDelete;
+  final VoidCallback? onEdit;
   final Animation<double> animation;
+  final bool isTranslated;
+  final bool canEdit;
 
   const _MessageOptionsOverlay({
     required this.message,
@@ -4508,15 +4811,14 @@ class _MessageOptionsOverlay extends StatefulWidget {
     this.tapPosition,
     this.bubbleSize,
     this.isMe = false,
+    this.isTranslated = false,
+    this.canEdit = false,
     required this.onReply,
     required this.onCopy,
     required this.onTranslate,
-    required this.onForward,
     required this.onPin,
-    required this.onRemind,
-    required this.onReport,
-    required this.onDeleteForMe,
-    required this.onDeleteForEveryone,
+    required this.onDelete,
+    this.onEdit,
     required this.animation,
   });
 
@@ -4749,11 +5051,13 @@ class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
           label: widget.localeService.isVietnamese ? 'Sao chép' : 'Copy',
           onTap: widget.onCopy,
         ),
-      // Translate (only for text)
+      // Translate / Show original (only for text)
       if (_isTextMessage)
         _buildOptionItem(
-          icon: Icons.translate_rounded,
-          label: widget.localeService.isVietnamese ? 'Dịch' : 'Translate',
+          icon: widget.isTranslated ? Icons.text_fields_rounded : Icons.translate_rounded,
+          label: widget.isTranslated
+              ? (widget.localeService.isVietnamese ? 'Hiện văn bản gốc' : 'Show original')
+              : (widget.localeService.isVietnamese ? 'Dịch' : 'Translate'),
           onTap: widget.onTranslate,
         ),
       // More
@@ -4768,24 +5072,13 @@ class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
 
   List<Widget> _buildMoreOptions() {
     return [
-      // Forward
-      _buildOptionItem(
-        icon: Icons.shortcut_rounded,
-        label: widget.localeService.isVietnamese ? 'Chuyển tiếp' : 'Forward',
-        onTap: widget.onForward,
-      ),
-      // Report
-      _buildOptionItem(
-        icon: Icons.report_outlined,
-        label: widget.localeService.isVietnamese ? 'Báo cáo' : 'Report',
-        onTap: widget.onReport,
-      ),
-      // Remind
-      _buildOptionItem(
-        icon: Icons.notifications_none_rounded,
-        label: widget.localeService.isVietnamese ? 'Nhắc lại' : 'Remind',
-        onTap: widget.onRemind,
-      ),
+      // Edit (only for own text messages within time limit)
+      if (widget.canEdit && _isTextMessage)
+        _buildOptionItem(
+          icon: Icons.edit_rounded,
+          label: widget.localeService.isVietnamese ? 'Chỉnh sửa' : 'Edit',
+          onTap: widget.onEdit ?? () {},
+        ),
       // Pin/Unpin
       _buildOptionItem(
         icon: _isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded,
@@ -4794,17 +5087,17 @@ class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
             : (widget.localeService.isVietnamese ? 'Ghim' : 'Pin'),
         onTap: widget.onPin,
       ),
-      // Delete for me
+      // Delete (opens Messenger-style bottom sheet)
       _buildOptionItem(
         icon: Icons.delete_outline_rounded,
-        label: widget.localeService.isVietnamese ? 'Xóa' : 'Delete',
-        onTap: widget.onDeleteForMe,
+        label: widget.localeService.isVietnamese ? 'Xoá' : 'Delete',
+        onTap: widget.onDelete,
         textColor: Colors.red,
         iconColor: Colors.red,
       ),
-      // Back
+      // More options (three dots)
       _buildOptionItem(
-        icon: Icons.arrow_back_rounded,
+        icon: Icons.more_horiz_rounded,
         label: widget.localeService.isVietnamese ? 'Quay lại' : 'Back',
         onTap: () => setState(() => _showMoreOptions = false),
         showDivider: false,
@@ -4950,6 +5243,239 @@ class _DeletedMessageBubble extends StatelessWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Messenger-style delete bottom sheet
+class _DeleteMessageSheet extends StatelessWidget {
+  final bool isMe;
+  final bool canUnsend;
+  final ThemeService themeService;
+  final LocaleService localeService;
+  final Color? chatThemeColor;
+  final VoidCallback onDeleteForMe;
+  final VoidCallback? onUnsendForEveryone;
+
+  const _DeleteMessageSheet({
+    required this.isMe,
+    required this.canUnsend,
+    required this.themeService,
+    required this.localeService,
+    this.chatThemeColor,
+    required this.onDeleteForMe,
+    this.onUnsendForEveryone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cardColor = themeService.isLightMode 
+        ? const Color(0xFFF2F2F2) 
+        : const Color(0xFF2C2C2C);
+    final dividerColor = themeService.isLightMode 
+        ? Colors.grey[300]! 
+        : Colors.grey[700]!;
+    
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Options card (grouped together)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                color: cardColor,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Unsend for everyone
+                    if (isMe && canUnsend && onUnsendForEveryone != null) ...[
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onUnsendForEveryone,
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            child: Text(
+                              localeService.isVietnamese ? 'Xóa đối với mọi người' : 'Unsend for everyone',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: themeService.textPrimaryColor,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Divider(height: 0.5, thickness: 0.5, color: dividerColor),
+                    ],
+                    // Delete for me
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onDeleteForMe,
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
+                          child: Text(
+                            localeService.isVietnamese ? 'Xóa ở phía bạn' : 'Delete for you',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: themeService.textPrimaryColor,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Cancel card (separate)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Material(
+                color: cardColor,
+                child: InkWell(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    child: Text(
+                      localeService.isVietnamese ? 'Hủy' : 'Cancel',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ========== TYPING BUBBLE (Messenger-style 3-dot animation) ==========
+
+class _TypingBubble extends StatefulWidget {
+  final String? recipientAvatar;
+  final ThemeService themeService;
+
+  const _TypingBubble({
+    required this.recipientAvatar,
+    required this.themeService,
+  });
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble> with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  double _getDotOffset(int dotIndex) {
+    final phase = (_animController.value * 2 * math.pi) - (dotIndex * math.pi * 0.6);
+    return math.sin(phase).clamp(0.0, 1.0) * -6;
+  }
+
+  double _getDotOpacity(int dotIndex) {
+    final phase = (_animController.value * 2 * math.pi) - (dotIndex * math.pi * 0.6);
+    final sinVal = math.sin(phase);
+    return sinVal > 0 ? 0.4 + (sinVal * 0.6) : 0.4;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: CircleAvatar(
+              radius: 14,
+              backgroundColor: Colors.grey[800],
+              backgroundImage: widget.recipientAvatar != null
+                  ? NetworkImage(widget.recipientAvatar!)
+                  : null,
+              child: widget.recipientAvatar == null
+                  ? const Icon(Icons.person, color: Colors.white, size: 14)
+                  : null,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.themeService.isLightMode 
+                  ? Colors.grey[300] 
+                  : Colors.grey[900],
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(4),
+                bottomRight: Radius.circular(18),
+              ),
+            ),
+            child: AnimatedBuilder(
+              animation: _animController,
+              builder: (context, _) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(3, (dotIndex) {
+                    return Padding(
+                      padding: EdgeInsets.only(right: dotIndex < 2 ? 4 : 0),
+                      child: Transform.translate(
+                        offset: Offset(0, _getDotOffset(dotIndex)),
+                        child: Opacity(
+                          opacity: _getDotOpacity(dotIndex),
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: widget.themeService.textSecondaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                );
+              },
             ),
           ),
         ],

@@ -346,73 +346,154 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
   }
 
   void _showNicknameDialog() {
-    final controller = TextEditingController(text: _nickname ?? widget.recipientUsername);
+    final controller = TextEditingController(text: _nickname ?? '');
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _themeService.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          _localeService.isVietnamese ? 'Đặt biệt danh' : 'Set Nickname',
-          style: TextStyle(color: _themeService.textPrimaryColor),
-        ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 30,
-          style: TextStyle(color: _themeService.textPrimaryColor),
-          decoration: InputDecoration(
-            hintText: widget.recipientUsername,
-            hintStyle: TextStyle(color: _themeService.textSecondaryColor),
-            filled: true,
-            fillColor: _themeService.isLightMode ? Colors.grey[100] : Colors.grey[800],
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            counterStyle: TextStyle(
-              color: _themeService.textSecondaryColor,
-              fontSize: 12,
-            ),
-            suffixIcon: IconButton(
-              icon: Icon(Icons.clear, color: _themeService.textSecondaryColor),
-              onPressed: () => controller.clear(),
+      builder: (context) {
+        return Dialog(
+          backgroundColor: _themeService.cardColor,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title
+                Text(
+                  _localeService.isVietnamese ? 'Đặt biệt danh' : 'Set Nickname',
+                  style: TextStyle(
+                    color: _themeService.textPrimaryColor,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _localeService.isVietnamese 
+                      ? 'Chỉ bạn mới thấy biệt danh này'
+                      : 'Only you can see this nickname',
+                  style: TextStyle(
+                    color: _themeService.textSecondaryColor,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Input field
+                StatefulBuilder(
+                  builder: (context, setDialogState) {
+                    return TextField(
+                      controller: controller,
+                      autofocus: true,
+                      maxLength: 30,
+                      style: TextStyle(
+                        color: _themeService.textPrimaryColor,
+                        fontSize: 16,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: widget.recipientUsername,
+                        hintStyle: TextStyle(
+                          color: _themeService.textSecondaryColor.withValues(alpha: 0.5),
+                        ),
+                        filled: true,
+                        fillColor: _themeService.inputBackground,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        counterText: '',
+                        suffixText: '${controller.text.length}/30',
+                        suffixStyle: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 13,
+                        ),
+                        suffixIcon: controller.text.isNotEmpty 
+                            ? IconButton(
+                                icon: Icon(Icons.close, color: _themeService.textSecondaryColor, size: 18),
+                                onPressed: () {
+                                  controller.clear();
+                                  setDialogState(() {});
+                                },
+                              )
+                            : null,
+                      ),
+                      onChanged: (_) => setDialogState(() {}),
+                    );
+                  },
+                ),
+                const SizedBox(height: 20),
+                // Action buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: _themeService.dividerColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            _localeService.get('cancel'),
+                            style: TextStyle(
+                              color: _themeService.textPrimaryColor,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            final newNickname = controller.text.trim();
+                            setState(() => _nickname = newNickname.isEmpty ? null : newNickname);
+                            widget.onNicknameChanged?.call(_nickname);
+                            _messageService.updateConversationSettings(
+                              widget.recipientId,
+                              nickname: newNickname.isEmpty ? '' : newNickname,
+                            );
+                            Navigator.pop(context);
+                            _showSnackBar(
+                              _localeService.isVietnamese 
+                                  ? 'Đã cập nhật biệt danh' 
+                                  : 'Nickname updated',
+                              Colors.green,
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ThemeService.accentColor,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: Text(
+                            _localeService.isVietnamese ? 'Lưu' : 'Save',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              _localeService.get('cancel'),
-              style: TextStyle(color: _themeService.textSecondaryColor),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              final newNickname = controller.text.trim();
-              setState(() => _nickname = newNickname.isEmpty ? null : newNickname);
-              widget.onNicknameChanged?.call(_nickname);
-              _messageService.updateConversationSettings(
-                widget.recipientId,
-                nickname: _nickname,
-              );
-              Navigator.pop(context);
-              _showSnackBar(
-                _localeService.isVietnamese 
-                    ? 'Đã cập nhật biệt danh' 
-                    : 'Nickname updated',
-                Colors.green,
-              );
-            },
-            child: Text(
-              _localeService.isVietnamese ? 'Lưu' : 'Save',
-              style: const TextStyle(color: Colors.blue),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -8,6 +8,8 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
+import 'package:scalable_short_video_app/src/services/in_app_notification_service.dart';
+import 'package:scalable_short_video_app/main.dart' show routeObserver;
 import 'package:timeago/timeago.dart' as timeago;
 
 class InboxScreen extends StatefulWidget {
@@ -17,7 +19,7 @@ class InboxScreen extends StatefulWidget {
   State<InboxScreen> createState() => _InboxScreenState();
 }
 
-class _InboxScreenState extends State<InboxScreen> {
+class _InboxScreenState extends State<InboxScreen> with RouteAware {
   final MessageService _messageService = MessageService();
   final AuthService _authService = AuthService();
   final ApiService _apiService = ApiService();
@@ -32,6 +34,8 @@ class _InboxScreenState extends State<InboxScreen> {
   
   StreamSubscription? _newMessageSubscription;
   StreamSubscription? _onlineStatusSubscription;
+  StreamSubscription? _messageUnsentSubscription;
+  StreamSubscription? _messageDeletedForMeSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
 
@@ -40,8 +44,25 @@ class _InboxScreenState extends State<InboxScreen> {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+    // Suppress message notifications while viewing inbox
+    InAppNotificationService().setInInboxScreen(true);
     _loadConversations();
     _setupListeners();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Subscribe to route observer to detect when we become visible again
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  /// Called when a screen pushed on top of this one is popped back
+  /// (e.g. ChatScreen is popped, InboxScreen becomes visible again)
+  @override
+  void didPopNext() {
+    // Refresh conversations to update unread counts after reading messages
+    _loadConversations();
   }
 
   void _onThemeChanged() {
@@ -57,11 +78,19 @@ class _InboxScreenState extends State<InboxScreen> {
   }
 
   void _setupListeners() {
-    if (_currentUserId.isNotEmpty) {
-      _messageService.connect(_currentUserId);
-    }
+    // WebSocket is connected globally in MainScreen — no need to connect here
 
     _newMessageSubscription = _messageService.newMessageStream.listen((message) {
+      _loadConversations();
+    });
+
+    // Listen to message unsent events to refresh preview
+    _messageUnsentSubscription = _messageService.messageUnsentStream.listen((data) {
+      _loadConversations();
+    });
+
+    // Listen to delete-for-me events to refresh preview
+    _messageDeletedForMeSubscription = _messageService.messageDeletedForMeStream.listen((data) {
       _loadConversations();
     });
 
@@ -196,12 +225,13 @@ class _InboxScreenState extends State<InboxScreen> {
         context,
         ChatScreen(
           recipientId: otherUserId,
-          recipientUsername: userInfo['username'] ?? 'User',
+          recipientUsername: userInfo['fullName'] ?? userInfo['username'] ?? 'User',
           recipientAvatar: userInfo['avatar'] != null 
               ? _apiService.getAvatarUrl(userInfo['avatar']) 
               : null,
         ),
       ).then((_) {
+        _nicknameCache.clear();
         _loadConversations();
       });
     }
@@ -209,12 +239,17 @@ class _InboxScreenState extends State<InboxScreen> {
 
   @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _newMessageSubscription?.cancel();
     _onlineStatusSubscription?.cancel();
+    _messageUnsentSubscription?.cancel();
+    _messageDeletedForMeSubscription?.cancel();
     // Unsubscribe from all online status updates
     for (final userId in _onlineStatusCache.keys) {
       _messageService.unsubscribeOnlineStatus(userId);
     }
+    // Clear inbox screen flag for in-app notification suppression
+    InAppNotificationService().setInInboxScreen(false);
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -245,7 +280,10 @@ class _InboxScreenState extends State<InboxScreen> {
     }
   }
 
-  String _formatMessagePreview(String? content, {bool isMe = false, String otherUsername = ''}) {
+  String _formatMessagePreview(String? content, {bool isMe = false, String otherUsername = '', bool isUnsent = false}) {
+    if (isUnsent) {
+      return _localeService.isVietnamese ? 'Tin nhắn đã bị gỡ' : 'Message unsent';
+    }
     if (content == null || content.isEmpty) {
       return '';
     }
@@ -400,7 +438,7 @@ class _InboxScreenState extends State<InboxScreen> {
                               builder: (context, snapshot) {
                                 final userInfo = (snapshot.data?[0] as Map<String, dynamic>?) ?? {'username': 'User', 'avatar': null};
                                 final nickname = snapshot.data?[1] as String?;
-                                final otherUsername = userInfo['username'] ?? 'User';
+                                final otherUsername = userInfo['fullName'] ?? userInfo['username'] ?? 'User';
                                 final displayName = nickname ?? otherUsername;
 
                                 return InkWell(
@@ -481,11 +519,15 @@ class _InboxScreenState extends State<InboxScreen> {
                                                         conversation['lastMessage']?.toString(),
                                                         isMe: isMe,
                                                         otherUsername: otherUsername,
+                                                        isUnsent: conversation['isLastMessageUnsent'] == true,
                                                       ),
                                                       style: TextStyle(
-                                                        color: unreadCount > 0 ? _themeService.textPrimaryColor : _themeService.textSecondaryColor,
+                                                        color: conversation['isLastMessageUnsent'] == true
+                                                            ? _themeService.textSecondaryColor
+                                                            : (unreadCount > 0 ? _themeService.textPrimaryColor : _themeService.textSecondaryColor),
                                                         fontSize: 14,
-                                                        fontWeight: unreadCount > 0 ? FontWeight.w500 : FontWeight.normal,
+                                                        fontWeight: unreadCount > 0 && conversation['isLastMessageUnsent'] != true ? FontWeight.w500 : FontWeight.normal,
+                                                        fontStyle: conversation['isLastMessageUnsent'] == true ? FontStyle.italic : FontStyle.normal,
                                                       ),
                                                       maxLines: 1,
                                                       overflow: TextOverflow.ellipsis,

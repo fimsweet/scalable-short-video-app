@@ -556,8 +556,22 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
       final result = await _apiService.loginWithPhone(idToken);
       
       if (result['success'] == true) {
-        final userData = result['data']['user'];
-        final token = result['data']['access_token'];
+        final responseData = result['data'];
+        
+        // Check if account requires reactivation
+        if (responseData['requiresReactivation'] == true) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            _showReactivationDialog(
+              userId: responseData['userId'],
+              daysRemaining: responseData['daysRemaining'] ?? 30,
+            );
+          }
+          return;
+        }
+        
+        final userData = responseData['user'];
+        final token = responseData['access_token'];
         await _authService.login(userData, token);
         
         if (mounted) {
@@ -583,6 +597,129 @@ class _PhoneRegisterScreenState extends State<PhoneRegisterScreen>
     }
   }
   
+  void _showReactivationDialog({required int userId, required int daysRemaining}) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.account_circle_outlined, color: Colors.deepOrange, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _localeService.get('account_deactivated'),
+                style: TextStyle(
+                  color: _themeService.textPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _localeService.get('reactivate_account_prompt'),
+              style: TextStyle(color: _themeService.textSecondaryColor, height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.deepOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, color: Colors.deepOrange, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_localeService.get('days_remaining')}: $daysRemaining',
+                      style: const TextStyle(
+                        color: Colors.deepOrange,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_localeService.get('cancel'), style: TextStyle(color: _themeService.textSecondaryColor)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _reactivateAccountByPhone();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepOrange,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(_localeService.get('reactivate_account')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _reactivateAccountByPhone() async {
+    setState(() => _isLoading = true);
+    try {
+      // For phone users, reactivate using phone number
+      // The phone number is already verified at this point via Firebase
+      final result = await _apiService.reactivateAccount(
+        username: _phoneNumber,
+        password: '', // Phone users may not have password
+      );
+      
+      if (result['success'] == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_localeService.get('account_reactivated')),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Retry login
+        final idToken = await _phoneAuthService.getIdToken();
+        if (idToken != null) {
+          await _loginWithPhone(idToken);
+        }
+      } else if (mounted) {
+        setState(() {
+          _errorMessage = result['message'] ?? _localeService.get('error');
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   Future<void> _completeRegistration() async {
     final username = _usernameController.text.trim();
     

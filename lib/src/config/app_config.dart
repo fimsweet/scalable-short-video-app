@@ -26,14 +26,18 @@ class AppConfig {
   // ============================================
   //  PRODUCTION URLs (AWS EC2) - THESIS DEPLOYMENT
   // ============================================
-  // EC2 Public IP: 18.141.239.82
-  // User Service: port 3000
-  // Video Service: port 3002
+  // EC2 Elastic IP: 18.138.223.226
+  // API Gateway (Nginx): port 80 → routes to user-service & video-service
   // ============================================
   
-  // EC2 direct access (no API Gateway - saves cost for thesis)
-  static const String _prodUserServiceUrl = 'http://18.141.239.82:3000';
-  static const String _prodVideoServiceUrl = 'http://18.141.239.82:3002';
+  // API Gateway - single entry point (Nginx reverse proxy)
+  static const String _prodApiGatewayUrl = 'http://18.138.223.226';
+  
+  // Both services go through the same gateway — Nginx routes by path prefix:
+  //   /auth/*, /users/*, /follows/*, /sessions/*, /reports/*, /activity-history/* → user-service:3000
+  //   /videos/*, /comments/*, /likes/*, /messages/*, /notifications/*, etc.    → video-service:3002
+  static const String _prodUserServiceUrl = _prodApiGatewayUrl;
+  static const String _prodVideoServiceUrl = _prodApiGatewayUrl;
   
   // CloudFront CDN for video/image delivery
   static const String? _prodCloudFrontUrl = 'https://d3ucy55nukq6p9.cloudfront.net';
@@ -78,8 +82,8 @@ class AppConfig {
   /// WebSocket URL for real-time features
   static String get webSocketUrl {
     if (isProduction) {
-      // WS for EC2 (no SSL - saves cost for thesis)
-      return 'ws://18.141.239.82:3002';
+      // WS through API Gateway (Nginx proxies /socket.io/ to video-service)
+      return 'ws://18.138.223.226';
     } else {
       // WS for development
       if (kIsWeb) {

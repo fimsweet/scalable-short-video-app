@@ -32,9 +32,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isMutual = false;
   bool _isProcessing = false;
   bool _isBlocked = false;
+  bool _isDeactivated = false;
   int _followerCount = 0;
   int _followingCount = 0;
   List<dynamic> _userVideos = [];
+  bool _isPrivacyRestricted = false;
+  String? _privacyReason;
 
   @override
   void initState() {
@@ -63,8 +66,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // Load follow stats
       final stats = await _followService.getStats(widget.userId);
       
-      // Load user videos
-      final videos = await _videoService.getVideosByUserId(widget.userId.toString());
+      // Load user videos with privacy check
+      final currentUserId = _authService.isLoggedIn && _authService.user != null
+          ? _authService.user!['id'].toString()
+          : null;
+      final videoResult = await _videoService.getVideosByUserIdWithPrivacy(
+        widget.userId.toString(),
+        requesterId: currentUserId,
+      );
+      final videos = videoResult['videos'] as List<dynamic>? ?? [];
+      final privacyRestricted = videoResult['privacyRestricted'] == true;
+      final privacyReason = videoResult['reason'] as String?;
 
       // Check follow status and block status
       if (_authService.isLoggedIn && _authService.user != null) {
@@ -95,9 +107,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (mounted) {
         setState(() {
           _userInfo = userInfo;
+          _isDeactivated = userInfo?['isDeactivated'] == true;
           _followerCount = stats['followerCount'] ?? 0;
           _followingCount = stats['followingCount'] ?? 0;
           _userVideos = videos;
+          _isPrivacyRestricted = privacyRestricted;
+          _privacyReason = privacyReason;
           _isLoading = false;
         });
       }
@@ -462,13 +477,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             ),
                             const SizedBox(height: 12),
                             
+                            // Display name above @username (like TikTok)
+                            if (_userInfo!['fullName'] != null && _userInfo!['fullName'].toString().isNotEmpty)
+                              Text(
+                                _userInfo!['fullName'],
+                                style: TextStyle(
+                                  color: _themeService.textPrimaryColor,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            if (_userInfo!['fullName'] != null && _userInfo!['fullName'].toString().isNotEmpty)
+                              const SizedBox(height: 2),
+                            
                             // Username
                             Text(
                               '@${_userInfo!['username'] ?? 'user'}',
                               style: TextStyle(
-                                color: _themeService.textPrimaryColor,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
+                                color: (_userInfo!['fullName'] != null && _userInfo!['fullName'].toString().isNotEmpty)
+                                    ? _themeService.textSecondaryColor
+                                    : _themeService.textPrimaryColor,
+                                fontSize: (_userInfo!['fullName'] != null && _userInfo!['fullName'].toString().isNotEmpty) ? 14 : 18,
+                                fontWeight: (_userInfo!['fullName'] != null && _userInfo!['fullName'].toString().isNotEmpty)
+                                    ? FontWeight.normal
+                                    : FontWeight.w600,
                               ),
                             ),
                             const SizedBox(height: 24),
@@ -487,7 +519,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             const SizedBox(height: 24),
                             
                             // Action Buttons
-                            if (!isOwnProfile)
+                            if (!isOwnProfile && !_isDeactivated)
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 48),
                                 child: Row(
@@ -504,6 +536,38 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               ),
                             
                             const SizedBox(height: 24),
+                            
+                            // Deactivation notice
+                            if (_isDeactivated)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 32),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.deepOrange.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.3)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.info_outline, color: Colors.deepOrange, size: 20),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _localeService.isVietnamese
+                                              ? 'Tài khoản này hiện đang bị vô hiệu hóa'
+                                              : 'This account is currently deactivated',
+                                          style: const TextStyle(
+                                            color: Colors.deepOrange,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             
                             // Bio
                             if (_userInfo!['bio'] != null && _userInfo!['bio'].toString().isNotEmpty)
@@ -670,6 +734,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Widget _buildVideoGrid() {
+    // [PRIVACY] Show private account gate when restricted
+    if (_isPrivacyRestricted) {
+      return _buildPrivateAccountGate();
+    }
+
     if (_userVideos.isEmpty) {
       return Center(
         child: Column(
@@ -773,6 +842,85 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildPrivateAccountGate() {
+    final isPrivateAccount = _privacyReason == 'Tài khoản riêng tư';
+    
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _themeService.textSecondaryColor.withOpacity(0.5),
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                isPrivateAccount ? Icons.lock_outline_rounded : Icons.visibility_off_outlined,
+                size: 32,
+                color: _themeService.textSecondaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              isPrivateAccount
+                  ? (_localeService.isVietnamese ? 'Tài khoản riêng tư' : 'Private Account')
+                  : (_localeService.isVietnamese ? 'Nội dung bị hạn chế' : 'Content Restricted'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              isPrivateAccount
+                  ? (_localeService.isVietnamese 
+                      ? 'Theo dõi tài khoản này để xem video của họ' 
+                      : 'Follow this account to see their videos')
+                  : (_privacyReason ?? (_localeService.isVietnamese 
+                      ? 'Bạn không có quyền xem video này' 
+                      : 'You don\'t have permission to view these videos')),
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            if (isPrivateAccount && !_isFollowing) ...[
+              const SizedBox(height: 24),
+              SizedBox(
+                width: 180,
+                child: ElevatedButton(
+                  onPressed: _isProcessing ? null : _toggleFollow,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF2D55),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    elevation: 0,
+                  ),
+                  child: _isProcessing
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(
+                          _localeService.get('follow'),
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                        ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 

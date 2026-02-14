@@ -23,6 +23,7 @@ class AuthService {
   bool _isLoggedIn = false;
   Map<String, dynamic>? _user;
   String? _username;
+  String? _fullName;
   int? _userId;
   String? _email;
   String? _phoneNumber;
@@ -32,6 +33,7 @@ class AuthService {
 
   bool get isLoggedIn => _isLoggedIn;
   String? get username => _username;
+  String? get fullName => _fullName;
   Map<String, dynamic>? get user => _user;
   String? get avatarUrl => _avatarUrl;
   String? get bio => _user?['bio'] as String?;
@@ -88,6 +90,7 @@ class AuthService {
   Future<void> login(Map<String, dynamic> userData, String token) async {
     _user = userData;
     _username = userData['username'];
+    _fullName = userData['fullName'];
     _userId = userData['id'];
     _email = userData['email'];
     _phoneNumber = userData['phoneNumber'];
@@ -97,6 +100,7 @@ class AuthService {
 
     await _storage.write(key: 'token', value: token);
     await _storage.write(key: 'username', value: _username);
+    await _storage.write(key: 'fullName', value: _fullName ?? '');
     await _storage.write(key: 'userId', value: _userId.toString());
     await _storage.write(key: 'email', value: _email);
     await _storage.write(key: 'phoneNumber', value: _phoneNumber ?? '');
@@ -143,6 +147,7 @@ class AuthService {
     _token = null;
     _user = null;
     _username = null;
+    _fullName = null;
     _userId = null;
     _email = null;
     _phoneNumber = null;
@@ -170,6 +175,7 @@ class AuthService {
   Future<bool> tryAutoLogin() async {
     final token = await _storage.read(key: 'token');
     final username = await _storage.read(key: 'username');
+    final fullName = await _storage.read(key: 'fullName');
     final userId = await _storage.read(key: 'userId');
     final email = await _storage.read(key: 'email');
     final avatarUrl = await _storage.read(key: 'avatarUrl');
@@ -182,6 +188,7 @@ class AuthService {
 
     if (token != null && username != null && userId != null && email != null) {
       _username = username;
+      _fullName = (fullName != null && fullName.isNotEmpty) ? fullName : null;
       _userId = int.tryParse(userId);
       _email = email;
       _avatarUrl = avatarUrl;
@@ -261,6 +268,20 @@ class AuthService {
     }
     
     print('Bio updated in AuthService: $bio');
+  }
+
+  /// Update display name (fullName) in local storage and memory
+  Future<void> updateFullName(String? fullName) async {
+    _fullName = fullName;
+    await _storage.write(key: 'fullName', value: fullName ?? '');
+    
+    if (_user != null) {
+      _user!['fullName'] = fullName;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(_user));
+    }
+    
+    print('FullName updated in AuthService: $fullName');
   }
 
   /// Update username in local storage and memory

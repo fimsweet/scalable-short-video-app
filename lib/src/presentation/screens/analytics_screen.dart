@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/video_service.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -17,6 +18,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProv
   final AuthService _authService = AuthService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final VideoService _videoService = VideoService();
   
   TabController? _tabController;
   Map<String, dynamic>? _analytics;
@@ -735,7 +737,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> with SingleTickerProv
   }
 
   Widget _buildVideoItem(Map<String, dynamic> video, int rank) {
-    final thumbnailUrl = video['thumbnailUrl']?.toString();
+    final thumbnailUrl = video['thumbnailUrl'] != null
+        ? _videoService.getVideoUrl(video['thumbnailUrl'])
+        : null;
     
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

@@ -166,7 +166,7 @@ class _SuggestionsBottomSheetState extends State<SuggestionsBottomSheet> {
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(32),
-                      child: CircularProgressIndicator(),
+                      child: CircularProgressIndicator(color: ThemeService.accentColor),
                     ),
                   )
                 : visibleSuggestions.isEmpty
@@ -342,7 +342,7 @@ class _SuggestionCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        user.getReasonText(localeService.get),
+                        user.getReasonText(localeService.get, isVietnamese: localeService.isVietnamese),
                         style: TextStyle(
                           color: themeService.textSecondaryColor.withOpacity(0.8),
                           fontSize: 12,

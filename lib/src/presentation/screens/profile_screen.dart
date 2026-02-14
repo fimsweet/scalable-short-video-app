@@ -23,6 +23,7 @@ import 'package:scalable_short_video_app/src/presentation/screens/notifications_
 import 'package:scalable_short_video_app/src/presentation/screens/inbox_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/help_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/edit_display_name_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -709,10 +710,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     ),
                     if (_unreadCount > 0)
                       Positioned(
-                        right: -6,
-                        top: -4,
+                        right: -5,
+                        top: -3,
                         child: Container(
-                          padding: const EdgeInsets.all(4),
+                          padding: const EdgeInsets.all(3),
                           decoration: const BoxDecoration(
                             color: Colors.red,
                             shape: BoxShape.circle,
@@ -725,7 +726,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             _unreadCount > 99 ? '99+' : _unreadCount.toString(),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 10,
+                              fontSize: 9,
                               fontWeight: FontWeight.bold,
                             ),
                             textAlign: TextAlign.center,
@@ -819,7 +820,16 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                 ),
               ),
               
-              PopupMenuButton<String>(
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerTheme: DividerThemeData(
+                    color: _themeService.isLightMode
+                        ? Colors.grey[200]
+                        : Colors.grey[700]!.withValues(alpha: 0.5),
+                    thickness: 0.5,
+                  ),
+                ),
+                child: PopupMenuButton<String>(
                 icon: Icon(Icons.menu, color: _themeService.iconColor),
                 splashRadius: 0.1,
                 shape: RoundedRectangleBorder(
@@ -880,7 +890,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                       ],
                     ),
                   ),
-                  const PopupMenuDivider(height: 16),
+                  const PopupMenuDivider(height: 8),
                   PopupMenuItem(
                     value: 'logout',
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -901,6 +911,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   ),
                 ],
               ),
+              ),
             ],
           ),
           body: NestedScrollView(
@@ -911,6 +922,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Avatar row with stats (and fullName above stats if set)
                       Row(
                         children: [
                           GestureDetector(
@@ -949,19 +961,86 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                             ),
                           ),
                           Expanded(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                _ProfileStat(count: _likedCount.toString(), label: _localeService.get('likes'), onTap: null),
-                                _ProfileStat(count: _followerCount.toString(), label: _localeService.get('followers'), onTap: () => _navigateToFollowerFollowing(0)),
-                                _ProfileStat(count: _followingCount.toString(), label: _localeService.get('following'), onTap: () => _navigateToFollowerFollowing(1)),
-                              ],
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 20),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // fullName above stats (Instagram-style)
+                                  if (_authService.fullName != null && _authService.fullName!.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(bottom: 8),
+                                      child: Text(
+                                        _authService.fullName!,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: _themeService.textPrimaryColor,
+                                          fontSize: 18,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  // Stats row — equal-width columns, left-aligned (Instagram-style)
+                                  Row(
+                                    children: [
+                                      Expanded(child: _ProfileStat(count: _likedCount.toString(), label: _localeService.get('likes'), onTap: null)),
+                                      Expanded(child: _ProfileStat(count: _followerCount.toString(), label: _localeService.get('followers'), onTap: () => _navigateToFollowerFollowing(0))),
+                                      Expanded(child: _ProfileStat(count: _followingCount.toString(), label: _localeService.get('following'), onTap: () => _navigateToFollowerFollowing(1))),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text('@${_authService.username ?? ''}', style: TextStyle(fontWeight: FontWeight.bold, color: _themeService.textPrimaryColor)),
+                      const SizedBox(height: 10),
+                      // @username always below avatar
+                      Text(
+                        '@${_authService.username ?? ''}',
+                        style: TextStyle(
+                          fontWeight: (_authService.fullName == null || _authService.fullName!.isEmpty)
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: (_authService.fullName != null && _authService.fullName!.isNotEmpty)
+                              ? _themeService.textSecondaryColor
+                              : _themeService.textPrimaryColor,
+                          fontSize: (_authService.fullName != null && _authService.fullName!.isNotEmpty) ? 14 : 16,
+                        ),
+                      ),
+                      // "Thêm tên hiển thị" only when no fullName
+                      if (_authService.fullName == null || _authService.fullName!.isEmpty) ...[
+                        const SizedBox(height: 4),
+                        GestureDetector(
+                          onTap: () {
+                            NavigationUtils.slideToScreen(
+                              context,
+                              const EditDisplayNameScreen(),
+                            ).then((_) {
+                              if (mounted) setState(() {});
+                            });
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _localeService.isVietnamese ? 'Thêm tên hiển thị' : 'Add display name',
+                                style: TextStyle(
+                                  color: _themeService.textSecondaryColor,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.edit_outlined,
+                                size: 14,
+                                color: _themeService.textSecondaryColor,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       // Bio section with character limit
                       if (_authService.bio != null && _authService.bio!.isNotEmpty)
@@ -1053,34 +1132,52 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     if (avatarUrl != null && avatarUrl.isNotEmpty) {
       final fullUrl = _apiService.getAvatarUrl(avatarUrl);
       
-      return CircleAvatar(
-        radius: 40,
-        backgroundColor: _themeService.isLightMode ? Colors.white : Colors.grey[700],
-        child: ClipOval(
-          child: Image.network(
-            fullUrl,
-            width: 80,
-            height: 80,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              print('Error loading avatar: $error');
-              return Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor);
-            },
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
-            },
+      return Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[600]!,
+            width: 1.5,
+          ),
+        ),
+        child: CircleAvatar(
+          radius: 40,
+          backgroundColor: _themeService.isLightMode ? Colors.white : Colors.grey[700],
+          child: ClipOval(
+            child: Image.network(
+              fullUrl,
+              width: 80,
+              height: 80,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                print('Error loading avatar: $error');
+                return Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor);
+              },
+              loadingBuilder: (context, child, loadingProgress) {
+                if (loadingProgress == null) return child;
+                return const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              },
+            ),
           ),
         ),
       );
     }
 
-    return CircleAvatar(
-      radius: 40,
-      backgroundColor: _themeService.isLightMode ? Colors.white : Colors.grey[700],
-      child: Icon(Icons.person, size: 40, color: _themeService.textPrimaryColor),
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[600]!,
+          width: 1.5,
+        ),
+      ),
+      child: CircleAvatar(
+        radius: 40,
+        backgroundColor: _themeService.isLightMode ? Colors.grey[50] : Colors.grey[700],
+        child: Icon(Icons.person, size: 40, color: _themeService.isLightMode ? Colors.grey[400] : _themeService.textPrimaryColor),
+      ),
     );
   }
 }
@@ -1097,6 +1194,7 @@ class _ProfileStat extends StatelessWidget {
     return GestureDetector(
         onTap: onTap,
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(count, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeService.textPrimaryColor)),
             Text(label, style: TextStyle(color: themeService.textSecondaryColor)),
