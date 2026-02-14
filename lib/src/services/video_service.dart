@@ -25,6 +25,8 @@ class VideoService {
     required String token,
     List<int>? categoryIds,
     double? thumbnailTimestamp,
+    String? visibility,
+    bool? allowComments,
   }) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$_videoApiUrl/upload'));
@@ -63,6 +65,16 @@ class VideoService {
       if (thumbnailTimestamp != null) {
         request.fields['thumbnailTimestamp'] = thumbnailTimestamp.toStringAsFixed(3);
         print('Thumbnail timestamp: ${thumbnailTimestamp}s');
+      }
+
+      // Add privacy settings
+      if (visibility != null) {
+        request.fields['visibility'] = visibility;
+        print('Visibility: $visibility');
+      }
+      if (allowComments != null) {
+        request.fields['allowComments'] = allowComments.toString();
+        print('Allow comments: $allowComments');
       }
       
       print('Uploading video to: $_videoApiUrl/upload');
@@ -253,17 +265,64 @@ class VideoService {
     if (hlsUrl.startsWith('http://') || hlsUrl.startsWith('https://')) {
       return hlsUrl;
     }
-    // Convert thành full URL with platform-specific base
-    return '$_baseUrl$hlsUrl';
+    // Prefer CloudFront CDN in production, fallback to gateway/direct URL
+    final baseUrl = AppConfig.cloudFrontUrl ?? _baseUrl;
+    return '$baseUrl$hlsUrl';
   }
 
   /// Get videos by user ID (for user profile)
-  Future<List<dynamic>> getVideosByUserId(String userId) async {
+  /// Returns { 'videos': List, 'privacyRestricted': bool, 'reason': String? }
+  Future<Map<String, dynamic>> getVideosByUserIdWithPrivacy(String userId, {String? requesterId}) async {
     try {
-      print('Fetching videos for user $userId...');
+      print('Fetching videos for user $userId (requesterId: $requesterId)...');
+      
+      String url = '$_baseUrl/videos/user/$userId';
+      if (requesterId != null && requesterId.isNotEmpty) {
+        url += '?requesterId=$requesterId';
+      }
       
       final response = await http.get(
-        Uri.parse('$_baseUrl/videos/user/$userId'),
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data is Map && data['success'] == true) {
+          final bool privacyRestricted = data['privacyRestricted'] == true;
+          final String? reason = data['reason'];
+          final List<dynamic> videos = (data['data'] ?? [])
+              .where((v) => v != null && v['status'] == 'ready')
+              .toList();
+          
+          return {
+            'videos': videos,
+            'privacyRestricted': privacyRestricted,
+            'reason': reason,
+          };
+        }
+        return {'videos': [], 'privacyRestricted': false};
+      } else {
+        return {'videos': [], 'privacyRestricted': false};
+      }
+    } catch (e) {
+      print('Error loading user videos: $e');
+      return {'videos': [], 'privacyRestricted': false};
+    }
+  }
+
+  Future<List<dynamic>> getVideosByUserId(String userId, {String? requesterId}) async {
+    try {
+      print('Fetching videos for user $userId (requesterId: $requesterId)...');
+      
+      String url = '$_baseUrl/videos/user/$userId';
+      if (requesterId != null && requesterId.isNotEmpty) {
+        url += '?requesterId=$requesterId';
+      }
+      
+      final response = await http.get(
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
       );
 
@@ -491,12 +550,17 @@ class VideoService {
   }
 
   /// Get personalized recommended videos for For You feed
-  Future<List<dynamic>> getRecommendedVideos(int userId, {int limit = 50}) async {
+  Future<List<dynamic>> getRecommendedVideos(int userId, {int limit = 50, List<String>? excludeIds}) async {
     try {
       print('Fetching recommended videos for user $userId...');
       
+      String url = '$_baseUrl/recommendation/for-you/$userId?limit=$limit';
+      if (excludeIds != null && excludeIds.isNotEmpty) {
+        url += '&excludeIds=${excludeIds.join(',')}';
+      }
+
       final response = await http.get(
-        Uri.parse('$_baseUrl/recommendation/for-you/$userId?limit=$limit'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
       ).timeout(
         const Duration(seconds: 10),
@@ -700,6 +764,8 @@ class VideoService {
     required String token,
     List<int>? categoryIds,
     double? thumbnailTimestamp,
+    String? visibility,
+    bool? allowComments,
   }) async {
     try {
       var request = http.MultipartRequest(
@@ -754,6 +820,16 @@ class VideoService {
         request.fields['thumbnailTimestamp'] = thumbnailTimestamp.toStringAsFixed(3);
         print('Thumbnail timestamp: ${thumbnailTimestamp}s');
       }
+
+      // Add privacy settings
+      if (visibility != null) {
+        request.fields['visibility'] = visibility;
+        print('Visibility: $visibility');
+      }
+      if (allowComments != null) {
+        request.fields['allowComments'] = allowComments.toString();
+        print('Allow comments: $allowComments');
+      }
       
       print('Uploading video with thumbnail to: $_videoApiUrl/upload-with-thumbnail');
       print('   Video: ${videoFile.name} (${videoBytes.length} bytes)');
@@ -779,6 +855,45 @@ class VideoService {
       }
     } catch (e) {
       print('Error uploading video with thumbnail: $e');
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
+  /// Retry a failed video processing job
+  Future<Map<String, dynamic>> retryVideo({
+    required String videoId,
+    required String userId,
+  }) async {
+    try {
+      print('Retrying failed video: $videoId');
+
+      final response = await http.post(
+        Uri.parse('$_videoApiUrl/$videoId/retry'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'userId': userId}),
+      );
+
+      print('Retry response: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'success': true,
+          'data': data,
+        };
+      } else {
+        final errorData = json.decode(response.body);
+        return {
+          'success': false,
+          'message': errorData['message'] ?? 'Retry failed: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('Error retrying video: $e');
       return {
         'success': false,
         'message': e.toString(),

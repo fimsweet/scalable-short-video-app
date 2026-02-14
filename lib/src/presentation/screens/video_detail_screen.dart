@@ -20,6 +20,8 @@ import 'package:scalable_short_video_app/src/presentation/widgets/video_more_opt
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/search_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_video_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_options_sheet.dart';
+import 'package:scalable_short_video_app/src/services/in_app_notification_service.dart';
 
 class VideoDetailScreen extends StatefulWidget {
   final List<dynamic> videos;
@@ -64,6 +66,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Map<String, int> _viewCounts = {}; // Track view counts
   Map<String, Map<String, dynamic>> _userCache = {};
   Map<String, bool> _saveStatus = {};
+  Map<String, List<Map<String, dynamic>>> _videoCategoriesCache = {}; // AI category cache
+  Set<String> _expandedCategories = {}; // Track which videos have expanded category tags
+  HLSVideoPlayerState? _currentVideoPlayerState;
+
+  // Playback speed & auto-scroll (persisted across modal opens)
+  double _playbackSpeed = 1.0;
+  bool _autoScroll = false;
 
   @override
   void initState() {
@@ -88,6 +97,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     
     _initializeVideoData();
     
+    // Suppress in-app notifications for the currently viewed video
+    if (_videos.isNotEmpty && _currentPage < _videos.length) {
+      final videoId = _videos[_currentPage]?['id']?.toString();
+      InAppNotificationService().setActiveVideo(videoId);
+    }
+    
     // Auto-open comments if requested (e.g., from notification)
     if (widget.openCommentsOnLoad && _videos.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -106,6 +121,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       context: context,
       builder: (context) => CommentSectionWidget(
         videoId: videoId,
+        videoOwnerId: video['userId']?.toString(),
         onCommentAdded: () async {
           final count = await _commentService.getCommentCount(videoId);
           if (mounted) {
@@ -165,6 +181,8 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   @override
   void dispose() {
+    // Clear active video for in-app notification suppression
+    InAppNotificationService().setActiveVideo(null);
     _authService.removeLogoutListener(_onLogout);
     _authService.removeLoginListener(_onLogin); // ADD THIS
     _themeService.removeListener(_onThemeChanged);
@@ -385,6 +403,32 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     return {'username': 'user', 'avatar': null};
   }
 
+  Future<List<Map<String, dynamic>>> _getVideoCategories(String? videoId) async {
+    if (videoId == null || videoId.isEmpty) return [];
+    if (_videoCategoriesCache.containsKey(videoId)) {
+      return _videoCategoriesCache[videoId]!;
+    }
+
+    try {
+      final result = await _apiService.getVideoCategoriesWithAiInfo(videoId);
+      if (result['success'] == true && result['data'] != null) {
+        final categories = (result['data'] as List).map((item) {
+          final category = item['category'] ?? item;
+          return {
+            'id': category['id'],
+            'name': category['name']?.toString() ?? '',
+            'isAiSuggested': item['isAiSuggested'] == true,
+          };
+        }).toList();
+        _videoCategoriesCache[videoId] = categories;
+        return categories;
+      }
+    } catch (e) {
+      print('Error fetching video categories: $e');
+    }
+    return [];
+  }
+
   String _formatCount(int count) {
     if (count >= 1000000) {
       return '${(count / 1000000).toStringAsFixed(1)}M';
@@ -483,6 +527,44 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Show TikTok-style long-press options sheet
+  void _showVideoOptionsSheet(dynamic video, String videoId, String? userId) {
+    final currentUserId = _authService.userId?.toString();
+    final isOwnVideo = currentUserId != null && userId == currentUserId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => VideoOptionsSheet(
+        videoId: videoId,
+        videoOwnerId: userId,
+        isOwnVideo: isOwnVideo,
+        currentSpeed: _playbackSpeed,
+        autoScroll: _autoScroll,
+        onSpeedChanged: (speed) {
+          _playbackSpeed = speed;
+          _currentVideoPlayerState?.setPlaybackSpeed(speed);
+        },
+        onAutoScrollChanged: (val) {
+          _autoScroll = val;
+          _currentVideoPlayerState?.setLooping(!val);
+        },
+        onReport: () {
+          AppSnackBar.showInfo(
+            context,
+            _localeService.get('report_submitted'),
+          );
+        },
+        onCopyLink: () {
+          AppSnackBar.showSuccess(
+            context,
+            _localeService.get('link_copied'),
+          );
+        },
       ),
     );
   }
@@ -717,6 +799,11 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               _currentPage = index;
             });
             
+            // Update active video for in-app notification suppression
+            if (_videos[index] != null && _videos[index]['id'] != null) {
+              InAppNotificationService().setActiveVideo(_videos[index]['id'].toString());
+            }
+            
             // Increment view count when video is viewed
             final video = _videos[index];
             if (video != null && video['id'] != null) {
@@ -746,6 +833,27 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   key: ValueKey('detail_$videoId'),
                   videoUrl: hlsUrl,
                   autoPlay: index == _currentPage,
+                  progressBarBottom: 48 + MediaQuery.of(context).viewPadding.bottom,
+                  onPlayerCreated: (playerState) {
+                    if (index == _currentPage) {
+                      _currentVideoPlayerState = playerState;
+                      if (_playbackSpeed != 1.0) {
+                        playerState?.setPlaybackSpeed(_playbackSpeed);
+                      }
+                      if (_autoScroll) {
+                        playerState?.setLooping(false);
+                      }
+                    }
+                  },
+                  onLongPress: () => _showVideoOptionsSheet(video, videoId, userId),
+                  onVideoEnd: () {
+                    if (_autoScroll && _currentPage < _videos.length - 1) {
+                      _pageController.nextPage(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
                 )
               else
                 Container(
@@ -796,7 +904,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                 child: GestureDetector(
                                   onTap: () => _navigateToProfile(videoOwnerId),
                                   child: Text(
-                                    userInfo['username']?.toString() ?? 'user',
+                                    (userInfo['fullName'] ?? userInfo['username'])?.toString() ?? 'user',
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 14,
@@ -818,6 +926,112 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                           ExpandableCaption(
                             key: ValueKey('caption_$videoId'),
                             description: video['description']?.toString() ?? video['title']?.toString() ?? '',
+                          ),
+                          // Video category tags (collapsible)
+                          FutureBuilder<List<Map<String, dynamic>>>(
+                            future: _getVideoCategories(videoId),
+                            builder: (context, catSnapshot) {
+                              final cats = catSnapshot.data ?? [];
+                              if (cats.isEmpty) return const SizedBox.shrink();
+                              final isExpanded = _expandedCategories.contains(videoId);
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      if (isExpanded) {
+                                        _expandedCategories.remove(videoId);
+                                      } else {
+                                        _expandedCategories.add(videoId ?? '');
+                                      }
+                                    });
+                                  },
+                                  child: AnimatedSize(
+                                    duration: const Duration(milliseconds: 250),
+                                    curve: Curves.easeInOut,
+                                    alignment: Alignment.topLeft,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Toggle row
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.label_outline,
+                                              size: 13,
+                                              color: Colors.white54,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${cats.length} ${_localeService.isVietnamese ? 'danh m\u1ee5c' : 'categories'}',
+                                              style: const TextStyle(
+                                                color: Colors.white54,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w400,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 2),
+                                            AnimatedRotation(
+                                              turns: isExpanded ? 0.5 : 0,
+                                              duration: const Duration(milliseconds: 250),
+                                              child: const Icon(
+                                                Icons.expand_more,
+                                                size: 14,
+                                                color: Colors.white54,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        // Expanded category chips
+                                        if (isExpanded) ...[
+                                          const SizedBox(height: 6),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 4,
+                                            children: cats.map((cat) {
+                                              final isAi = cat['isAiSuggested'] == true;
+                                              return Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: isAi
+                                                      ? Colors.deepPurple.withOpacity(0.5)
+                                                      : Colors.white.withOpacity(0.15),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  border: isAi
+                                                      ? Border.all(color: Colors.deepPurpleAccent.withOpacity(0.6), width: 0.5)
+                                                      : null,
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (isAi) ...[
+                                                      const Icon(Icons.auto_awesome, size: 11, color: Colors.amberAccent),
+                                                      const SizedBox(width: 3),
+                                                    ],
+                                                    Text(
+                                                      '#${cat['name']}',
+                                                      style: TextStyle(
+                                                        color: isAi ? Colors.white : Colors.white70,
+                                                        fontSize: 11,
+                                                        fontWeight: isAi ? FontWeight.w600 : FontWeight.w400,
+                                                        shadows: const [
+                                                          Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(0.5, 0.5)),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       );
@@ -947,6 +1161,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                     context: context,
                                     builder: (context) => CommentSectionWidget(
                                       videoId: videoId,
+                                      videoOwnerId: video['userId']?.toString(),
                                       autoFocus: true,
                                       onCommentAdded: () async {
                                         final count = await _commentService.getCommentCount(videoId);
@@ -1035,7 +1250,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               // Controls - position higher when there's bottom bar
               if (videoId.isNotEmpty)
                 Positioned(
-                  bottom: 50, // Always position higher to make room for bottom bar
+                  bottom: 75, // Position above progress bar and bottom bar
                   right: 0,
                   child: GestureDetector(
                     onTap: () {},
@@ -1060,6 +1275,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                           context: context,
                           builder: (context) => CommentSectionWidget(
                             videoId: videoId,
+                            videoOwnerId: video['userId']?.toString(),
                             onCommentAdded: () async {
                               final count = await _commentService.getCommentCount(videoId);
                               if (mounted) {

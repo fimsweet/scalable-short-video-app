@@ -602,8 +602,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                   color: isRead 
                       ? _themeService.backgroundColor 
                       : (_themeService.isLightMode 
-                          ? const Color(0xFFF0F8FF) 
-                          : const Color(0xFF1A2A3A)),
+                          ? const Color(0xFFF5F5F5) 
+                          : const Color(0xFF2A2A2A)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,28 +693,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                       ),
                     ),
                     
-                    // Action button or indicator
+                    // Action button for follow
                     if (type == 'follow')
                       Container(
                         margin: const EdgeInsets.only(left: 8),
                         child: _buildFollowButton(notification),
-                      )
-                    else if (!isRead)
-                      Container(
-                        width: 10,
-                        height: 10,
-                        margin: const EdgeInsets.only(left: 8, top: 4),
-                        decoration: BoxDecoration(
-                          color: _getNotificationColor(type),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: _getNotificationColor(type).withOpacity(0.4),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
                       ),
                   ],
                 ),

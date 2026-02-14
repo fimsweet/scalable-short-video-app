@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/processing_video_screen.dart';
 
 class UserVideoGrid extends StatefulWidget {
   const UserVideoGrid({super.key});
@@ -220,6 +221,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
         itemBuilder: (context, index) {
           final video = _videos[index];
           final isProcessing = video['status'] != 'ready';
+          final isFailed = video['status'] == 'failed';
           
           final thumbnailUrl = video['thumbnailUrl'] != null
               ? _videoService.getVideoUrl(video['thumbnailUrl'])
@@ -228,7 +230,17 @@ class _UserVideoGridState extends State<UserVideoGrid> {
           final isHidden = video['isHidden'] == true;
 
           return GestureDetector(
-            onTap: isProcessing ? null : () {
+            onTap: isProcessing ? () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProcessingVideoScreen(
+                    video: video,
+                    onVideoReady: () => _loadUserVideos(),
+                  ),
+                ),
+              ).then((_) => _loadUserVideos());
+            } : () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -353,31 +365,79 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                         ),
                       ),
                     
-                    // Processing overlay or view count
+                    // Visibility indicator (top-right) for private/friends-only videos
+                    if (!isProcessing && !isHidden && (video['visibility'] == 'private' || video['visibility'] == 'friends'))
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Icon(
+                            video['visibility'] == 'private' 
+                                ? Icons.lock_rounded 
+                                : Icons.people_rounded,
+                            size: 14,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                      ),
+                    
+                    // Processing/Failed overlay or view count
                     if (isProcessing)
                       Positioned.fill(
                         child: Container(
-                          color: Colors.black.withOpacity(0.7),
+                          color: isFailed
+                              ? Colors.black.withOpacity(0.75)
+                              : Colors.black.withOpacity(0.7),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                              if (isFailed) ...[
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 28,
+                                  color: Colors.redAccent.withOpacity(0.9),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Đang xử lý',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Thất bại',
+                                  style: TextStyle(
+                                    color: Colors.redAccent.withOpacity(0.9),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Nhấn để thử lại',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.6),
+                                    fontSize: 9,
+                                  ),
+                                ),
+                              ] else ...[
+                                const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Đang xử lý',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),

@@ -345,7 +345,7 @@ class _SuggestionGridCard extends StatelessWidget {
 
                     // Reason
                     Text(
-                      user.getReasonText(localeService.get),
+                      user.getReasonText(localeService.get, isVietnamese: localeService.isVietnamese),
                       style: TextStyle(
                         color: themeService.textSecondaryColor,
                         fontSize: 12,

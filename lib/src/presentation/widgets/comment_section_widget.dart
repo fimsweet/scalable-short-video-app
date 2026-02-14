@@ -29,6 +29,7 @@ class CommentSectionWidget extends StatefulWidget {
   final VoidCallback? onCommentDeleted;
   final bool allowComments;
   final bool autoFocus;
+  final String? videoOwnerId; // For user-level comment permission check
 
   const CommentSectionWidget({
     super.key,
@@ -37,6 +38,7 @@ class CommentSectionWidget extends StatefulWidget {
     this.onCommentDeleted,
     this.allowComments = true,
     this.autoFocus = false,
+    this.videoOwnerId,
   });
 
   @override
@@ -61,6 +63,9 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   String? _replyingToUsername; // ignore: unused_field
   String? _replyingToCommentId;
   File? _selectedImage;
+  bool _filterComments = true; // User's comment filter preference
+  bool _isCommentRestricted = false; // User-level whoCanComment restriction
+  String? _commentRestrictedReason;
   
   final Set<String> _expandedCommentIds = {};
   
@@ -76,6 +81,8 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
     _scrollController.addListener(_onScroll);
+    _loadFilterSetting();
+    _checkCommentPermission();
     _loadComments();
     _textController.addListener(() {
       setState(() {});
@@ -98,6 +105,48 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   void _onLocaleChanged() {
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  Future<void> _loadFilterSetting() async {
+    try {
+      final token = await AuthService().getToken();
+      if (token == null) return;
+      final result = await _apiService.getUserSettings(token);
+      if (result['success'] == true && result['settings'] != null) {
+        if (mounted) {
+          setState(() {
+            _filterComments = result['settings']['filterComments'] != false;
+          });
+        }
+      }
+    } catch (e) {
+      // Default to true (filter on)
+    }
+  }
+
+  Future<void> _checkCommentPermission() async {
+    if (widget.videoOwnerId == null) return;
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return;
+      final userId = _authService.userId?.toString();
+      if (userId == null) return;
+      // Skip check if user is commenting on their own video
+      if (userId == widget.videoOwnerId) return;
+      final result = await _apiService.checkPrivacyPermission(
+        userId,
+        widget.videoOwnerId!,
+        'comment',
+      );
+      if (mounted && result['allowed'] != true) {
+        setState(() {
+          _isCommentRestricted = true;
+          _commentRestrictedReason = result['reason'] as String?;
+        });
+      }
+    } catch (e) {
+      // If check fails, allow commenting (backend will enforce)
     }
   }
 
@@ -137,7 +186,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       if (mounted) {
         setState(() {
           _comments = result['comments'] ?? [];
-          _hasMore = result['hasMore'] ?? false;
+          _hasMore = result['hasMore'] == true;
           _currentOffset = _comments.length;
           _isLoading = false;
         });
@@ -166,7 +215,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         final newComments = result['comments'] ?? [];
         setState(() {
           _comments.addAll(newComments);
-          _hasMore = result['hasMore'] ?? false;
+          _hasMore = result['hasMore'] == true;
           _currentOffset += (newComments.length as int);
           _isLoadingMore = false;
         });
@@ -387,31 +436,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
             
             // Comments list
             Expanded(
-              child: !widget.allowComments
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.comments_disabled_outlined,
-                            size: 56,
-                            color: _themeService.textSecondaryColor,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _localeService.isVietnamese 
-                                ? 'Chủ sở hữu đã tắt bình luận' 
-                                : 'Comments are turned off',
-                            style: TextStyle(
-                              color: _themeService.textSecondaryColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  : _isLoading
+              child: _isLoading
                   ? Center(
                       child: CircularProgressIndicator(
                         color: _themeService.textPrimaryColor,
@@ -481,10 +506,14 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                               localeService: _localeService,
                               formatDate: _formatDate,
                               formatCount: _formatCount,
+                              filterComments: _filterComments,
                               onReply: _startReply,
                               onDelete: () async {
                                 await _loadComments();
                                 widget.onCommentDeleted?.call();
+                              },
+                              onEdited: () async {
+                                await _loadComments();
                               },
                               isInitiallyExpanded: _expandedCommentIds.contains(comment['id'].toString()),
                               onExpandedChanged: (commentId, isExpanded) {
@@ -542,11 +571,15 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
               ),
             
             // Input section - Different UI for logged in vs logged out
-            // Don't show input if comments are disabled
-            if (widget.allowComments)
+            // Don't show input if comments are disabled or restricted by user privacy
+            if (_isCommentRestricted)
+              _buildCommentRestrictedBanner(bottomPadding)
+            else if (widget.allowComments)
               isLoggedIn 
                   ? _buildLoggedInInput(bottomPadding)
-                  : _buildLoggedOutPrompt(bottomPadding),
+                  : _buildLoggedOutPrompt(bottomPadding)
+            else
+              _buildCommentsDisabledBanner(bottomPadding),
           ],
         ),
       ),
@@ -769,6 +802,88 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
       ),
     );
   }
+
+  Widget _buildCommentRestrictedBanner(double bottomPadding) {
+    final reason = _commentRestrictedReason;
+    final displayText = (reason != null && reason.isNotEmpty)
+        ? reason
+        : (_localeService.isVietnamese
+            ? 'Bạn không thể bình luận video này'
+            : 'You cannot comment on this video');
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 14,
+        bottom: bottomPadding + 14,
+      ),
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.lock_outline,
+            color: _themeService.textSecondaryColor,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              displayText,
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommentsDisabledBanner(double bottomPadding) {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 14,
+        bottom: bottomPadding + 14,
+      ),
+      decoration: BoxDecoration(
+        color: _themeService.backgroundColor,
+        border: Border(
+          top: BorderSide(color: _themeService.dividerColor, width: 0.5),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.comments_disabled_outlined,
+            color: _themeService.textSecondaryColor,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              _localeService.isVietnamese 
+                  ? 'Nhà sáng tạo đã tắt bình luận cho video này'
+                  : 'Creator has disabled comments for this video',
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _CommentItem extends StatefulWidget {
@@ -782,8 +897,10 @@ class _CommentItem extends StatefulWidget {
   final String Function(int) formatCount;
   final Function(String, String) onReply;
   final VoidCallback onDelete;
+  final VoidCallback onEdited;
   final bool isInitiallyExpanded;
   final Function(String, bool) onExpandedChanged;
+  final bool filterComments;
 
   const _CommentItem({
     required this.comment,
@@ -796,8 +913,10 @@ class _CommentItem extends StatefulWidget {
     required this.formatCount,
     required this.onReply,
     required this.onDelete,
+    required this.onEdited,
     this.isInitiallyExpanded = false,
     required this.onExpandedChanged,
+    this.filterComments = true,
   });
 
   @override
@@ -810,6 +929,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
   bool _showReplies = false;
   List<dynamic> _replies = [];
   bool _loadingReplies = false;
+  bool _isCensored = true; // Whether this toxic comment is currently hidden
   
   AnimationController? _likeAnimController;
   Animation<double>? _likeScaleAnimation;
@@ -909,7 +1029,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
 
     if (mounted) {
       setState(() {
-        _isLiked = result['liked'] ?? false;
+        _isLiked = result['liked'] == true;
         _likeCount = result['likeCount'] ?? 0;
       });
     }
@@ -952,6 +1072,15 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                          widget.authService.user!['id'].toString() == widget.comment['userId'].toString();
     final isLightMode = widget.themeService.isLightMode;
 
+    // Check if within 5 minutes edit window
+    bool canEdit = false;
+    if (isOwnComment) {
+      try {
+        final createdAt = DateTime.parse(widget.comment['createdAt']);
+        canEdit = DateTime.now().difference(createdAt).inMinutes < 5;
+      } catch (_) {}
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
@@ -971,6 +1100,25 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
+            if (isOwnComment && canEdit)
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: CommentTheme.accent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.edit_outlined, color: CommentTheme.accent),
+                ),
+                title: Text(
+                  widget.localeService.isVietnamese ? 'Chỉnh sửa' : 'Edit',
+                  style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditDialog();
+                },
+              ),
             if (isOwnComment)
               ListTile(
                 leading: Container(
@@ -1014,10 +1162,159 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
     );
   }
 
+  void _showEditDialog() {
+    final controller = TextEditingController(text: widget.comment['content'] ?? '');
+    final isLightMode = widget.themeService.isLightMode;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        bool isSaving = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle bar
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isLightMode ? Colors.grey[400] : Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Row(
+                        children: [
+                          Text(
+                            widget.localeService.isVietnamese ? 'Chỉnh sửa bình luận' : 'Edit comment',
+                            style: TextStyle(
+                              color: widget.themeService.textPrimaryColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isLightMode ? Colors.grey[200] : Colors.grey[800],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.close_rounded, size: 18,
+                                color: isLightMode ? Colors.grey[600] : Colors.grey[400]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Input field
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        decoration: BoxDecoration(
+                          color: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextField(
+                          controller: controller,
+                          maxLines: null,
+                          minLines: 3,
+                          autofocus: true,
+                          style: TextStyle(
+                            color: widget.themeService.textPrimaryColor,
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: widget.localeService.isVietnamese ? 'Nhập nội dung...' : 'Enter content...',
+                            hintStyle: TextStyle(color: Colors.grey[500]),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.all(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Save button
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: isSaving ? null : () async {
+                            final newContent = controller.text.trim();
+                            if (newContent.isEmpty) return;
+                            setDialogState(() => isSaving = true);
+                            try {
+                              final userId = widget.authService.user!['id'].toString();
+                              await widget.commentService.editComment(
+                                widget.comment['id'].toString(),
+                                userId,
+                                newContent,
+                              );
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              widget.onEdited();
+                            } catch (e) {
+                              setDialogState(() => isSaving = false);
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CommentTheme.accent,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            disabledBackgroundColor: CommentTheme.accent.withOpacity(0.5),
+                          ),
+                          child: isSaving
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Text(
+                                widget.localeService.isVietnamese ? 'Lưu thay đổi' : 'Save changes',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                              ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: MediaQuery.of(ctx).padding.bottom),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final replyCount = widget.comment['replyCount'] ?? 0;
-    final isPinned = widget.comment['isPinned'] ?? false;
+    final bool isPinned = widget.comment['isPinned'] == true;
 
     return FutureBuilder<Map<String, dynamic>?>(
       future: widget.apiService.getUserById(widget.comment['userId'].toString()),
@@ -1075,7 +1372,7 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                             GestureDetector(
                               onTap: () => _navigateToUserProfile(context, widget.comment['userId']),
                               child: Text(
-                                userInfo['username'] ?? 'user',
+                                userInfo['fullName'] ?? userInfo['username'] ?? 'user',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 13,
@@ -1091,19 +1388,70 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                                 fontSize: 12,
                               ),
                             ),
+                            // "Edited" badge
+                            if (widget.comment['isEdited'] == true) ...[
+                              const SizedBox(width: 6),
+                              Text(
+                                widget.localeService.isVietnamese ? '· đã chỉnh sửa' : '· edited',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 6),
-                        // Only show content text if not empty and not just camera emoji
+                        // Comment content: show censored or full based on isToxic + filter + _isCensored
                         if ((widget.comment['content'] ?? '').toString().trim().isNotEmpty && 
                             widget.comment['content'] != '📷') ...[  
                           Text(
-                            widget.comment['content'] ?? '',
+                            (widget.comment['isToxic'] == true && widget.filterComments && _isCensored
+                                ? (widget.comment['censoredContent'] ?? widget.comment['content'] ?? '')
+                                : (widget.comment['content'] ?? '')
+                            ).toString(),
                             style: TextStyle(
                               color: widget.themeService.textPrimaryColor,
                               fontSize: 14,
                               height: 1.4,
                             ),
+                          ),
+                        ],
+                        // Toxic warning + reveal/hide toggle
+                        if (widget.comment['isToxic'] == true && widget.filterComments) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.info_outline_rounded, size: 12, color: Colors.grey[500]),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  widget.localeService.isVietnamese
+                                      ? 'Bình luận có thể chứa nội dung không phù hợp'
+                                      : 'May contain inappropriate content',
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => setState(() => _isCensored = !_isCensored),
+                                child: Text(
+                                  _isCensored
+                                      ? (widget.localeService.isVietnamese ? 'Xem' : 'View')
+                                      : (widget.localeService.isVietnamese ? 'Ẩn' : 'Hide'),
+                                  style: TextStyle(
+                                    color: CommentTheme.accent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                         // Display comment image if exists - TikTok style
@@ -1300,6 +1648,8 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                         formatDate: widget.formatDate,
                         formatCount: widget.formatCount,
                         onReply: widget.onReply,
+                        filterComments: widget.filterComments,
+                        onEdited: widget.onEdited,
                         onDelete: () async {
                           await _loadReplies(keepExpanded: true);
                           widget.onDelete();
@@ -1340,6 +1690,8 @@ class _ReplyItem extends StatefulWidget {
   final String Function(int) formatCount;
   final Function(String, String) onReply;
   final VoidCallback onDelete;
+  final bool filterComments;
+  final VoidCallback? onEdited;
 
   const _ReplyItem({
     super.key,
@@ -1353,6 +1705,8 @@ class _ReplyItem extends StatefulWidget {
     required this.formatCount,
     required this.onReply,
     required this.onDelete,
+    this.filterComments = false,
+    this.onEdited,
   });
 
   @override
@@ -1362,6 +1716,7 @@ class _ReplyItem extends StatefulWidget {
 class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMixin {
   bool _isLiked = false;
   int _likeCount = 0;
+  bool _isCensored = true;
   
   AnimationController? _likeAnimController;
   Animation<double>? _likeScaleAnimation;
@@ -1414,7 +1769,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
 
     if (mounted) {
       setState(() {
-        _isLiked = result['liked'] ?? false;
+        _isLiked = result['liked'] == true;
         _likeCount = result['likeCount'] ?? 0;
       });
     }
@@ -1424,6 +1779,15 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
     final isOwnComment = widget.authService.user != null && 
                          widget.authService.user!['id'].toString() == widget.reply['userId'].toString();
     final isLightMode = widget.themeService.isLightMode;
+
+    // Check 5-minute edit window
+    bool canEdit = false;
+    if (isOwnComment) {
+      try {
+        final createdAt = DateTime.parse(widget.reply['createdAt']);
+        canEdit = DateTime.now().difference(createdAt).inMinutes < 5;
+      } catch (_) {}
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1444,6 +1808,25 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
+            if (isOwnComment && canEdit)
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: CommentTheme.accent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.edit_outlined, color: CommentTheme.accent),
+                ),
+                title: Text(
+                  widget.localeService.isVietnamese ? 'Chỉnh sửa' : 'Edit',
+                  style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditDialog();
+                },
+              ),
             if (isOwnComment)
               ListTile(
                 leading: Container(
@@ -1487,6 +1870,155 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
     );
   }
 
+  void _showEditDialog() {
+    final controller = TextEditingController(text: widget.reply['content'] ?? '');
+    final isLightMode = widget.themeService.isLightMode;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        bool isSaving = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle bar
+                    Container(
+                      margin: const EdgeInsets.only(top: 12),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isLightMode ? Colors.grey[400] : Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Row(
+                        children: [
+                          Text(
+                            widget.localeService.isVietnamese ? 'Chỉnh sửa phản hồi' : 'Edit reply',
+                            style: TextStyle(
+                              color: widget.themeService.textPrimaryColor,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => Navigator.pop(ctx),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isLightMode ? Colors.grey[200] : Colors.grey[800],
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(Icons.close_rounded, size: 18,
+                                color: isLightMode ? Colors.grey[600] : Colors.grey[400]),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Input field
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        constraints: const BoxConstraints(maxHeight: 150),
+                        decoration: BoxDecoration(
+                          color: isLightMode ? Colors.grey[100] : const Color(0xFF2A2A2A),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextField(
+                          controller: controller,
+                          maxLines: null,
+                          minLines: 3,
+                          autofocus: true,
+                          style: TextStyle(
+                            color: widget.themeService.textPrimaryColor,
+                            fontSize: 14,
+                            height: 1.5,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: widget.localeService.isVietnamese ? 'Nhập nội dung...' : 'Enter content...',
+                            hintStyle: TextStyle(color: Colors.grey[500]),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.all(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Save button
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: isSaving ? null : () async {
+                            final newContent = controller.text.trim();
+                            if (newContent.isEmpty) return;
+                            setDialogState(() => isSaving = true);
+                            try {
+                              final userId = widget.authService.user!['id'].toString();
+                              await widget.commentService.editComment(
+                                widget.reply['id'].toString(),
+                                userId,
+                                newContent,
+                              );
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              widget.onEdited?.call();
+                            } catch (e) {
+                              setDialogState(() => isSaving = false);
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: CommentTheme.accent,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            disabledBackgroundColor: CommentTheme.accent.withOpacity(0.5),
+                          ),
+                          child: isSaving
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : Text(
+                                widget.localeService.isVietnamese ? 'Lưu thay đổi' : 'Save changes',
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                              ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: MediaQuery.of(ctx).padding.bottom),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>?>(
@@ -1518,7 +2050,7 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                     Row(
                       children: [
                         Text(
-                          userInfo['username'] ?? 'user',
+                          userInfo['fullName'] ?? userInfo['username'] ?? 'user',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
@@ -1533,10 +2065,62 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                             fontSize: 11,
                           ),
                         ),
+                        if (widget.reply['isEdited'] == true) ...[
+                          Text(
+                            widget.localeService.isVietnamese ? ' · đã chỉnh sửa' : ' · edited',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     const SizedBox(height: 5),
-                    _buildReplyContent(widget.reply['content'] ?? ''),
+                    // Reply content: show censored or full
+                    _buildReplyContent(
+                      (widget.reply['isToxic'] == true && widget.filterComments && _isCensored
+                          ? (widget.reply['censoredContent'] ?? widget.reply['content'] ?? '')
+                          : (widget.reply['content'] ?? '')
+                      ).toString(),
+                    ),
+                    // Toxic warning + reveal/hide toggle
+                    if (widget.reply['isToxic'] == true && widget.filterComments) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded, size: 11, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              widget.localeService.isVietnamese
+                                  ? 'Có thể chứa nội dung không phù hợp'
+                                  : 'May contain inappropriate content',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 10,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          GestureDetector(
+                            onTap: () => setState(() => _isCensored = !_isCensored),
+                            child: Text(
+                              _isCensored
+                                  ? (widget.localeService.isVietnamese ? 'Xem' : 'View')
+                                  : (widget.localeService.isVietnamese ? 'Ẩn' : 'Hide'),
+                              style: TextStyle(
+                                color: CommentTheme.accent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 6),
                     GestureDetector(
                       onTap: () => widget.onReply(

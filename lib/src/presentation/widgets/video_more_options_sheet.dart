@@ -29,7 +29,9 @@ class VideoMoreOptionsSheet extends StatelessWidget {
     
     return Container(
       decoration: BoxDecoration(
-        color: themeService.backgroundColor,
+        color: themeService.isLightMode 
+            ? themeService.backgroundColor 
+            : const Color(0xFF2B2B2B),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(
@@ -160,14 +162,16 @@ class VideoMoreOptionsSheet extends StatelessWidget {
               decoration: BoxDecoration(
                 color: themeService.isLightMode 
                     ? Colors.grey[200] 
-                    : Colors.grey[800],
+                    : const Color(0xFF3A3A3A),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 icon,
                 color: isDestructive 
                     ? Colors.red 
-                    : themeService.textPrimaryColor,
+                    : themeService.isLightMode 
+                        ? themeService.textPrimaryColor
+                        : Colors.white,
                 size: 24,
               ),
             ),
@@ -182,7 +186,9 @@ class VideoMoreOptionsSheet extends StatelessWidget {
                 fontSize: 11,
                 color: isDestructive 
                     ? Colors.red 
-                    : themeService.textPrimaryColor,
+                    : themeService.isLightMode 
+                        ? themeService.textPrimaryColor
+                        : Colors.white,
                 height: 1.2,
               ),
             ),

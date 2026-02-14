@@ -228,4 +228,33 @@ class CommentService {
       return false;
     }
   }
+
+  /// Edit a comment (within 5 minutes of creation)
+  Future<Map<String, dynamic>?> editComment(String commentId, String userId, String newContent) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$_baseUrl/comments/$commentId'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'userId': userId,
+          'content': newContent,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      // Parse error message from backend
+      try {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Failed to edit comment');
+      } catch (e) {
+        if (e is Exception) rethrow;
+        throw Exception('Failed to edit comment');
+      }
+    } catch (e) {
+      print('Error editing comment: $e');
+      rethrow;
+    }
+  }
 }

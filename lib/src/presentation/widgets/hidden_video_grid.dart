@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 
 class HiddenVideoGrid extends StatefulWidget {
@@ -13,6 +15,8 @@ class HiddenVideoGrid extends StatefulWidget {
 class _HiddenVideoGridState extends State<HiddenVideoGrid> {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
+  final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
   
   List<dynamic> _hiddenVideos = [];
   bool _isLoading = true;
@@ -23,6 +27,8 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
     super.initState();
     _authService.addLogoutListener(_onLogout);
     _authService.addLoginListener(_onLogin);
+    _themeService.addListener(_onThemeChanged);
+    _localeService.addListener(_onLocaleChanged);
     _loadHiddenVideos();
   }
 
@@ -41,6 +47,9 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
     }
   }
 
+  void _onThemeChanged() => mounted ? setState(() {}) : null;
+  void _onLocaleChanged() => mounted ? setState(() {}) : null;
+
   Future<void> _loadHiddenVideos() async {
     if (!_authService.isLoggedIn || _authService.user == null) {
       setState(() {
@@ -58,19 +67,6 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
       final userId = _authService.user!['id'].toString();
       final videos = await _videoService.getUserVideos(userId);
 
-      // Debug: Log all videos data
-      print('All videos from backend: ${videos.length}');
-      for (var video in videos) {
-        print('   Video ID: ${video['id']}');
-        print('   likeCount: ${video['likeCount']}');
-        print('   commentCount: ${video['commentCount']}');
-        print('   saveCount: ${video['saveCount']}');
-        print('   shareCount: ${video['shareCount']}');
-        print('   viewCount: ${video['viewCount']}');
-        print('   isHidden: ${video['isHidden']}');
-        print('   ---');
-      }
-
       // Filter only hidden videos
       final hiddenVideos = videos
           .where((video) => video['isHidden'] == true)
@@ -87,7 +83,9 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
       print('Error loading hidden videos: $e');
       if (mounted) {
         setState(() {
-          _error = 'Không thể tải video: $e';
+          _error = _localeService.isVietnamese
+              ? 'Không thể tải video: $e'
+              : 'Cannot load videos: $e';
           _isLoading = false;
         });
       }
@@ -98,14 +96,16 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
   void dispose() {
     _authService.removeLogoutListener(_onLogout);
     _authService.removeLoginListener(_onLogin);
+    _themeService.removeListener(_onThemeChanged);
+    _localeService.removeListener(_onLocaleChanged);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Colors.white),
+      return Center(
+        child: CircularProgressIndicator(color: ThemeService.accentColor),
       );
     }
 
@@ -116,11 +116,16 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
             const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: Colors.white)),
+            Text(_error!, style: TextStyle(color: _themeService.textPrimaryColor)),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadHiddenVideos,
-              child: const Text('Thử lại'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: ThemeService.accentColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Text(_localeService.isVietnamese ? 'Thử lại' : 'Retry'),
             ),
           ],
         ),
@@ -133,25 +138,33 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.lock_outline,
+              Icons.visibility_off_rounded,
               size: 80,
-              color: Colors.grey[700],
+              color: _themeService.textSecondaryColor,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có video đã ẩn',
+            Text(
+              _localeService.isVietnamese
+                  ? 'Chưa có video đã ẩn'
+                  : 'No hidden videos',
               style: TextStyle(
-                color: Colors.white,
+                color: _themeService.textPrimaryColor,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              'Video đã ẩn chỉ hiển thị cho người theo dõi',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                _localeService.isVietnamese
+                    ? 'Video bị ẩn sẽ không hiển thị trong feed của bất kỳ ai'
+                    : 'Hidden videos won\'t appear in anyone\'s feed',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor,
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
               ),
             ),
           ],
@@ -161,6 +174,7 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
 
     return RefreshIndicator(
       onRefresh: _loadHiddenVideos,
+      color: ThemeService.accentColor,
       child: GridView.builder(
         padding: const EdgeInsets.all(2),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -185,7 +199,9 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
                   builder: (_) => VideoDetailScreen(
                     videos: _hiddenVideos,
                     initialIndex: index,
-                    screenTitle: 'Video đã ẩn',
+                    screenTitle: _localeService.isVietnamese
+                        ? 'Video đã ẩn'
+                        : 'Hidden videos',
                     onVideoDeleted: () {
                       // Refresh the hidden videos list
                       _loadHiddenVideos();
@@ -198,7 +214,7 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
             },
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey[900],
+                color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[900],
               ),
               child: ClipRRect(
                 child: Stack(
@@ -211,22 +227,22 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color: Colors.grey[800],
-                            child: const Icon(
+                            color: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                            child: Icon(
                               Icons.video_library_outlined,
                               size: 32,
-                              color: Colors.white54,
+                              color: _themeService.textSecondaryColor,
                             ),
                           );
                         },
                       )
                     else
                       Container(
-                        color: Colors.grey[800],
-                        child: const Icon(
+                        color: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+                        child: Icon(
                           Icons.video_library_outlined,
                           size: 32,
-                          color: Colors.white54,
+                          color: _themeService.textSecondaryColor,
                         ),
                       ),
                     
@@ -239,9 +255,9 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                Colors.black.withOpacity(0.7),
+                                Colors.black.withOpacity(0.5),
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.85),
+                                Colors.black.withOpacity(0.7),
                               ],
                               stops: const [0.0, 0.4, 1.0],
                             ),
@@ -250,7 +266,7 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
                       ),
                     ),
                     
-                    // Lock icon indicator at top right
+                    // Hidden icon indicator at top right
                     Positioned(
                       top: 8,
                       right: 8,
@@ -261,8 +277,8 @@ class _HiddenVideoGridState extends State<HiddenVideoGrid> {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Icon(
-                          Icons.lock,
-                          size: 18,
+                          Icons.visibility_off_rounded,
+                          size: 16,
                           color: Colors.white,
                         ),
                       ),

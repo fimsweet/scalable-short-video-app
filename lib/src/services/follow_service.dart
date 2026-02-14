@@ -265,6 +265,7 @@ class SuggestedUser {
   final int followerCount;
   final int mutualFriendsCount;
   final String reason;
+  final List<String> mutualFollowerNames;
 
   SuggestedUser({
     required this.id,
@@ -274,6 +275,7 @@ class SuggestedUser {
     required this.followerCount,
     required this.mutualFriendsCount,
     required this.reason,
+    this.mutualFollowerNames = const [],
   });
 
   factory SuggestedUser.fromJson(Map<String, dynamic> json) {
@@ -285,13 +287,28 @@ class SuggestedUser {
       followerCount: json['followerCount'] as int? ?? 0,
       mutualFriendsCount: json['mutualFriendsCount'] as int? ?? 0,
       reason: json['reason'] as String? ?? 'suggested',
+      mutualFollowerNames: json['mutualFollowerNames'] != null
+          ? List<String>.from(json['mutualFollowerNames'])
+          : [],
     );
   }
 
-  /// Get localized reason text
-  String getReasonText(String Function(String) localize) {
+  /// Get localized reason text (Instagram-style)
+  String getReasonText(String Function(String) localize, {bool isVietnamese = true}) {
     switch (reason) {
       case 'mutual_friends':
+        if (mutualFollowerNames.isNotEmpty) {
+          final firstName = mutualFollowerNames.first;
+          if (mutualFollowerNames.length == 1) {
+            return isVietnamese 
+                ? 'Được $firstName theo dõi'
+                : 'Followed by $firstName';
+          }
+          final othersCount = mutualFollowerNames.length - 1;
+          return isVietnamese
+              ? 'Được $firstName +$othersCount người theo dõi'
+              : 'Followed by $firstName +$othersCount';
+        }
         if (mutualFriendsCount == 1) {
           return localize('has_mutual_friend');
         }
@@ -299,10 +316,18 @@ class SuggestedUser {
       case 'popular':
         return localize('popular_account');
       case 'similar_taste':
-        return localize('similar_taste');
+        return isVietnamese ? 'Sở thích tương tự' : 'Similar taste';
       case 'liked_their_content':
-        return localize('liked_their_content');
+        return isVietnamese 
+            ? 'Bạn đã thích video của họ'
+            : 'You liked their videos';
       case 'friends_and_similar_taste':
+        if (mutualFollowerNames.isNotEmpty) {
+          final firstName = mutualFollowerNames.first;
+          return isVietnamese
+              ? 'Được $firstName theo dõi & sở thích chung'
+              : 'Followed by $firstName & similar taste';
+        }
         return localize('friends_and_similar_taste');
       default:
         return localize('suggested_for_you');

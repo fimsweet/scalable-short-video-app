@@ -5,6 +5,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/notification_settings_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 class UserSettingsScreen extends StatefulWidget {
@@ -22,7 +23,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
   // Privacy settings (synced with backend)
   bool _isPrivateAccount = false;
-  bool _pushNotificationsEnabled = true;
   
   // New privacy settings from backend
   String _whoCanViewVideos = 'everyone';
@@ -68,7 +68,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
           _whoCanComment = settings['whoCanComment'] ?? 'everyone';
           _filterComments = settings['filterComments'] ?? true;
           _isPrivateAccount = settings['accountPrivacy'] == 'private';
-          _pushNotificationsEnabled = settings['pushNotifications'] ?? true;
         });
         
         // Load language from backend settings (per account)
@@ -464,16 +463,15 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
             // Section: Notifications
             _buildSectionTitle(_localeService.get('notifications')),
             _buildSettingsGroup([
-              _buildSettingSwitch(
-                title: _localeService.get('push_notifications'),
-                subtitle: _localeService.get('push_notifications_desc'),
-                value: _pushNotificationsEnabled,
-                onChanged: (value) {
-                  setState(() => _pushNotificationsEnabled = value);
-                  _updatePrivacySetting('pushNotifications', value);
-                  _showSnackBar(
-                    value ? _localeService.get('push_notifications_enabled') : _localeService.get('push_notifications_disabled'),
-                    _themeService.snackBarBackground,
+              _buildMenuItem(
+                title: _localeService.get('manage_notifications'),
+                subtitle: _localeService.isVietnamese 
+                    ? 'Thông báo đẩy, trong ứng dụng' 
+                    : 'Push notifications, in-app',
+                onTap: () {
+                  NavigationUtils.slideToScreen(
+                    context,
+                    const NotificationSettingsScreen(),
                   );
                 },
               ),
@@ -600,8 +598,20 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: _themeService.inputBackground,
+        color: _themeService.isLightMode ? Colors.white : _themeService.inputBackground,
         borderRadius: BorderRadius.circular(12),
+        border: _themeService.isLightMode
+            ? Border.all(color: const Color(0xFFE0E0E0), width: 0.8)
+            : null,
+        boxShadow: _themeService.isLightMode
+            ? [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),

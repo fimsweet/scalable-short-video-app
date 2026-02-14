@@ -3,10 +3,29 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'api_service.dart';
 import 'auth_service.dart';
 import 'theme_service.dart';
 import 'locale_service.dart';
+import 'in_app_notification_service.dart';
+import 'message_service.dart';
+
+/// Flutter local notifications plugin instance (shared with background handler)
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+/// Android notification channel for high importance messages
+const AndroidNotificationChannel highImportanceChannel = AndroidNotificationChannel(
+  'high_importance_channel',
+  'Thông báo quan trọng',
+  description: 'Kênh thông báo cho tin nhắn và thông báo quan trọng',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
+  showBadge: true,
+);
 
 /// Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -16,6 +35,8 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.notification != null) {
     print('Message notification: ${message.notification?.title}');
   }
+  // Background messages with notification payload are automatically displayed by the system.
+  // Data-only messages need manual handling — but for our case, we send notification+data.
 }
 
 class FcmService {
@@ -26,6 +47,7 @@ class FcmService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final ApiService _apiService = ApiService();
   final AuthService _authService = AuthService();
+  final InAppNotificationService _inAppNotifService = InAppNotificationService();
   
   String? _fcmToken;
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
@@ -35,15 +57,65 @@ class FcmService {
   final StreamController<RemoteMessage> _loginAlertController = 
       StreamController<RemoteMessage>.broadcast();
   
+  // Stream controller for notification taps (to navigate to chat)
+  final StreamController<Map<String, dynamic>> _notificationTapController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  
+  // Buffer for notification tap data when no listener is attached yet
+  // (e.g. app opened from terminated state before MainScreen subscribes)
+  Map<String, dynamic>? _pendingNotificationData;
+  
   Stream<RemoteMessage> get loginAlertStream => _loginAlertController.stream;
+  Stream<Map<String, dynamic>> get notificationTapStream => _notificationTapController.stream;
+  
+  /// Consume any pending notification data that was buffered before a listener attached.
+  /// Returns the data and clears it, or null if nothing pending.
+  Map<String, dynamic>? consumePendingNotification() {
+    final data = _pendingNotificationData;
+    _pendingNotificationData = null;
+    return data;
+  }
   
   String? get fcmToken => _fcmToken;
+
+  /// Check if system notification permission is currently granted
+  Future<bool> isSystemPermissionGranted() async {
+    final settings = await _messaging.getNotificationSettings();
+    return settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+  }
+
+  /// Open the Android system notification settings for this app
+  /// Uses platform channel to invoke Android Intent
+  Future<void> openNotificationSettings() async {
+    try {
+      const platform = MethodChannel('com.app.notification_settings');
+      await platform.invokeMethod('openNotificationSettings');
+    } catch (e) {
+      debugPrint('Error opening notification settings: $e');
+      // Fallback: try requesting permission again (works on first-time)
+      await requestPermission();
+    }
+  }
 
   /// Initialize push notifications (without requesting permission)
   Future<void> initialize() async {
     try {
       // Set up background message handler
       FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      
+      // Initialize flutter_local_notifications for foreground display
+      await _initializeLocalNotifications();
+      
+      // Create the Android notification channel
+      await _createNotificationChannel();
+      
+      // Set foreground notification presentation options (iOS)
+      await _messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
       
       // Check if permission was already granted
       final settings = await _messaging.getNotificationSettings();
@@ -76,6 +148,102 @@ class FcmService {
     } catch (e) {
       print('Error initializing push notifications: $e');
     }
+  }
+
+  /// Initialize flutter_local_notifications plugin
+  Future<void> _initializeLocalNotifications() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinSettings = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: darwinSettings,
+      macOS: darwinSettings,
+    );
+    
+    await flutterLocalNotificationsPlugin.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTapped,
+    );
+  }
+
+  /// Create the high importance notification channel on Android
+  Future<void> _createNotificationChannel() async {
+    final androidPlugin = flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(highImportanceChannel);
+    }
+  }
+
+  /// Handle local notification tap (foreground notifications)
+  void _onNotificationTapped(NotificationResponse response) {
+    print('[FCM] === LOCAL NOTIFICATION TAPPED (foreground) ===');
+    print('[FCM] Action ID: ${response.id}');
+    print('[FCM] Payload: ${response.payload}');
+    print('[FCM] ActionId: ${response.actionId}');
+    print('[FCM] NotificationResponseType: ${response.notificationResponseType}');
+    if (response.payload != null && response.payload!.isNotEmpty) {
+      try {
+        final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+        print('[FCM] Parsed data: $data');
+        _handleNotificationNavigation(data);
+      } catch (e) {
+        print('[FCM] Error parsing notification payload: $e');
+      }
+    } else {
+      print('[FCM] No payload in local notification tap');
+    }
+  }
+
+  /// Show a local notification (for foreground messages)
+  Future<void> _showLocalNotification(RemoteMessage message) async {
+    final notification = message.notification;
+    final data = message.data;
+    
+    // Use notification title/body if available, otherwise construct from data
+    final title = notification?.title ?? data['title'] ?? 'Thông báo mới';
+    final body = notification?.body ?? data['body'] ?? '';
+    
+    const androidDetails = AndroidNotificationDetails(
+      'high_importance_channel',
+      'Thông báo quan trọng',
+      channelDescription: 'Kênh thông báo cho tin nhắn và thông báo quan trọng',
+      importance: Importance.high,
+      priority: Priority.high,
+      showWhen: true,
+      playSound: true,
+      enableVibration: true,
+      icon: '@mipmap/ic_launcher',
+    );
+    
+    const darwinDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
+    
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: darwinDetails,
+      macOS: darwinDetails,
+    );
+    
+    // Use message hashCode as notification ID to avoid duplicates
+    final notificationId = message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch;
+    
+    await flutterLocalNotificationsPlugin.show(
+      id: notificationId,
+      title: title,
+      body: body,
+      notificationDetails: details,
+      payload: jsonEncode(data),
+    );
   }
 
   /// Show custom dialog before requesting permission
@@ -262,35 +430,184 @@ class FcmService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    print('Foreground message received');
-    print('Data: ${message.data}');
+    print('[FCM] Foreground message received');
+    print('[FCM] Data: ${message.data}');
     
     if (message.notification != null) {
-      print('Title: ${message.notification?.title}');
-      print('Body: ${message.notification?.body}');
+      print('[FCM] Title: ${message.notification?.title}');
+      print('[FCM] Body: ${message.notification?.body}');
     }
     
+    final type = message.data['type'];
+    
     // Check if this is a login alert
-    if (message.data['type'] == 'login_alert') {
+    if (type == 'login_alert') {
       _loginAlertController.add(message);
+      return;
+    }
+    
+    // Route to in-app notification banner (TikTok-style)
+    _showInAppNotificationBanner(message);
+  }
+
+  /// Route a foreground FCM message to the in-app notification banner system.
+  /// Fetches sender avatar and creates an InAppNotification with proper type mapping.
+  Future<void> _showInAppNotificationBanner(RemoteMessage message) async {
+    final data = message.data;
+    final notification = message.notification;
+    final type = data['type'] as String?;
+    
+    if (type == null) {
+      // Fallback: show system notification for unknown types
+      _showLocalNotification(message);
+      return;
+    }
+
+    // Map FCM type to InAppNotificationType
+    InAppNotificationType? notifType;
+    switch (type) {
+      case 'like':
+        notifType = InAppNotificationType.like;
+        break;
+      case 'comment':
+        notifType = InAppNotificationType.comment;
+        break;
+      case 'follow':
+        notifType = InAppNotificationType.follow;
+        break;
+      case 'mention':
+      case 'reply':
+        notifType = InAppNotificationType.mention;
+        break;
+      case 'message':
+        notifType = InAppNotificationType.message;
+        break;
+      default:
+        // Unknown type — use system notification
+        _showLocalNotification(message);
+        return;
+    }
+
+    // Extract sender info
+    final senderId = data['senderId'] ?? data['userId'] ?? '';
+    final senderName = data['senderName'] ?? 
+        data['likerName'] ?? 
+        data['commenterName'] ?? 
+        data['followerName'] ?? '';
+    
+    // Fetch sender avatar and resolve display name
+    String? avatarUrl;
+    String resolvedName = senderName;
+    if (senderId.isNotEmpty) {
+      try {
+        final userInfo = await _apiService.getUserById(senderId);
+        if (userInfo != null) {
+          if (userInfo['avatar'] != null) {
+            final url = _apiService.getAvatarUrl(userInfo['avatar']);
+            if (url.isNotEmpty) avatarUrl = url;
+          }
+          // For messages: use nickname > fullName > senderName
+          if (type == 'message') {
+            try {
+              final settings = await MessageService().getConversationSettings(senderId);
+              final nickname = settings['nickname'] as String?;
+              if (nickname != null && nickname.isNotEmpty) {
+                resolvedName = nickname;
+              } else if (userInfo['fullName'] != null && (userInfo['fullName'] as String).isNotEmpty) {
+                resolvedName = userInfo['fullName'];
+              }
+            } catch (_) {
+              if (userInfo['fullName'] != null && (userInfo['fullName'] as String).isNotEmpty) {
+                resolvedName = userInfo['fullName'];
+              }
+            }
+          } else {
+            // For other notification types: use fullName > senderName
+            if (userInfo['fullName'] != null && (userInfo['fullName'] as String).isNotEmpty) {
+              resolvedName = userInfo['fullName'];
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    final title = type == 'message' ? '💬 $resolvedName' : (notification?.title ?? resolvedName);
+    final body = notification?.body ?? data['body'] ?? '';
+
+    final inAppNotif = InAppNotification(
+      type: notifType,
+      title: title,
+      body: body,
+      avatarUrl: avatarUrl,
+      senderId: senderId,
+      senderName: resolvedName,
+      videoId: data['videoId'],
+      commentId: data['commentId'],
+      conversationId: data['conversationId'],
+      rawData: Map<String, dynamic>.from(data),
+    );
+
+    final shown = await _inAppNotifService.showNotification(inAppNotif);
+    if (!shown) {
+      print('[FCM] In-app notification suppressed, not showing system notification');
     }
   }
 
-  /// Handle when user taps on notification
+  /// Handle when user taps on notification (from background/terminated state)
   void _handleNotificationTap(RemoteMessage message) {
-    print('Notification tapped');
-    print('Data: ${message.data}');
+    print('[FCM] === NOTIFICATION TAPPED (background/terminated) ===');
+    print('[FCM] Message ID: ${message.messageId}');
+    print('[FCM] Data: ${message.data}');
+    print('[FCM] Notification: ${message.notification?.title} / ${message.notification?.body}');
+    _handleNotificationNavigation(message.data);
+  }
+
+  /// Common navigation handler for both FCM tap and local notification tap
+  void _handleNotificationNavigation(Map<String, dynamic> data) {
+    final type = data['type'];
+    print('[FCM] _handleNotificationNavigation — type: $type, data: $data');
     
-    // Handle navigation based on notification type
-    final type = message.data['type'];
+    Map<String, dynamic>? navData;
     
     switch (type) {
       case 'login_alert':
-        // Navigation will be handled by the app
-        print('Should navigate to sessions screen');
+        print('[FCM] Should navigate to sessions screen');
+        break;
+      case 'message':
+        navData = {
+          'type': 'message',
+          'conversationId': data['conversationId'],
+          'senderId': data['senderId'],
+          'senderName': data['senderName'],
+        };
+        break;
+      case 'like':
+      case 'comment':
+      case 'follow':
+        navData = {
+          'type': type,
+          'videoId': data['videoId'],
+          'userId': data['userId'],
+        };
         break;
       default:
-        print('Unknown notification type: $type');
+        print('[FCM] Unknown notification type: $type');
+    }
+    
+    if (navData != null) {
+      print('[FCM] navData created: $navData');
+      print('[FCM] hasListener: ${_notificationTapController.hasListener}');
+      if (_notificationTapController.hasListener) {
+        _notificationTapController.add(navData);
+        print('[FCM] Event emitted to notificationTapStream');
+      } else {
+        // No listener yet (app just starting from terminated state)
+        // Buffer the data so MainScreen can pick it up
+        print('[FCM] No listener — buffering data for later');
+        _pendingNotificationData = navData;
+      }
+    } else {
+      print('[FCM] No navData generated for type: $type');
     }
   }
 
@@ -350,10 +667,19 @@ class FcmService {
     }
   }
 
+  /// Clear all notifications and badge when app is opened
+  Future<void> clearNotifications() async {
+    // Clear all displayed notifications
+    await flutterLocalNotificationsPlugin.cancelAll();
+    // Clear badge count on iOS
+    await _messaging.setAutoInitEnabled(true);
+  }
+
   /// Dispose resources
   void dispose() {
     _foregroundSubscription?.cancel();
     _tokenRefreshSubscription?.cancel();
     _loginAlertController.close();
+    _notificationTapController.close();
   }
 }

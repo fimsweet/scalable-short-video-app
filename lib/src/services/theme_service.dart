@@ -84,17 +84,17 @@ class ThemeService extends ChangeNotifier {
   
   // Additional helper colors
   Color get sectionTitleBackground => _isLightMode ? const Color(0xFFF5F5F5) : Colors.black;
-  Color get inputBackground => _isLightMode ? Colors.white : const Color(0xFF1A1A1A);
+  Color get inputBackground => _isLightMode ? const Color(0xFFF2F2F2) : const Color(0xFF1A1A1A);
   Color get switchTrackColor => _isLightMode ? Colors.grey[300]! : Colors.grey[700]!;
   Color get appBarBackground => _isLightMode ? Colors.white : Colors.black;
   Color get snackBarBackground => _isLightMode ? const Color(0xFF333333) : const Color(0xFF333333);
   Color get snackBarTextColor => Colors.white;
   
-  // Switch colors for dark/light mode - consistent across app
+  // Switch colors for dark/light mode - TikTok style
   Color get switchActiveColor => Colors.white;
-  Color get switchActiveTrackColor => const Color(0xFF2196F3);
-  Color get switchInactiveThumbColor => _isLightMode ? Colors.white : Colors.grey[400]!;
-  Color get switchInactiveTrackColor => _isLightMode ? Colors.grey[400]! : Colors.grey[700]!;
+  Color get switchActiveTrackColor => _isLightMode ? const Color(0xFF34C759) : const Color(0xFF34C759);
+  Color get switchInactiveThumbColor => Colors.white;
+  Color get switchInactiveTrackColor => _isLightMode ? const Color(0xFFE0E0E0) : const Color(0xFF3A3A3C);
 
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
@@ -183,6 +183,10 @@ class ThemeService extends ChangeNotifier {
         primarySwatch: Colors.blue,
         brightness: Brightness.light,
         scaffoldBackgroundColor: lightBackground,
+        colorScheme: ColorScheme.light(
+          primary: accentColor,
+          secondary: accentColor,
+        ),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.white,
           foregroundColor: lightTextPrimary,
@@ -206,6 +210,10 @@ class ThemeService extends ChangeNotifier {
         primarySwatch: Colors.blue,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: darkBackground,
+        colorScheme: ColorScheme.dark(
+          primary: accentColor,
+          secondary: accentColor,
+        ),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.black,
           foregroundColor: darkTextPrimary,

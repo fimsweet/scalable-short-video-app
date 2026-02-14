@@ -21,6 +21,7 @@ import 'package:scalable_short_video_app/src/presentation/widgets/login_required
 import 'package:scalable_short_video_app/src/presentation/widgets/video_privacy_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_more_options_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/video_options_sheet.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/search_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_video_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
@@ -114,6 +115,67 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   int _forYouCurrentPage = 0;
   int _followingCurrentPage = 0;
   int _friendsCurrentPage = 0;
+
+  // Playback speed & auto-scroll settings (persisted across modal opens)
+  double _playbackSpeed = 1.0;
+  bool _autoScroll = false;
+  bool _autoScrollTriggered = false; // Prevent duplicate triggers
+
+  /// Public: whether the current feed tab is "For You" (đề xuất)
+  bool get isOnForYouTab => _selectedFeedTab == 2;
+
+  /// Public: refresh the For You feed with new recommended videos
+  Future<void> refreshForYouFeed() async {
+    // Switch to For You tab if not already there
+    if (_selectedFeedTab != 2) {
+      _onTabChanged(2);
+      // Wait for tab animation
+      await Future.delayed(const Duration(milliseconds: 350));
+    }
+
+    // Flush current watch time so backend knows we watched this video
+    _sendWatchTime();
+
+    // Collect IDs of all currently displayed For You videos to exclude them
+    final currentVideoIds = _forYouVideos
+        .where((v) => v != null)
+        .map<String>((v) => v['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    // Pause current video
+    _pauseCurrentVideo();
+
+    // Reset page to 0
+    _forYouCurrentPage = 0;
+    _currentPage = 0;
+    if (_forYouPageController?.hasClients ?? false) {
+      _forYouPageController!.jumpToPage(0);
+    }
+
+    // Reload For You videos
+    setState(() {
+      _isLoadingForYou = true;
+    });
+
+    try {
+      await _loadForYouVideos(excludeIds: currentVideoIds);
+    } catch (e) {
+      print('Error refreshing For You feed: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingForYou = false;
+        _videos = _forYouVideos;
+      });
+
+      // Resume first video after short delay
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) _resumeCurrentVideo();
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -403,14 +465,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     }
   }
 
-  Future<void> _loadForYouVideos() async {
+  Future<void> _loadForYouVideos({List<String>? excludeIds}) async {
     // Use personalized recommendations if user is logged in
     List<dynamic> videos;
     
     if (_authService.isLoggedIn && _authService.user != null) {
       final userId = _authService.user!['id'] as int;
       print('Loading personalized recommendations for user $userId');
-      videos = await _videoService.getRecommendedVideos(userId);
+      videos = await _videoService.getRecommendedVideos(userId, excludeIds: excludeIds);
     } else {
       // For guests, use trending videos or regular feed
       print('Loading trending videos for guest');
@@ -430,6 +492,16 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       
       // Prefetch first few videos immediately after loading
       _prefetchService.prefetchVideosAround(readyVideos, 0);
+
+      // Start watch time tracking for the first video (onPageChanged doesn't fire for initial page)
+      if (readyVideos.isNotEmpty && _currentPage == 0 && _selectedFeedTab == 2) {
+        final firstVideo = readyVideos[0];
+        if (firstVideo != null && firstVideo['id'] != null) {
+          final videoId = firstVideo['id'].toString();
+          final duration = firstVideo['duration'] as int? ?? 30;
+          _startWatchTimeTracking(videoId, duration);
+        }
+      }
     }
   }
 
@@ -458,6 +530,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         _followingVideos = readyVideos;
         _videos = _followingVideos;
       });
+
+      // Start watch time tracking for first video
+      if (readyVideos.isNotEmpty && _selectedFeedTab == 0 && _followingCurrentPage == 0) {
+        final firstVideo = readyVideos[0];
+        if (firstVideo != null && firstVideo['id'] != null) {
+          _startWatchTimeTracking(firstVideo['id'].toString(), firstVideo['duration'] as int? ?? 30);
+        }
+      }
     }
   }
 
@@ -484,20 +564,20 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         _friendsVideos = readyVideos;
         _videos = _friendsVideos;
       });
+
+      // Start watch time tracking for first video
+      if (readyVideos.isNotEmpty && _selectedFeedTab == 1 && _friendsCurrentPage == 0) {
+        final firstVideo = readyVideos[0];
+        if (firstVideo != null && firstVideo['id'] != null) {
+          _startWatchTimeTracking(firstVideo['id'].toString(), firstVideo['duration'] as int? ?? 30);
+        }
+      }
     }
   }
 
   Future<void> _processVideos(List<dynamic> readyVideos) async {
-    // Clear all status maps before reloading
-    _likeStatus.clear();
-    _followStatus.clear();
-    _saveStatus.clear();
-    _saveCounts.clear();
-    _shareCounts.clear();
-    _viewCounts.clear();
-    _videoVisibility.clear();
-    _videoAllowComments.clear();
-    _videoAllowDuet.clear();
+    // Only set/overwrite status for videos in this batch (don't clear global maps
+    // so that other tabs' statuses are preserved when switching tabs)
 
     // Initialize counts first (immediate display)
     for (var video in readyVideos) {
@@ -676,6 +756,9 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     
     final previousTab = _selectedFeedTab;
     print('VideoScreen: Horizontal page changed from $previousTab to $index');
+    
+    // Flush watch time for current video before switching tabs
+    _sendWatchTime();
     
     // Save current video playback state before switching tab
     _saveCurrentVideoPlaybackState();
@@ -877,6 +960,85 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       return '${(count / 1000).toStringAsFixed(1)}K';
     }
     return count.toString();
+  }
+
+  // Show TikTok-style long-press options sheet
+  void _showVideoOptionsSheet(dynamic video, String videoId, String? userId) {
+    final currentUserId = _authService.userId?.toString();
+    final isOwnVideo = currentUserId != null && userId == currentUserId;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) => VideoOptionsSheet(
+        videoId: videoId,
+        videoOwnerId: userId,
+        isOwnVideo: isOwnVideo,
+        currentSpeed: _playbackSpeed,
+        autoScroll: _autoScroll,
+        onSpeedChanged: (speed) {
+          _playbackSpeed = speed;
+          _currentVideoPlayerState?.setPlaybackSpeed(speed);
+        },
+        onAutoScrollChanged: (val) {
+          _autoScroll = val;
+          // Toggle looping: when auto-scroll is ON, don't loop so onVideoEnd fires
+          _currentVideoPlayerState?.setLooping(!val);
+        },
+        onReport: () {
+          AppSnackBar.showInfo(
+            context,
+            _localeService.get('report_submitted'),
+          );
+        },
+        onCopyLink: () {
+          AppSnackBar.showSuccess(
+            context,
+            _localeService.get('link_copied'),
+          );
+        },
+      ),
+    );
+  }
+
+  // Handle auto-scroll when video ends
+  void _handleVideoEnd(int tabIndex) {
+    if (!_autoScroll || _autoScrollTriggered) return;
+    _autoScrollTriggered = true;
+
+    final pageController = _getPageController(tabIndex);
+    final videos = _getVideosForTab(tabIndex);
+    final currentPage = _getCurrentPageForTab(tabIndex);
+
+    if (pageController != null && currentPage < videos.length - 1) {
+      pageController.nextPage(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+
+    // Reset trigger after animation completes
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _autoScrollTriggered = false;
+    });
+  }
+
+  PageController? _getPageController(int tabIndex) {
+    switch (tabIndex) {
+      case 0: return _followingPageController;
+      case 1: return _friendsPageController;
+      case 2: return _forYouPageController;
+      default: return null;
+    }
+  }
+
+  int _getCurrentPageForTab(int tabIndex) {
+    switch (tabIndex) {
+      case 0: return _followingCurrentPage;
+      case 1: return _friendsCurrentPage;
+      case 2: return _forYouCurrentPage;
+      default: return 0;
+    }
   }
 
   // Show owner "More" options sheet - TikTok style
@@ -1177,8 +1339,17 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
             onPlayerCreated: (playerState) {
               if (isCurrentVideo) {
                 _currentVideoPlayerState = playerState;
+                // Apply persisted speed & looping setting
+                if (_playbackSpeed != 1.0) {
+                  playerState?.setPlaybackSpeed(_playbackSpeed);
+                }
+                if (_autoScroll) {
+                  playerState?.setLooping(false);
+                }
               }
             },
+            onLongPress: () => _showVideoOptionsSheet(video, videoId, userId),
+            onVideoEnd: () => _handleVideoEnd(tabIndex),
           )
         else if (!shouldLoadVideo)
           // Show black screen with spinner for videos not in range
@@ -1203,7 +1374,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       
         // Bottom info
         Positioned(
-          bottom: 10,
+          bottom: 20,
           left: 12,
           right: 90,
           child: SafeArea(
@@ -1214,7 +1385,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         // Controls
         if (videoId.isNotEmpty)
           Positioned(
-            bottom: 0,
+            bottom: 8,
             right: 0,
             child: _buildVideoControls(video, videoId, userId),
           ),
@@ -1341,7 +1512,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                 GestureDetector(
                   onTap: () => _navigateToProfile(videoOwnerId),
                   child: Text(
-                    userInfo['username'] ?? 'user',
+                    userInfo['fullName'] ?? userInfo['username'] ?? 'user',
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -1350,18 +1521,28 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (!isOwnVideo && !isFollowing && videoOwnerId != null)
+                if (!isOwnVideo && videoOwnerId != null)
                   GestureDetector(
                     onTap: () => _handleFollow(videoOwnerId),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 1),
+                        border: Border.all(
+                          color: isFollowing ? Colors.grey[600]! : Colors.white, 
+                          width: 1,
+                        ),
                         borderRadius: BorderRadius.circular(4),
+                        color: isFollowing ? Colors.transparent : Colors.transparent,
                       ),
                       child: Text(
-                        _localeService.get('follow'),
-                        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                        isFollowing 
+                            ? (_localeService.isVietnamese ? 'Đang theo dõi' : 'Following')
+                            : _localeService.get('follow'),
+                        style: TextStyle(
+                          color: isFollowing ? Colors.grey[400] : Colors.white, 
+                          fontSize: 12, 
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -1402,7 +1583,9 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         isLiked: _likeStatus[videoId] ?? false,
         isSaved: _saveStatus[videoId] ?? false,
         likeCount: _formatCount(_likeCounts[videoId] ?? 0),
-        commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+        commentCount: (_videoAllowComments[videoId] ?? true) 
+            ? _formatCount(_commentCounts[videoId] ?? 0) 
+            : '',
         saveCount: _formatCount(_saveCounts[videoId] ?? 0),
         shareCount: (_shareCounts[videoId] ?? 0) == 0 ? _localeService.get('share') : _formatCount(_shareCounts[videoId] ?? 0),
         onLikeTap: () => _handleLike(videoId),
@@ -1413,6 +1596,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
               child: CommentSectionWidget(
                 videoId: videoId,
+                videoOwnerId: userId,
                 allowComments: _videoAllowComments[videoId] ?? true,
                 onCommentAdded: () async {
                   final count = await _commentService.getCommentCount(videoId);
@@ -1598,7 +1782,41 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => UserProfileScreen(userId: userId)),
-      );
+      ).then((_) {
+        // Refresh follow status when returning from profile
+        _refreshFollowStatuses();
+      });
+    }
+  }
+
+  /// Refresh follow statuses for all visible videos
+  Future<void> _refreshFollowStatuses() async {
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+    final currentUserId = _authService.user!['id'] as int;
+    
+    // Collect all unique video owner IDs
+    final ownerIds = <int>{};
+    for (final videos in [_forYouVideos, _followingVideos, _friendsVideos]) {
+      for (final video in videos) {
+        final ownerId = int.tryParse(video?['userId']?.toString() ?? '');
+        if (ownerId != null && ownerId != currentUserId) {
+          ownerIds.add(ownerId);
+        }
+      }
+    }
+    
+    // Re-check follow status for each owner
+    for (final ownerId in ownerIds) {
+      try {
+        final isFollowing = await _followService.isFollowing(currentUserId, ownerId);
+        if (mounted) {
+          setState(() {
+            _followStatus[ownerId.toString()] = isFollowing;
+          });
+        }
+      } catch (e) {
+        // Ignore errors
+      }
     }
   }
 }
