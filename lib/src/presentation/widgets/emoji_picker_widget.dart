@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
 class EmojiPickerWidget extends StatelessWidget {
   final Function(String) onEmojiSelected;
   final VoidCallback? onClose;
+  final ThemeService _themeService = ThemeService();
 
-  const EmojiPickerWidget({
+  EmojiPickerWidget({
     super.key,
     required this.onEmojiSelected,
     this.onClose,
@@ -41,7 +43,7 @@ class EmojiPickerWidget extends StatelessWidget {
     return Container(
       height: 300,
       decoration: BoxDecoration(
-        color: Colors.grey[900],
+        color: _themeService.surfaceColor,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(16),
           topRight: Radius.circular(16),
@@ -56,7 +58,7 @@ class EmojiPickerWidget extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[700],
+                color: _themeService.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -69,10 +71,10 @@ class EmojiPickerWidget extends StatelessWidget {
               child: Column(
                 children: [
                   TabBar(
-                    indicatorColor: Colors.blue,
+                    indicatorColor: _themeService.primaryAccentColor,
                     indicatorSize: TabBarIndicatorSize.label,
-                    labelColor: Colors.white,
-                    unselectedLabelColor: Colors.grey[600],
+                    labelColor: _themeService.textPrimaryColor,
+                    unselectedLabelColor: _themeService.textSecondaryColor,
                     tabs: const [
                       Tab(icon: Icon(Icons.emoji_emotions_outlined, size: 20)),
                       Tab(icon: Icon(Icons.front_hand_outlined, size: 20)),

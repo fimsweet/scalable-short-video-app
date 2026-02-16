@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/comment_section_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/video_controls_widget.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/hls_video_player.dart';
@@ -193,10 +194,40 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     // Listen to video playback service for tab visibility changes
     _videoPlaybackService.addListener(_onPlaybackServiceChanged);
     
+    // Load persisted tab visit timestamps for badge indicators
+    _loadTabVisitTimestamps();
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadVideos();
       _checkNewVideoIndicators();
     });
+  }
+  
+  /// Load persisted last-visit timestamps from SharedPreferences
+  Future<void> _loadTabVisitTimestamps() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final followingMs = prefs.getInt('lastFollowingVisit');
+      final friendsMs = prefs.getInt('lastFriendsVisit');
+      if (followingMs != null) {
+        _lastFollowingVisit = DateTime.fromMillisecondsSinceEpoch(followingMs);
+      }
+      if (friendsMs != null) {
+        _lastFriendsVisit = DateTime.fromMillisecondsSinceEpoch(friendsMs);
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+  
+  /// Persist tab visit timestamp to SharedPreferences
+  Future<void> _saveTabVisitTimestamp(String key, DateTime time) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, time.millisecondsSinceEpoch);
+    } catch (e) {
+      // Silent fail
+    }
   }
   
   void _initAllPageControllers() {
@@ -777,13 +808,15 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       _videos = _getVideosForTab(index);
       _currentPage = _getSavedPagePosition(index);
       
-      // Clear red dot indicator when visiting a tab
+      // Clear red dot indicator when visiting a tab and persist timestamp
       if (index == 0) {
         _hasNewFollowing = false;
         _lastFollowingVisit = DateTime.now();
+        _saveTabVisitTimestamp('lastFollowingVisit', _lastFollowingVisit!);
       } else if (index == 1) {
         _hasNewFriends = false;
         _lastFriendsVisit = DateTime.now();
+        _saveTabVisitTimestamp('lastFriendsVisit', _lastFriendsVisit!);
       }
     });
     
@@ -884,7 +917,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     }
   }
 
-  Future<void> _handleFollow(int videoOwnerId) async {
+  Future<void> _handleFollow(int videoOwnerId, {int? videoIndex}) async {
     if (!_authService.isLoggedIn || _authService.user == null) {
       LoginRequiredDialog.show(context, 'follow');
       return;
@@ -899,14 +932,80 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     print('Toggle follow for user $videoOwnerId by user $currentUserId');
     
     final result = await _followService.toggleFollow(currentUserId, videoOwnerId);
+    final isNowFollowing = result['following'] ?? false;
 
     if (mounted) {
       setState(() {
-        _followStatus[videoOwnerId.toString()] = result['following'] ?? false;
+        _followStatus[videoOwnerId.toString()] = isNowFollowing;
       });
       
-      print('${result['following'] ? '✅' : '❌'} Follow toggled - Status: ${result['following']}');
+      print('${isNowFollowing ? '✅' : '❌'} Follow toggled - Status: $isNowFollowing');
+      // Videos stay visible — they are only removed on next feed refresh/reload
     }
+  }
+  
+  /// Build context-aware follow/friend button based on current feed tab
+  Widget _buildFollowButton(int videoOwnerId, bool isFollowing, int videoIndex) {
+    // Determine button text and style based on tab context
+    String buttonText;
+    Color borderColor;
+    Color textColor;
+    IconData? icon;
+    
+    if (_selectedFeedTab == 1 && isFollowing) {
+      // Friends tab — mutual friends, show "Bạn bè" with icon
+      buttonText = _localeService.isVietnamese ? 'Bạn bè' : 'Friends';
+      borderColor = Colors.grey[600]!;
+      textColor = Colors.grey[400]!;
+      icon = Icons.people_outline;
+    } else if (_selectedFeedTab == 0 && isFollowing) {
+      // Following tab — one-way follow, show "Đang theo dõi"
+      buttonText = _localeService.isVietnamese ? 'Đang theo dõi' : 'Following';
+      borderColor = Colors.grey[600]!;
+      textColor = Colors.grey[400]!;
+      icon = null;
+    } else if (isFollowing) {
+      // For You tab or any other — currently following
+      buttonText = _localeService.isVietnamese ? 'Đang theo dõi' : 'Following';
+      borderColor = Colors.grey[600]!;
+      textColor = Colors.grey[400]!;
+      icon = null;
+    } else {
+      // Not following — show "Theo dõi"
+      buttonText = _localeService.get('follow');
+      borderColor = Colors.white;
+      textColor = Colors.white;
+      icon = null;
+    }
+    
+    return GestureDetector(
+      onTap: () => _handleFollow(videoOwnerId, videoIndex: videoIndex),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          border: Border.all(color: borderColor, width: 1),
+          borderRadius: BorderRadius.circular(4),
+          color: Colors.transparent,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: textColor),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              buttonText,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleSave(String videoId) async {
@@ -1522,30 +1621,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                 ),
                 const SizedBox(width: 8),
                 if (!isOwnVideo && videoOwnerId != null)
-                  GestureDetector(
-                    onTap: () => _handleFollow(videoOwnerId),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: isFollowing ? Colors.grey[600]! : Colors.white, 
-                          width: 1,
-                        ),
-                        borderRadius: BorderRadius.circular(4),
-                        color: isFollowing ? Colors.transparent : Colors.transparent,
-                      ),
-                      child: Text(
-                        isFollowing 
-                            ? (_localeService.isVietnamese ? 'Đang theo dõi' : 'Following')
-                            : _localeService.get('follow'),
-                        style: TextStyle(
-                          color: isFollowing ? Colors.grey[400] : Colors.white, 
-                          fontSize: 12, 
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
+                  _buildFollowButton(videoOwnerId, isFollowing, index),
               ],
             ),
             const SizedBox(height: 8),

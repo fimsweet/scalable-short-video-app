@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class VideoManagementSheet extends StatefulWidget {
   final String videoId;
@@ -24,6 +25,7 @@ class VideoManagementSheet extends StatefulWidget {
 
 class _VideoManagementSheetState extends State<VideoManagementSheet> {
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   @override
   void initState() {
@@ -116,7 +118,7 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                 color: _themeService.iconColor,
               ),
               title: Text(
-                widget.isHidden ? 'Hiển thị video' : 'Ẩn video',
+                widget.isHidden ? _localeService.get('show_video') : _localeService.get('hide_video'),
                 style: TextStyle(
                   color: _themeService.textPrimaryColor,
                   fontSize: 16,
@@ -124,8 +126,8 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
               ),
               subtitle: Text(
                 widget.isHidden 
-                    ? 'Video sẽ hiển thị cho mọi người' 
-                    : 'Chỉ người theo dõi của bạn mới thấy video này',
+                    ? _localeService.get('video_visible_to_all') 
+                    : _localeService.get('video_followers_only'),
                 style: TextStyle(
                   color: _themeService.textSecondaryColor,
                   fontSize: 13,
@@ -142,8 +144,8 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                     widget.onHiddenChanged(newHiddenStatus);
                     
                     final message = newHiddenStatus 
-                        ? 'Video chỉ hiển thị cho người theo dõi' 
-                        : 'Video hiển thị cho mọi người';
+                        ? _localeService.get('video_now_followers') 
+                        : _localeService.get('video_now_public');
                     _showSuccessDialog(context, message);
                   }
                 } catch (e) {
@@ -195,16 +197,16 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                 Icons.delete_outline,
                 color: Colors.red,
               ),
-              title: const Text(
-                'Xóa video',
-                style: TextStyle(
+              title: Text(
+                _localeService.get('delete_video'),
+                style: const TextStyle(
                   color: Colors.red,
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
                 ),
               ),
               subtitle: Text(
-                'Video sẽ bị xóa vĩnh viễn',
+                _localeService.get('video_delete_permanent'),
                 style: TextStyle(
                   color: _themeService.textSecondaryColor,
                   fontSize: 13,
@@ -233,9 +235,8 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                     ),
                   ),
                   child: Text(
-                    'Hủy',
+                    _localeService.get('cancel'),
                     style: TextStyle(
-                      color: _themeService.textPrimaryColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -274,7 +275,7 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Xóa video này?',
+                  _localeService.get('delete_video_title'),
                   style: TextStyle(
                     color: themeService.textPrimaryColor,
                     fontSize: 20,
@@ -283,7 +284,7 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Video sẽ bị xóa vĩnh viễn và không thể khôi phục.',
+                  _localeService.get('delete_video_message'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: themeService.textSecondaryColor,
@@ -304,9 +305,8 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                           ),
                         ),
                         child: Text(
-                          'Hủy',
+                          _localeService.get('cancel'),
                           style: TextStyle(
-                            color: themeService.textPrimaryColor,
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                           ),
@@ -372,8 +372,8 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          'Xóa',
+                        child: Text(
+                          _localeService.get('delete'),
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 16,

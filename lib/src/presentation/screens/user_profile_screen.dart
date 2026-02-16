@@ -506,22 +506,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             const SizedBox(height: 24),
                             
                             // Stats
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildStatItem(_followingCount.toString(), _localeService.get('following')),
-                                _buildDivider(),
-                                _buildStatItem(_followerCount.toString(), _localeService.get('followers')),
-                                _buildDivider(),
-                                _buildStatItem(_userVideos.length.toString(), _localeService.get('likes')),
-                              ],
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 48),
+                              child: Row(
+                                children: [
+                                  Expanded(child: _buildStatItem(_followingCount.toString(), _localeService.get('following'))),
+                                  Expanded(child: _buildStatItem(_followerCount.toString(), _localeService.get('followers'))),
+                                  Expanded(child: _buildStatItem(_userVideos.length.toString(), _localeService.get('likes'))),
+                                ],
+                              ),
                             ),
                             const SizedBox(height: 24),
                             
                             // Action Buttons
                             if (!isOwnProfile && !_isDeactivated)
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 48),
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Row(
                                   children: [
                                     Expanded(
@@ -645,15 +645,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return Container(
-      height: 16,
-      width: 1,
-      color: _themeService.isLightMode ? Colors.grey[400] : Colors.grey[800],
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-    );
-  }
-
   Widget _buildFollowButton() {
     // In light mode: white background with border (like Edit button)
     // In dark mode: grey background
@@ -663,14 +654,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return GestureDetector(
       onTap: _isProcessing ? null : _toggleFollow,
       child: Container(
-        height: 44,
+        padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: isFollowingState 
               ? (_themeService.isLightMode ? Colors.white : Colors.grey[800])
               : const Color(0xFFFF2D55),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           border: isFollowingState && _themeService.isLightMode
-              ? Border.all(color: Colors.grey[300]!, width: 1)
+              ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+              : null,
+          boxShadow: _themeService.isLightMode
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
               : null,
         ),
         alignment: Alignment.center,
@@ -686,8 +686,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   color: isFollowingState 
                       ? _themeService.textPrimaryColor 
                       : Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
                 ),
               ),
       ),
@@ -712,12 +712,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         );
       },
       child: Container(
-        height: 44,
+        padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: _themeService.isLightMode ? Colors.white : Colors.grey[800],
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(8),
           border: _themeService.isLightMode
-              ? Border.all(color: Colors.grey[300]!, width: 1)
+              ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+              : null,
+          boxShadow: _themeService.isLightMode
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
               : null,
         ),
         alignment: Alignment.center,
@@ -725,8 +734,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _localeService.get('message'),
           style: TextStyle(
             color: _themeService.textPrimaryColor,
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
           ),
         ),
       ),
@@ -755,12 +764,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       );
     }
     return GridView.builder(
-      padding: const EdgeInsets.all(1),
+      padding: const EdgeInsets.all(2),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 1,
-        mainAxisSpacing: 1,
-        childAspectRatio: 3/4,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1.0,
       ),
       itemCount: _userVideos.length,
       itemBuilder: (context, index) {

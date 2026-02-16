@@ -1135,10 +1135,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
       return Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(
-            color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[600]!,
-            width: 1.5,
-          ),
+          border: _themeService.isLightMode
+              ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+              : null,
         ),
         child: CircleAvatar(
           radius: 40,
@@ -1168,10 +1167,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(
-          color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[600]!,
-          width: 1.5,
-        ),
+        border: _themeService.isLightMode
+            ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+            : null,
       ),
       child: CircleAvatar(
         radius: 40,
@@ -1220,8 +1218,19 @@ class _ActionButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             color: themeService.isLightMode ? Colors.white : Colors.grey[800],
-            border: themeService.isLightMode ? Border.all(color: const Color(0xFFE0E0E0), width: 1) : null,
-            borderRadius: BorderRadius.circular(8)
+            borderRadius: BorderRadius.circular(8),
+            border: themeService.isLightMode
+                ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+                : null,
+            boxShadow: themeService.isLightMode
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: Center(child: Text(text, style: TextStyle(fontWeight: FontWeight.bold, color: themeService.textPrimaryColor))),
         ),
@@ -1245,18 +1254,26 @@ class _DiscoverPeopleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
         width: 40,
         height: 36,
         decoration: BoxDecoration(
           color: isActive 
               ? ThemeService.accentColor
               : (themeService.isLightMode ? Colors.white : Colors.grey[800]),
-          border: themeService.isLightMode && !isActive
-              ? Border.all(color: const Color(0xFFE0E0E0), width: 1)
-              : null,
           borderRadius: BorderRadius.circular(8),
+          border: themeService.isLightMode && !isActive
+              ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
+              : null,
+          boxShadow: themeService.isLightMode && !isActive
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Center(
           child: Icon(

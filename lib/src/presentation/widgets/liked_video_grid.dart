@@ -2,6 +2,8 @@
 import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 
 class LikedVideoGrid extends StatefulWidget {
@@ -15,6 +17,8 @@ class _LikedVideoGridState extends State<LikedVideoGrid> {
   final LikeService _likeService = LikeService();
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
+  final LocaleService _localeService = LocaleService();
+  final ThemeService _themeService = ThemeService();
   
   List<dynamic> _likedVideos = [];
   bool _isLoadingLikedVideos = false;
@@ -87,22 +91,22 @@ class _LikedVideoGridState extends State<LikedVideoGrid> {
             Icon(
               Icons.favorite_border,
               size: 80,
-              color: Colors.grey[700],
+              color: _themeService.textSecondaryColor,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có video đã thích',
+            Text(
+              _localeService.get('no_liked_videos'),
               style: TextStyle(
-                color: Colors.white,
+                color: _themeService.textPrimaryColor,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Nhấn thích vào video bạn yêu thích',
+              _localeService.get('like_videos_hint'),
               style: TextStyle(
-                color: Colors.grey[600],
+                color: _themeService.textSecondaryColor,
                 fontSize: 14,
               ),
             ),
@@ -137,7 +141,7 @@ class _LikedVideoGridState extends State<LikedVideoGrid> {
                   builder: (_) => VideoDetailScreen(
                     videos: _likedVideos,
                     initialIndex: index,
-                    screenTitle: 'Video đã thích',
+                    screenTitle: _localeService.get('liked_videos'),
                     onVideoDeleted: () {
                       // Refresh the liked videos list
                       _loadLikedVideos();

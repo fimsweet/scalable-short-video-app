@@ -234,7 +234,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     }
     
     _showSnackBar(
-      locale == 'vi' ? 'Đã chuyển sang Tiếng Việt' : 'Switched to English',
+      locale == 'vi' ? _localeService.get('switched_to_vi') : 'Switched to English',
       _themeService.snackBarBackground,
     );
   }
@@ -514,7 +514,7 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
   Widget _buildProfileLink() {
     final avatarUrl = _authService.avatarUrl;
-    final username = _authService.username ?? 'Người dùng';
+    final username = _authService.username ?? _localeService.get('default_user');
     
     return InkWell(
       onTap: () {
@@ -600,14 +600,11 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       decoration: BoxDecoration(
         color: _themeService.isLightMode ? Colors.white : _themeService.inputBackground,
         borderRadius: BorderRadius.circular(12),
-        border: _themeService.isLightMode
-            ? Border.all(color: const Color(0xFFE0E0E0), width: 0.8)
-            : null,
         boxShadow: _themeService.isLightMode
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
                   offset: const Offset(0, 2),
                 ),
               ]

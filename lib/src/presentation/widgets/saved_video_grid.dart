@@ -2,6 +2,8 @@
 import 'package:scalable_short_video_app/src/services/saved_video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 
 class SavedVideoGrid extends StatefulWidget {
@@ -15,6 +17,8 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
   final SavedVideoService _savedVideoService = SavedVideoService();
   final AuthService _authService = AuthService();
   final VideoService _videoService = VideoService();
+  final LocaleService _localeService = LocaleService();
+  final ThemeService _themeService = ThemeService();
   
   List<dynamic> _savedVideos = [];
   bool _isLoading = true;
@@ -91,22 +95,22 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
             Icon(
               Icons.bookmark_border,
               size: 80,
-              color: Colors.grey[700],
+              color: _themeService.textSecondaryColor,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có video đã lưu',
+            Text(
+              _localeService.get('no_saved_videos'),
               style: TextStyle(
-                color: Colors.white,
+                color: _themeService.textPrimaryColor,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Lưu video yêu thích để xem lại sau',
+              _localeService.get('save_videos_hint'),
               style: TextStyle(
-                color: Colors.grey[600],
+                color: _themeService.textSecondaryColor,
                 fontSize: 14,
               ),
             ),
@@ -141,7 +145,7 @@ class _SavedVideoGridState extends State<SavedVideoGrid> {
                   builder: (_) => VideoDetailScreen(
                     videos: _savedVideos,
                     initialIndex: index,
-                    screenTitle: 'Video đã lưu',
+                    screenTitle: _localeService.get('saved_videos'),
                   ),
                 ),
               ).then((_) {

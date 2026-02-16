@@ -660,14 +660,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       decoration: BoxDecoration(
         color: _themeService.isLightMode ? Colors.white : _themeService.inputBackground,
         borderRadius: BorderRadius.circular(12),
-        border: _themeService.isLightMode
-            ? Border.all(color: const Color(0xFFE0E0E0), width: 0.8)
-            : null,
         boxShadow: _themeService.isLightMode
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 12,
                   offset: const Offset(0, 2),
                 ),
               ]

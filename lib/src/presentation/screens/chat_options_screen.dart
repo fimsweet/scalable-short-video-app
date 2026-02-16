@@ -68,21 +68,26 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
   // Animation controller for staggered animations
   late AnimationController _animationController;
   
-  // Available theme colors
-  final List<ChatThemeColor> _themeColors = [
-    ChatThemeColor(id: 'default', name: 'Mặc định', primaryColor: Colors.blue, lightColor: Colors.blue.shade100),
-    ChatThemeColor(id: 'pink', name: 'Hồng', primaryColor: Colors.pink, lightColor: Colors.pink.shade100),
-    ChatThemeColor(id: 'purple', name: 'Tím', primaryColor: Colors.purple, lightColor: Colors.purple.shade100),
-    ChatThemeColor(id: 'green', name: 'Xanh lá', primaryColor: Colors.green, lightColor: Colors.green.shade100),
-    ChatThemeColor(id: 'orange', name: 'Cam', primaryColor: Colors.orange, lightColor: Colors.orange.shade100),
-    ChatThemeColor(id: 'red', name: 'Đỏ', primaryColor: Colors.red, lightColor: Colors.red.shade100),
-    ChatThemeColor(id: 'teal', name: 'Xanh ngọc', primaryColor: Colors.teal, lightColor: Colors.teal.shade100),
-    ChatThemeColor(id: 'indigo', name: 'Chàm', primaryColor: Colors.indigo, lightColor: Colors.indigo.shade100),
-  ];
+  // Available theme colors - will be populated with localized names
+  late final List<ChatThemeColor> _themeColors;
+  
+  List<ChatThemeColor> _buildThemeColors() {
+    return [
+      ChatThemeColor(id: 'default', name: _localeService.get('theme_default'), primaryColor: Colors.blue, lightColor: Colors.blue.shade100),
+      ChatThemeColor(id: 'pink', name: _localeService.get('theme_pink'), primaryColor: Colors.pink, lightColor: Colors.pink.shade100),
+      ChatThemeColor(id: 'purple', name: _localeService.get('theme_purple'), primaryColor: Colors.purple, lightColor: Colors.purple.shade100),
+      ChatThemeColor(id: 'green', name: _localeService.get('theme_green'), primaryColor: Colors.green, lightColor: Colors.green.shade100),
+      ChatThemeColor(id: 'orange', name: _localeService.get('theme_orange'), primaryColor: Colors.orange, lightColor: Colors.orange.shade100),
+      ChatThemeColor(id: 'red', name: _localeService.get('theme_red'), primaryColor: Colors.red, lightColor: Colors.red.shade100),
+      ChatThemeColor(id: 'teal', name: _localeService.get('theme_teal'), primaryColor: Colors.teal, lightColor: Colors.teal.shade100),
+      ChatThemeColor(id: 'indigo', name: _localeService.get('theme_indigo'), primaryColor: Colors.indigo, lightColor: Colors.indigo.shade100),
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
+    _themeColors = _buildThemeColors();
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
