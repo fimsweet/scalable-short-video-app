@@ -768,7 +768,7 @@ class _ChatScreenState extends State<ChatScreen> {
       
       // Hôm qua
       if (difference == 1) {
-        return _localeService.isVietnamese ? 'Hôm qua, $timeStr' : 'Yesterday, $timeStr';
+        return '${_localeService.get('yesterday_time')}, $timeStr';
       }
       
       // Trong tuần này (2-6 ngày trước): hiển thị thứ, giờ
@@ -792,19 +792,19 @@ class _ChatScreenState extends State<ChatScreen> {
   String _getVietnameseWeekday(int weekday) {
     switch (weekday) {
       case 1:
-        return 'T2';
+        return _localeService.get('weekday_mon');
       case 2:
-        return 'T3';
+        return _localeService.get('weekday_tue');
       case 3:
-        return 'T4';
+        return _localeService.get('weekday_wed');
       case 4:
-        return 'T5';
+        return _localeService.get('weekday_thu');
       case 5:
-        return 'T6';
+        return _localeService.get('weekday_fri');
       case 6:
-        return 'T7';
+        return _localeService.get('weekday_sat');
       case 7:
-        return 'CN';
+        return _localeService.get('weekday_sun');
       default:
         return '';
     }
@@ -900,13 +900,13 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video không còn tồn tại')),
+          SnackBar(content: Text(_localeService.get('video_unavailable_chat').replaceAll('\n', ' '))),
         );
       }
     } catch (e) {
       print('Error opening shared video: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không thể mở video')),
+        SnackBar(content: Text(_localeService.get('error_occurred'))),
       );
     }
   }
@@ -956,7 +956,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Không thể chọn ảnh: ${e.toString()}'),
+            content: Text('${_localeService.get('cannot_select_photo')}: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -1141,7 +1141,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _navigateToProfile();
               },
               title: Text(
-                _localeService.isVietnamese ? 'Xem trang cá nhân' : 'View Profile',
+                _localeService.get('view_profile'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: _chatThemeColor ?? Colors.blue,
@@ -1158,7 +1158,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _showBlockConfirmDialog();
               },
               title: Text(
-                _localeService.isVietnamese ? 'Chặn' : 'Block',
+                _localeService.get('block'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.red,
@@ -1172,7 +1172,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ListTile(
               onTap: () => Navigator.pop(context),
               title: Text(
-                _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
+                _localeService.get('cancel'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: _themeService.textPrimaryColor,
@@ -1205,20 +1205,18 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: _themeService.isLightMode ? Colors.white : const Color(0xFF2C2C2C),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          _localeService.isVietnamese ? 'Chặn người dùng?' : 'Block User?',
+          _localeService.get('block_user_title'),
           style: TextStyle(color: _themeService.textPrimaryColor),
         ),
         content: Text(
-          _localeService.isVietnamese 
-              ? 'Bạn có chắc muốn chặn ${widget.recipientUsername}? Họ sẽ không thể gửi tin nhắn cho bạn.'
-              : 'Are you sure you want to block ${widget.recipientUsername}? They won\'t be able to message you.',
+          _localeService.get('block_user_chat_confirm'),
           style: TextStyle(color: _themeService.textSecondaryColor),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              _localeService.isVietnamese ? 'Huỷ' : 'Cancel',
+              _localeService.get('cancel'),
               style: TextStyle(color: _themeService.textSecondaryColor),
             ),
           ),
@@ -1228,7 +1226,7 @@ class _ChatScreenState extends State<ChatScreen> {
               _blockUser();
             },
             child: Text(
-              _localeService.isVietnamese ? 'Chặn' : 'Block',
+              _localeService.get('block'),
               style: const TextStyle(color: Colors.red),
             ),
           ),
@@ -1247,9 +1245,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _localeService.isVietnamese 
-                  ? 'Đã chặn ${widget.recipientUsername}' 
-                  : 'Blocked ${widget.recipientUsername}',
+              '${_localeService.get('user_blocked')} ${widget.recipientUsername}',
             ),
             backgroundColor: Colors.red,
           ),
@@ -1274,7 +1270,7 @@ class _ChatScreenState extends State<ChatScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_localeService.isVietnamese ? 'Đã sao chép' : 'Copied'),
+        content: Text(_localeService.get('copied')),
         duration: const Duration(seconds: 1),
         backgroundColor: _chatThemeColor ?? Colors.blue,
       ),
@@ -1323,7 +1319,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_localeService.isVietnamese ? 'Lỗi dịch tin nhắn' : 'Translation error'),
+          content: Text(_localeService.get('translation_error')),
           backgroundColor: Colors.red,
         ),
       );
@@ -1356,7 +1352,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // TODO: Implement forward to other conversations
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_localeService.isVietnamese ? 'Tính năng đang phát triển' : 'Coming soon'),
+        content: Text(_localeService.get('feature_coming_soon')),
         backgroundColor: _chatThemeColor ?? Colors.blue,
       ),
     );
@@ -1367,7 +1363,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // TODO: Implement reminder feature
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_localeService.isVietnamese ? 'Tính năng đang phát triển' : 'Coming soon'),
+        content: Text(_localeService.get('feature_coming_soon')),
         backgroundColor: _chatThemeColor ?? Colors.blue,
       ),
     );
@@ -1378,7 +1374,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // TODO: Implement report feature
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(_localeService.isVietnamese ? 'Đã báo cáo tin nhắn' : 'Message reported'),
+        content: Text(_localeService.get('message_reported')),
         backgroundColor: _chatThemeColor ?? Colors.blue,
       ),
     );
@@ -1418,9 +1414,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _localeService.isVietnamese 
-                  ? 'Không thể thu hồi sau 10 phút'
-                  : 'Cannot unsend after 10 minutes',
+              _localeService.get('cannot_unsend_timeout'),
             ),
             duration: const Duration(seconds: 3),
             backgroundColor: Colors.red,
@@ -1455,7 +1449,7 @@ class _ChatScreenState extends State<ChatScreen> {
           await _deleteMessageForMe(messageId);
           if (mounted) {
             AppSnackBar.showSuccess(context, 
-              _localeService.isVietnamese ? 'Đã xoá tin nhắn' : 'Message deleted',
+              _localeService.get('message_deleted'),
             );
           }
         },
@@ -1464,7 +1458,7 @@ class _ChatScreenState extends State<ChatScreen> {
           await _deleteMessageForEveryone(messageId);
           if (mounted) {
             AppSnackBar.showSuccess(context, 
-              _localeService.isVietnamese ? 'Đã thu hồi tin nhắn' : 'Message unsent',
+              _localeService.get('message_unsent'),
             );
           }
         } : null,
@@ -1565,8 +1559,8 @@ class _ChatScreenState extends State<ChatScreen> {
           SnackBar(
             content: Text(
               isPinned
-                  ? (_localeService.isVietnamese ? 'Đã bỏ ghim tin nhắn' : 'Message unpinned')
-                  : (_localeService.isVietnamese ? 'Đã ghim tin nhắn' : 'Message pinned'),
+                  ? _localeService.get('message_unpinned')
+                  : _localeService.get('message_pinned'),
             ),
             duration: const Duration(seconds: 2),
             backgroundColor: _chatThemeColor ?? Colors.blue,
@@ -1578,7 +1572,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_localeService.isVietnamese ? 'Có lỗi xảy ra' : 'An error occurred'),
+            content: Text(_localeService.get('error_occurred')),
             backgroundColor: Colors.red,
           ),
         );
@@ -1663,7 +1657,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final content = _pinnedMessage?['content']?.toString() ?? '';
     final isImage = content.startsWith('[IMAGE:');
     final displayContent = isImage 
-        ? (_localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo')
+        ? _localeService.get('photo_attachment')
         : content.length > 50 ? '${content.substring(0, 50)}...' : content;
     
     return GestureDetector(
@@ -1693,7 +1687,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    _localeService.isVietnamese ? 'Tin nhắn đã ghim' : 'Pinned message',
+                    _localeService.get('pinned_messages'),
                     style: TextStyle(
                       color: _chatThemeColor ?? Colors.blue,
                       fontSize: 12,
@@ -2072,9 +2066,7 @@ class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              _localeService.isVietnamese
-                  ? 'Tài khoản này đã bị vô hiệu hóa, tạm thời không thể nhắn tin'
-                  : 'This account has been deactivated, messaging is temporarily unavailable',
+              _localeService.get('account_deactivated_msg'),
               style: TextStyle(
                 color: _themeService.textSecondaryColor,
                 fontSize: 13,
@@ -2119,9 +2111,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Flexible(
             child: Text(
               _messageRestrictedReason ?? 
-                (_localeService.isVietnamese 
-                    ? 'Bạn không thể gửi tin nhắn cho người dùng này'
-                    : 'You cannot send messages to this user'),
+                _localeService.get('cannot_message_user'),
               style: TextStyle(
                 color: _themeService.textSecondaryColor,
                 fontSize: 13,
@@ -2192,7 +2182,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Text(widget.recipientUsername, style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 18, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Text(
-            _localeService.isVietnamese ? 'Bắt đầu cuộc trò chuyện' : 'Start a conversation',
+            _localeService.get('start_conversation'),
             style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
           ),
         ],
@@ -2441,7 +2431,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             style: TextStyle(color: _themeService.textPrimaryColor, fontSize: 16),
                             decoration: InputDecoration(
                               hintText: _hasSelectedImages  // Use safe getter
-                                  ? (_localeService.isVietnamese ? 'Thêm tin nhắn...' : 'Add a message...')
+                                  ? _localeService.get('add_message_hint')
                                   : _localeService.get('type_message'),
                               hintStyle: TextStyle(color: _themeService.textSecondaryColor, fontSize: 16),
                               border: InputBorder.none,
@@ -2535,9 +2525,7 @@ class _ChatScreenState extends State<ChatScreen> {
           // Edit label
           Expanded(
             child: Text(
-              _localeService.isVietnamese 
-                  ? 'Đang chỉnh sửa tin nhắn'
-                  : 'Editing message',
+              _localeService.get('editing_message'),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
@@ -2576,11 +2564,11 @@ class _ChatScreenState extends State<ChatScreen> {
     // Get preview text
     String previewText = replyContent;
     if (replyContent.startsWith('[IMAGE:')) {
-      previewText = _localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo';
+      previewText = _localeService.get('photo_attachment');
     } else if (replyContent.startsWith('[STACKED_IMAGE:')) {
-      previewText = _localeService.isVietnamese ? '📷 Nhiều hình ảnh' : '📷 Multiple photos';
+      previewText = _localeService.get('multiple_photos');
     } else if (replyContent.startsWith('[VIDEO_SHARE:')) {
-      previewText = _localeService.isVietnamese ? '🎬 Video' : '🎬 Video';
+      previewText = _localeService.get('video_attachment');
     }
     
     // Truncate if too long
@@ -2589,7 +2577,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     
     final replyToName = isReplyingToSelf 
-        ? (_localeService.isVietnamese ? 'chính mình' : 'yourself')
+        ? _localeService.get('yourself')
         : widget.recipientUsername;
     
     return Container(
@@ -2681,7 +2669,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               children: [
                 Text(
-                  'Biểu tượng cảm xúc',
+                  _localeService.get('emojis'),
                   style: TextStyle(
                     color: _themeService.textSecondaryColor,
                     fontSize: 13,
@@ -2833,11 +2821,11 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
     // Get preview text
     String previewText = replyContent;
     if (replyContent.startsWith('[IMAGE:')) {
-      previewText = widget.localeService.isVietnamese ? '📷 Hình ảnh' : '📷 Photo';
+      previewText = widget.localeService.get('photo_attachment');
     } else if (replyContent.startsWith('[STACKED_IMAGE:')) {
-      previewText = widget.localeService.isVietnamese ? '📷 Nhiều hình ảnh' : '📷 Multiple photos';
+      previewText = widget.localeService.get('multiple_photos');
     } else if (replyContent.startsWith('[VIDEO_SHARE:')) {
-      previewText = widget.localeService.isVietnamese ? '🎬 Video đã chia sẻ' : '🎬 Shared video';
+      previewText = widget.localeService.get('shared_video');
     }
     
     // Truncate if too long
@@ -2855,9 +2843,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
     if (isSenderMe) {
       // I sent this reply
       if (isReplyToMe) {
-        repliedToText = widget.localeService.isVietnamese 
-            ? 'Bạn đã trả lời chính mình' 
-            : 'You replied to yourself';
+        repliedToText = widget.localeService.get('you_replied_self');
       } else {
         repliedToText = widget.localeService.isVietnamese 
             ? 'Bạn đã trả lời ${widget.recipientName ?? "User"}' 
@@ -2961,7 +2947,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           ),
           const SizedBox(width: 4),
           Text(
-            'Đang gửi',
+            LocaleService().get('sending'),
             style: TextStyle(color: Colors.grey[500], fontSize: 11),
           ),
         ],
@@ -2975,14 +2961,14 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           Icon(Icons.error_outline, size: 14, color: Colors.red[400]),
           const SizedBox(width: 4),
           Text(
-            'Gửi thất bại',
+            widget.localeService.get('send_failed'),
             style: TextStyle(color: Colors.red[400], fontSize: 11),
           ),
         ],
       );
     }
     
-    // Đã xem
+    // Seen
     if (widget.isRead) {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -2990,7 +2976,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
           Icon(Icons.done_all, size: 14, color: widget.chatThemeColor ?? ThemeService.accentColor),
           const SizedBox(width: 4),
           Text(
-            'Đã xem',
+            LocaleService().get('seen'),
             style: TextStyle(color: Colors.grey[500], fontSize: 11),
           ),
         ],
@@ -3071,7 +3057,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                                     ),
                                     const SizedBox(width: 3),
                                     Text(
-                                      widget.localeService.isVietnamese ? 'Đã chỉnh sửa' : 'Edited',
+                                      widget.localeService.get('edited'),
                                       style: TextStyle(
                                         color: widget.themeService.textSecondaryColor,
                                         fontSize: 10,
@@ -3132,7 +3118,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                                               ),
                                               const SizedBox(width: 6),
                                               Text(
-                                                widget.localeService.isVietnamese ? 'Đang dịch sang tiếng Việt...' : 'Translating to English...',
+                                                widget.localeService.get('translating'),
                                                 style: TextStyle(
                                                   color: widget.isMe ? Colors.white70 : widget.themeService.textSecondaryColor,
                                                   fontSize: 11,
@@ -3156,7 +3142,7 @@ class _MessageBubbleState extends State<_MessageBubble> with SingleTickerProvide
                                               ),
                                               const SizedBox(width: 4),
                                               Text(
-                                                widget.localeService.isVietnamese ? 'Đã dịch' : 'Translated',
+                                                widget.localeService.get('translated'),
                                                 style: TextStyle(
                                                   color: widget.isMe ? Colors.white60 : widget.themeService.textSecondaryColor,
                                                   fontSize: 10,
@@ -3448,7 +3434,7 @@ class _VideoShareBubbleState extends State<_VideoShareBubble> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Video không còn\ntồn tại',
+              LocaleService().get('video_unavailable_chat'),
               style: TextStyle(
                 color: Colors.grey[500],
                 fontSize: 13,
@@ -3581,7 +3567,7 @@ class _ImageMessageBubbleState extends State<_ImageMessageBubble> with SingleTic
           Icon(Icons.error_outline, size: 14, color: Colors.red[400]),
           const SizedBox(width: 4),
           Text(
-            'Gửi thất bại',
+            LocaleService().get('send_failed'),
             style: TextStyle(color: Colors.red[400], fontSize: 11),
           ),
         ],
@@ -3764,7 +3750,7 @@ class _ImageMessageBubbleState extends State<_ImageMessageBubble> with SingleTic
               children: [
                 Icon(Icons.broken_image_rounded, color: Colors.grey[600], size: 40),
                 const SizedBox(height: 8),
-                Text('Không thể tải ảnh', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                Text(LocaleService().get('cannot_load_image'), style: TextStyle(color: Colors.grey[600], fontSize: 12)),
               ],
             ),
           );
@@ -3995,7 +3981,7 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                             children: [
                               Icon(Icons.broken_image_rounded, color: Colors.grey[600], size: 64),
                               const SizedBox(height: 16),
-                              Text('Không thể tải ảnh', style: TextStyle(color: Colors.grey[600])),
+                              Text(LocaleService().get('cannot_load_image'), style: TextStyle(color: Colors.grey[600])),
                             ],
                           );
                         },
@@ -4219,7 +4205,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
             ),
           ),
           const SizedBox(width: 4),
-          Text('Đang gửi...', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+          Text(LocaleService().get('sending'), style: TextStyle(color: Colors.grey[500], fontSize: 11)),
         ],
       );
     }
@@ -4230,7 +4216,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
         children: [
           Icon(Icons.error_outline, color: Colors.red[400], size: 14),
           const SizedBox(width: 4),
-          Text('Gửi thất bại', style: TextStyle(color: Colors.red[400], fontSize: 11)),
+          Text(LocaleService().get('send_failed'), style: TextStyle(color: Colors.red[400], fontSize: 11)),
         ],
       );
     }
@@ -4241,7 +4227,7 @@ class _StackedImagesBubbleState extends State<_StackedImagesBubble> with SingleT
         if (widget.isRead) ...[
           Icon(Icons.done_all, color: widget.chatThemeColor ?? ThemeService.accentColor, size: 14),
           const SizedBox(width: 4),
-          Text('Đã xem', style: TextStyle(color: Colors.grey[500], fontSize: 11)),
+          Text(LocaleService().get('seen'), style: TextStyle(color: Colors.grey[500], fontSize: 11)),
         ] else ...[
           Icon(Icons.done, color: Colors.grey[500], size: 14),
           const SizedBox(width: 4),

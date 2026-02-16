@@ -347,9 +347,9 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
-          child: const Text(
-            'Hủy bỏ',
-            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+          child: Text(
+            _localeService.get('discard'),
+            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
           ),
         ),
       ],
@@ -443,16 +443,6 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     }
     
     _backgroundUploadFuture = performUpload();
-    _startProgressSimulation();
-  }
-
-  void _startProgressSimulation() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (!mounted || !_isUploading || _uploadProgress >= 0.95) return false;
-      setState(() => _uploadProgress += 0.02);
-      return true;
-    });
   }
 
   @override
@@ -1582,7 +1572,6 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                       width: 112,
                       height: 112,
                       child: CircularProgressIndicator(
-                        value: _uploadProgress > 0 ? _uploadProgress : null,
                         strokeWidth: 5,
                         color: ThemeService.accentColor,
                         backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],

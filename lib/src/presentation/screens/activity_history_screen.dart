@@ -1269,14 +1269,14 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Column(
+        child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.delete_outline, color: Colors.white, size: 24),
-            SizedBox(height: 4),
+            const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+            const SizedBox(height: 4),
             Text(
-              'Xóa',
-              style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              _localeService.get('delete'),
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -1307,9 +1307,9 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text(
-                  'Xóa',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                child: Text(
+                  _localeService.get('delete'),
+                  style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1531,9 +1531,9 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
               Navigator.pop(context);
               _deleteActivity(activityId);
             },
-            child: const Text(
-              'Xóa',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+            child: Text(
+              _localeService.get('delete'),
+              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
             ),
           ),
         ],

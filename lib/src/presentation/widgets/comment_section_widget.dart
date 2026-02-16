@@ -1542,8 +1542,8 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                                     const SizedBox(width: 2),
                                     Text(
                                       _showReplies 
-                                          ? 'Ẩn phản hồi' 
-                                          : 'Xem $replyCount phản hồi',
+                                          ? widget.localeService.get('hide_replies') 
+                                          : '${widget.localeService.get('view_label')} $replyCount ${widget.localeService.get('reply')}',
                                       style: TextStyle(
                                         color: Colors.grey[500],
                                         fontSize: 12,

@@ -2,6 +2,8 @@
 import 'dart:async';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/processing_video_screen.dart';
 
@@ -15,6 +17,8 @@ class UserVideoGrid extends StatefulWidget {
 class _UserVideoGridState extends State<UserVideoGrid> {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
+  final LocaleService _localeService = LocaleService();
+  final ThemeService _themeService = ThemeService();
   
   List<dynamic> _videos = [];
   bool _isLoading = true;
@@ -140,7 +144,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
       print('Error loading user videos: $e');
       if (mounted) {
         setState(() {
-          _error = 'Không thể tải video';
+          _error = _localeService.get('cannot_load_videos');
           _isLoading = false;
         });
       }
@@ -166,7 +170,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadUserVideos,
-              child: const Text('Thử lại'),
+              child: Text(_localeService.get('retry')),
             ),
           ],
         ),
@@ -181,22 +185,22 @@ class _UserVideoGridState extends State<UserVideoGrid> {
             Icon(
               Icons.video_library_outlined,
               size: 80,
-              color: Colors.grey[700],
+              color: _themeService.textSecondaryColor,
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có bài viết nào',
+            Text(
+              _localeService.get('no_posts_yet'),
               style: TextStyle(
-                color: Colors.white,
+                color: _themeService.textPrimaryColor,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Hãy đăng video đầu tiên của bạn!',
+              _localeService.get('post_your_first_video'),
               style: TextStyle(
-                color: Colors.grey[600],
+                color: _themeService.textSecondaryColor,
                 fontSize: 14,
               ),
             ),
@@ -247,7 +251,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                   builder: (_) => VideoDetailScreen(
                     videos: _videos.where((v) => v['status'] == 'ready').toList(),
                     initialIndex: _videos.where((v) => v['status'] == 'ready').toList().indexOf(video),
-                    screenTitle: 'Video đã đăng',
+                    screenTitle: _localeService.get('posted_videos'),
                     onVideoDeleted: () {
                       // Refresh the videos list
                       _loadUserVideos();
@@ -352,7 +356,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Ẩn',
+                                  _localeService.get('hidden'),
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.9),
                                     fontSize: 12,
@@ -404,7 +408,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Thất bại',
+                                  _localeService.get('failed'),
                                   style: TextStyle(
                                     color: Colors.redAccent.withOpacity(0.9),
                                     fontSize: 11,
@@ -413,7 +417,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Nhấn để thử lại',
+                                  _localeService.get('tap_to_retry'),
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.6),
                                     fontSize: 9,
@@ -430,7 +434,7 @@ class _UserVideoGridState extends State<UserVideoGrid> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Đang xử lý',
+                                  _localeService.get('processing'),
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.9),
                                     fontSize: 11,

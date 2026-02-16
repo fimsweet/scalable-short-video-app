@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:scalable_short_video_app/src/services/video_playback_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'web_video_player_stub.dart'
     if (dart.library.html) 'web_video_player.dart';
 
@@ -370,7 +371,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
               const Icon(Icons.error_outline, size: 64, color: Colors.red),
               const SizedBox(height: 16),
               Text(
-                'Không thể phát video',
+                LocaleService().get('cannot_play_video'),
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
               const SizedBox(height: 8),
@@ -507,30 +508,6 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
             ),
           ),
         
-        // Back button (top-left) - ONLY in fullscreen
-        if (_isFullscreen)
-          Positioned(
-            top: 12,
-            left: 12,
-            child: SafeArea(
-              child: GestureDetector(
-                onTap: _toggleFullscreen,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.chevron_left,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        
         // Fullscreen button (just below video, in black bar) - TikTok style
         if (_needsFullscreenButton)
           Positioned(
@@ -560,7 +537,7 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        _isFullscreen ? 'Thoát' : 'Toàn màn hình',
+                        _isFullscreen ? LocaleService().get('exit_fullscreen') : LocaleService().get('fullscreen'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,

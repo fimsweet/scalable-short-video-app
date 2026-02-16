@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 
 /// Full-screen view for a video that is still being processed.
@@ -27,6 +28,7 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
     with SingleTickerProviderStateMixin {
   final VideoService _videoService = VideoService();
   final AuthService _authService = AuthService();
+  final LocaleService _localeService = LocaleService();
   Timer? _pollTimer;
   Timer? _progressTimer;
   late Map<String, dynamic> _video;
@@ -122,13 +124,13 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
   }
 
   String _getStageLabel(double progress) {
-    if (progress < 0.05) return 'Đang chuẩn bị xử lý...';
-    if (progress < 0.30) return 'Đang xử lý video...';
-    if (progress < 0.55) return 'Đang tối ưu chất lượng...';
-    if (progress < 0.75) return 'Đang hoàn thiện video...';
-    if (progress < 0.85) return 'Đang tạo ảnh bìa...';
-    if (progress < 0.95) return 'Sắp hoàn tất...';
-    return 'Sắp hoàn tất...';
+    if (progress < 0.05) return _localeService.get('processing_preparing');
+    if (progress < 0.30) return _localeService.get('processing_video_status');
+    if (progress < 0.55) return _localeService.get('processing_optimizing');
+    if (progress < 0.75) return _localeService.get('processing_finalizing');
+    if (progress < 0.85) return _localeService.get('processing_thumbnail');
+    if (progress < 0.95) return _localeService.get('processing_almost_done');
+    return _localeService.get('processing_almost_done');
   }
 
   Future<void> _checkVideoStatus() async {
@@ -165,7 +167,7 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
             builder: (_) => VideoDetailScreen(
               videos: [_video],
               initialIndex: 0,
-              screenTitle: 'Video đã đăng',
+              screenTitle: _localeService.get('posted_videos'),
             ),
           ),
         );
@@ -217,7 +219,7 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'Không thể thử lại. Vui lòng thử sau.'),
+            content: Text(result['message'] ?? _localeService.get('retry_failed')),
             backgroundColor: Colors.red,
           ),
         );
@@ -228,8 +230,8 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
           _isRetrying = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Đã xảy ra lỗi. Vui lòng thử lại sau.'),
+          SnackBar(
+            content: Text(_localeService.get('error_try_later')),
             backgroundColor: Colors.red,
           ),
         );
@@ -242,8 +244,8 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
     final title = _video['title'] ?? 'Video';
     final percentText = _isFailed ? '!' : '${(_progress * 100).toStringAsFixed(0)}%';
     final stageLabel = _isFailed
-        ? 'Xử lý thất bại'
-        : (_isReady ? 'Hoàn tất!' : _getStageLabel(_progress));
+        ? _localeService.get('processing_failed')
+        : (_isReady ? _localeService.get('processing_complete') : _getStageLabel(_progress));
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -379,8 +381,8 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
                                           child: child,
                                         );
                                       },
-                                      child: const Text(
-                                        'đang xử lý',
+                                      child: Text(
+                                        _localeService.get('processing_label'),
                                         style: TextStyle(
                                           color: Color(0xFF00BFA5),
                                           fontSize: 12,
@@ -433,8 +435,8 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
                                 const SizedBox(height: 8),
                                 Text(
                                   _video['errorMessage'] != null
-                                      ? 'Lỗi: ${_video['errorMessage']}'
-                                      : 'Video không thể xử lý được.\nBạn có thể thử lại.',
+                                      ? '${_localeService.get('error_prefix')}: ${_video['errorMessage']}'
+                                      : _localeService.get('video_cannot_process'),
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.grey[400],
@@ -463,7 +465,7 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
                                     )
                                   : const Icon(Icons.refresh, size: 20),
                               label: Text(
-                                _isRetrying ? 'Đang gửi lại...' : 'Thử lại',
+                                _isRetrying ? _localeService.get('retrying') : _localeService.get('retry'),
                                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                               ),
                               style: ElevatedButton.styleFrom(
@@ -498,8 +500,8 @@ class _ProcessingVideoScreenState extends State<ProcessingVideoScreen>
                                 const SizedBox(height: 8),
                                 Text(
                                   _isReady
-                                      ? 'Video đã sẵn sàng!'
-                                      : 'Video đang được xử lý.\nBạn có thể quay lại sau.',
+                                      ? _localeService.get('video_ready')
+                                      : _localeService.get('video_processing_hint'),
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: Colors.grey[500],

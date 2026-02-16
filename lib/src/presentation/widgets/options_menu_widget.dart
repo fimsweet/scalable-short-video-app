@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
 
 class OptionsMenuWidget extends StatefulWidget {
   final String? videoId;
@@ -22,6 +23,7 @@ class OptionsMenuWidget extends StatefulWidget {
 class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
   late bool _isSaved;
   final ThemeService _themeService = ThemeService();
+  final LocaleService _localeService = LocaleService();
 
   @override
   void initState() {
@@ -84,35 +86,35 @@ class _OptionsMenuWidgetState extends State<OptionsMenuWidget> {
                     children: [
                       _TopOptionItem(
                         icon: _isSaved ? Icons.bookmark : Icons.bookmark_border,
-                        label: _isSaved ? 'Đã lưu' : 'Lưu',
+                        label: _isSaved ? _localeService.get('saved') : _localeService.get('save'),
                         isActive: _isSaved,
-                        onTap: _handleSaveToggle, // Use local handler
+                        onTap: _handleSaveToggle,
                       ),
-                      const _TopOptionItem(icon: Icons.repeat, label: 'Remix'),
-                      const _TopOptionItem(icon: Icons.link, label: 'Ghép nối'),
+                      _TopOptionItem(icon: Icons.repeat, label: 'Remix'),
+                      _TopOptionItem(icon: Icons.link, label: _localeService.get('stitch')),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const _ListOptionItem(
-                      icon: Icons.closed_caption_outlined, label: 'Phụ đề'),
-                  const _ListOptionItem(
-                      icon: Icons.fullscreen, label: 'Xem toàn màn hình'),
-                  const _ListOptionItem(icon: Icons.qr_code, label: 'Mã QR'),
+                  _ListOptionItem(
+                      icon: Icons.closed_caption_outlined, label: _localeService.get('subtitles')),
+                  _ListOptionItem(
+                      icon: Icons.fullscreen, label: _localeService.get('view_fullscreen')),
+                  const _ListOptionItem(icon: Icons.qr_code, label: 'QR'),
                   const Divider(color: Colors.grey),
-                  const _ListOptionItem(
-                      icon: Icons.visibility_outlined, label: 'Quan tâm'),
-                  const _ListOptionItem(
+                  _ListOptionItem(
+                      icon: Icons.visibility_outlined, label: _localeService.get('interested')),
+                  _ListOptionItem(
                       icon: Icons.visibility_off_outlined,
-                      label: 'Không quan tâm'),
-                  const _ListOptionItem(
+                      label: _localeService.get('not_interested')),
+                  _ListOptionItem(
                     icon: Icons.report_gmailerrorred,
-                    label: 'Báo cáo',
+                    label: _localeService.get('report'),
                     color: Colors.red,
                   ),
                   const Divider(color: Colors.grey),
-                  const _ListOptionItem(
+                  _ListOptionItem(
                       icon: Icons.settings_outlined,
-                      label: 'Quản lý tùy chọn nội dung'),
+                      label: _localeService.get('manage_content_preferences')),
                 ],
               ),
             ),

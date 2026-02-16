@@ -720,6 +720,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         currentVideoUserId != null &&
         _authService.user!['id'].toString() == currentVideoUserId;
     
+    // Detect landscape (fullscreen for 16:9 videos)
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -743,10 +746,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: isOwnVideo ? null : _buildSearchBox(),
+        title: isLandscape ? null : (isOwnVideo ? null : _buildSearchBox()),
         titleSpacing: 0,
         centerTitle: false,
-        actions: isOwnVideo ? [
+        actions: isLandscape ? null : (isOwnVideo ? [
           IconButton(
             icon: const Icon(
               Icons.search,
@@ -769,7 +772,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               );
             },
           ),
-        ] : null,
+        ] : null),
       ),
       body: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
@@ -825,10 +828,14 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               : '';
           final userId = video['userId']?.toString();
 
+          // Only load video players within range of 2 from current page
+          // to avoid exhausting hardware decoder slots (MediaCodec limit)
+          final shouldLoadVideo = (index - _currentPage).abs() <= 2;
+
           return Stack(
             children: [
               // Video player
-              if (hlsUrl.isNotEmpty)
+              if (hlsUrl.isNotEmpty && shouldLoadVideo)
                 HLSVideoPlayer(
                   key: ValueKey('detail_$videoId'),
                   videoUrl: hlsUrl,
@@ -854,6 +861,14 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                       );
                     }
                   },
+                )
+              else if (!shouldLoadVideo)
+                // Placeholder for videos far from viewport to save hardware codecs
+                Container(
+                  color: Colors.black,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  ),
                 )
               else
                 Container(
@@ -983,43 +998,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                             ),
                                           ],
                                         ),
-                                        // Expanded category chips
+                                        // Expanded category tags (plain text)
                                         if (isExpanded) ...[
                                           const SizedBox(height: 6),
                                           Wrap(
-                                            spacing: 6,
+                                            spacing: 8,
                                             runSpacing: 4,
                                             children: cats.map((cat) {
-                                              final isAi = cat['isAiSuggested'] == true;
-                                              return Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                                decoration: BoxDecoration(
-                                                  color: isAi
-                                                      ? Colors.deepPurple.withOpacity(0.5)
-                                                      : Colors.white.withOpacity(0.15),
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  border: isAi
-                                                      ? Border.all(color: Colors.deepPurpleAccent.withOpacity(0.6), width: 0.5)
-                                                      : null,
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    if (isAi) ...[
-                                                      const Icon(Icons.auto_awesome, size: 11, color: Colors.amberAccent),
-                                                      const SizedBox(width: 3),
-                                                    ],
-                                                    Text(
-                                                      '#${cat['name']}',
-                                                      style: TextStyle(
-                                                        color: isAi ? Colors.white : Colors.white70,
-                                                        fontSize: 11,
-                                                        fontWeight: isAi ? FontWeight.w600 : FontWeight.w400,
-                                                        shadows: const [
-                                                          Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(0.5, 0.5)),
-                                                        ],
-                                                      ),
-                                                    ),
+                                              return Text(
+                                                '#${cat['name']}',
+                                                style: const TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  shadows: [
+                                                    Shadow(blurRadius: 4, color: Colors.black54, offset: Offset(0.5, 0.5)),
                                                   ],
                                                 ),
                                               );

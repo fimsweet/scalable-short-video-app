@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/theme_service.dart';
 
 class ShareSheetWidget extends StatelessWidget {
-  const ShareSheetWidget({super.key});
+  ShareSheetWidget({super.key});
+
+  final LocaleService _localeService = LocaleService();
+  final ThemeService _themeService = ThemeService();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.6,
-      decoration: const BoxDecoration(
-        color: Color(0xFF2C2C2E),
+      decoration: BoxDecoration(
+        color: _themeService.surfaceColor,
         borderRadius: BorderRadius.only(
           topLeft: Radius.circular(16.0),
           topRight: Radius.circular(16.0),
@@ -22,24 +27,24 @@ class ShareSheetWidget extends StatelessWidget {
               width: 40,
               height: 5,
               decoration: BoxDecoration(
-                color: Colors.grey[600],
+                color: _themeService.textSecondaryColor,
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),
-          const Text(
-            'Chia sẻ đến',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          Text(
+            _localeService.get('share'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
           ),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Tìm kiếm',
+                hintText: _localeService.get('search'),
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: Colors.black.withOpacity(0.2),
+                fillColor: _themeService.inputBackground,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -68,8 +73,10 @@ class ShareSheetWidget extends StatelessWidget {
 class _UserListItem extends StatelessWidget {
   final String username;
   final String fullName;
+  final LocaleService _localeService = LocaleService();
+  final ThemeService _themeService = ThemeService();
 
-  const _UserListItem({required this.username, required this.fullName});
+  _UserListItem({required this.username, required this.fullName});
 
   @override
   Widget build(BuildContext context) {
@@ -80,12 +87,12 @@ class _UserListItem extends StatelessWidget {
         // backgroundImage: NetworkImage('...'),
       ),
       title: Text(username, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(fullName, style: TextStyle(color: Colors.grey[400])),
+      subtitle: Text(fullName, style: TextStyle(color: _themeService.textSecondaryColor)),
       trailing: ElevatedButton(
         onPressed: () {
           // Handle send action
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đã gửi cho $username')),
+            SnackBar(content: Text('${_localeService.get('sent_to_user')} $username')),
           );
         },
         style: ElevatedButton.styleFrom(
@@ -94,7 +101,7 @@ class _UserListItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
           ),
         ),
-        child: const Text('Gửi'),
+        child: Text(_localeService.get('send')),
       ),
     );
   }
