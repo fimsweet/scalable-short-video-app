@@ -6,6 +6,7 @@ import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:intl/intl.dart';
 
 class ActivityHistoryScreen extends StatefulWidget {
@@ -167,6 +168,13 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
               openCommentsOnLoad: actionType == 'comment',
             ),
           ),
+        );
+      } else if (mounted) {
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese
+              ? 'Video không khả dụng hoặc đã bị xóa'
+              : 'Video is unavailable or has been deleted',
         );
       }
     } else if (targetType == 'user' && targetId != null) {
@@ -1642,6 +1650,10 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
       
       case 'follow':
       case 'unfollow':
+      case 'follow_request':
+      case 'cancel_follow_request':
+      case 'approve_follow_request':
+      case 'reject_follow_request':
         final username = metadata['targetUsername'] as String?;
         final fullName = metadata['targetFullName'] as String?;
         if (username != null) {
@@ -1659,7 +1671,21 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
         return _localeService.isVietnamese ? 'Video đã bị xóa' : 'Video was deleted';
       
       case 'video_hidden':
-        return _localeService.isVietnamese ? 'Video đã ẩn' : 'Video is now private';
+        final isHidden = metadata['isHidden'];
+        final title = metadata['title'] as String?;
+        if (isHidden == true) {
+          return _localeService.isVietnamese 
+              ? 'Đã ẩn video${title != null ? ": $title" : ""}'
+              : 'Hidden video${title != null ? ": $title" : ""}';
+        } else {
+          return _localeService.isVietnamese 
+              ? 'Đã hiện video${title != null ? ": $title" : ""}'
+              : 'Unhidden video${title != null ? ": $title" : ""}';
+        }
+      
+      case 'privacy_updated':
+        final title = metadata['title'] as String?;
+        return title ?? (_localeService.isVietnamese ? 'Đã thay đổi cài đặt quyền riêng tư' : 'Privacy settings changed');
       
       default:
         return '';
@@ -1730,6 +1756,16 @@ class _ActivityHistoryScreenState extends State<ActivityHistoryScreen> {
         return {'icon': Icons.person_add, 'color': Colors.purple};
       case 'unfollow':
         return {'icon': Icons.person_remove, 'color': Colors.grey};
+      case 'follow_request':
+        return {'icon': Icons.person_add_alt_1, 'color': Colors.orange};
+      case 'cancel_follow_request':
+        return {'icon': Icons.person_off, 'color': Colors.grey};
+      case 'approve_follow_request':
+        return {'icon': Icons.check_circle, 'color': Colors.green};
+      case 'reject_follow_request':
+        return {'icon': Icons.cancel, 'color': Colors.red};
+      case 'privacy_updated':
+        return {'icon': Icons.privacy_tip_outlined, 'color': Colors.teal};
       default:
         return {'icon': Icons.history, 'color': ThemeService.accentColor};
     }

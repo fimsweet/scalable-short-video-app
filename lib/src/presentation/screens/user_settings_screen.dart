@@ -1,11 +1,14 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/account_management_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/notification_settings_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/privacy_settings_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 
 class UserSettingsScreen extends StatefulWidget {
@@ -20,15 +23,19 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
   final ApiService _apiService = ApiService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final MessageService _messageService = MessageService();
 
   // Privacy settings (synced with backend)
   bool _isPrivateAccount = false;
   
-  // New privacy settings from backend
-  String _whoCanViewVideos = 'everyone';
-  String _whoCanSendMessages = 'everyone';
-  String _whoCanComment = 'everyone';
-  bool _filterComments = true;
+  // Follow approval toggle
+  bool _requireFollowApproval = false;
+  
+  // Activity status
+  bool _showOnlineStatus = true;
+  
+  // Loading state - prevent flicker of default values
+  bool _isLoadingSettings = true;
 
   @override
   void initState() {
@@ -62,22 +69,26 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
       
       if (result['success'] == true && result['settings'] != null) {
         final settings = result['settings'];
-        setState(() {
-          _whoCanViewVideos = settings['whoCanViewVideos'] ?? 'everyone';
-          _whoCanSendMessages = settings['whoCanSendMessages'] ?? 'everyone';
-          _whoCanComment = settings['whoCanComment'] ?? 'everyone';
-          _filterComments = settings['filterComments'] ?? true;
-          _isPrivateAccount = settings['accountPrivacy'] == 'private';
-        });
+        if (mounted) {
+          setState(() {
+            _isPrivateAccount = settings['accountPrivacy'] == 'private';
+            _requireFollowApproval = settings['requireFollowApproval'] ?? false;
+            _showOnlineStatus = settings['showOnlineStatus'] ?? true;
+            _isLoadingSettings = false;
+          });
+        }
         
         // Load language from backend settings (per account)
         final language = settings['language'] as String?;
         if (language != null) {
           await _localeService.loadFromBackend(language);
         }
+      } else {
+        if (mounted) setState(() => _isLoadingSettings = false);
       }
     } catch (e) {
       print('Error loading privacy settings: $e');
+      if (mounted) setState(() => _isLoadingSettings = false);
     }
   }
 
@@ -88,23 +99,24 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
       final result = await _apiService.updateUserSettings(token, {key: value});
       print('Privacy setting updated: $key = $value, result: $result');
+
+      // Notify video-service via WebSocket for real-time privacy changes
+      final userId = _authService.userId;
+      if (userId != null) {
+        if (key == 'whoCanSendMessages') {
+          _messageService.notifyPrivacySettingsChanged(
+            userId: userId.toString(),
+            whoCanSendMessages: value as String,
+          );
+        } else if (key == 'showOnlineStatus') {
+          _messageService.notifyPrivacySettingsChanged(
+            userId: userId.toString(),
+            showOnlineStatus: value as bool,
+          );
+        }
+      }
     } catch (e) {
       print('Error updating privacy setting: $e');
-    }
-  }
-
-  String _getDisplayText(String value) {
-    switch (value) {
-      case 'everyone':
-        return _localeService.get('everyone');
-      case 'friends':
-        return _localeService.get('friends');
-      case 'onlyMe':
-        return _localeService.get('only_me');
-      case 'noOne':
-        return _localeService.get('no_one');
-      default:
-        return _localeService.get('everyone');
     }
   }
 
@@ -239,78 +251,6 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
     );
   }
 
-  void _showPrivacySelectionModal({
-    required String title,
-    required String currentValue,
-    required List<Map<String, String>> options,
-    required Function(String) onSelect,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: _themeService.cardColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: _themeService.textPrimaryColor,
-                  ),
-                ),
-              ),
-              Divider(height: 1, color: _themeService.dividerColor),
-              ...options.map((option) => InkWell(
-                onTap: () {
-                  Navigator.pop(context);
-                  onSelect(option['value']!);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          option['title']!,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: _themeService.textPrimaryColor,
-                          ),
-                        ),
-                      ),
-                      if (option['value'] == currentValue)
-                        const Icon(Icons.check, color: Colors.blue, size: 24),
-                    ],
-                  ),
-                ),
-              )),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -333,7 +273,13 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
         ),
         centerTitle: true,
       ),
-      body: SingleChildScrollView(
+      body: _isLoadingSettings 
+        ? Center(
+            child: CircularProgressIndicator(
+              color: _themeService.textSecondaryColor,
+            ),
+          )
+        : SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -380,78 +326,42 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                 },
                 showDivider: true,
               ),
-              _buildMenuItem(
-                title: _localeService.get('who_can_view_videos'),
-                subtitle: _getDisplayText(_whoCanViewVideos),
-                onTap: () => _showPrivacySelectionModal(
-                  title: _localeService.get('who_can_view_videos_title'),
-                  currentValue: _whoCanViewVideos,
-                  options: [
-                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                    {'title': _localeService.get('friends'), 'value': 'friends'},
-                    {'title': _localeService.get('only_me'), 'value': 'onlyMe'},
-                  ],
-                  onSelect: (value) {
-                    setState(() => _whoCanViewVideos = value);
-                    _updatePrivacySetting('whoCanViewVideos', value);
-                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                  },
-                ),
+              _buildSettingSwitch(
+                title: _localeService.get('activity_status'),
+                subtitle: _localeService.get('activity_status_desc'),
+                value: _showOnlineStatus,
+                onChanged: (value) {
+                  setState(() => _showOnlineStatus = value);
+                  _updatePrivacySetting('showOnlineStatus', value);
+                  _showSnackBar(
+                    value ? _localeService.get('activity_status_enabled') : _localeService.get('activity_status_disabled'),
+                    _themeService.snackBarBackground,
+                  );
+                },
                 showDivider: true,
               ),
               _buildMenuItem(
-                title: _localeService.get('who_can_send_messages'),
-                subtitle: _getDisplayText(_whoCanSendMessages),
-                onTap: () => _showPrivacySelectionModal(
-                  title: _localeService.get('who_can_send_messages_title'),
-                  currentValue: _whoCanSendMessages,
-                  options: [
-                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                    {'title': _localeService.get('friends'), 'value': 'friends'},
-                    {'title': _localeService.get('no_one'), 'value': 'noOne'},
-                  ],
-                  onSelect: (value) {
-                    setState(() => _whoCanSendMessages = value);
-                    _updatePrivacySetting('whoCanSendMessages', value);
-                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                  },
-                ),
-              ),
-            ]),
-            
-            const SizedBox(height: 24),
-            
-            // Section: Comments
-            _buildSectionTitle(_localeService.get('comments')),
-            _buildSettingsGroup([
-              _buildMenuItem(
-                title: _localeService.get('who_can_comment'),
-                subtitle: _getDisplayText(_whoCanComment),
-                onTap: () => _showPrivacySelectionModal(
-                  title: _localeService.get('who_can_comment_title'),
-                  currentValue: _whoCanComment,
-                  options: [
-                    {'title': _localeService.get('everyone'), 'value': 'everyone'},
-                    {'title': _localeService.get('friends'), 'value': 'friends'},
-                    {'title': _localeService.get('no_one'), 'value': 'noOne'},
-                  ],
-                  onSelect: (value) {
-                    setState(() => _whoCanComment = value);
-                    _updatePrivacySetting('whoCanComment', value);
-                    _showSnackBar(_localeService.get('updated'), _themeService.snackBarBackground);
-                  },
-                ),
+                title: _localeService.get('privacy_and_safety'),
+                subtitle: _localeService.get('privacy_and_safety_subtitle'),
+                onTap: () {
+                  NavigationUtils.slideToScreen(
+                    context,
+                    const PrivacySettingsScreen(),
+                  );
+                },
                 showDivider: true,
               ),
               _buildSettingSwitch(
-                title: _localeService.get('filter_comments'),
-                subtitle: _localeService.get('filter_comments_desc'),
-                value: _filterComments,
+                title: _localeService.get('follow_requests'),
+                subtitle: _localeService.get('follow_requests_desc'),
+                value: _requireFollowApproval,
                 onChanged: (value) {
-                  setState(() => _filterComments = value);
-                  _updatePrivacySetting('filterComments', value);
+                  setState(() => _requireFollowApproval = value);
+                  _updatePrivacySetting('requireFollowApproval', value);
                   _showSnackBar(
-                    value ? _localeService.get('filter_comments_enabled') : _localeService.get('filter_comments_disabled'),
+                    value 
+                        ? _localeService.get('follow_requests_enabled')
+                        : _localeService.get('follow_requests_disabled'),
                     _themeService.snackBarBackground,
                   );
                 },
@@ -703,19 +613,19 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
                       subtitle,
                       style: TextStyle(
                         color: _themeService.textSecondaryColor,
-                        fontSize: 14,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
               ),
-              Switch(
+              const SizedBox(width: 12),
+              CupertinoSwitch(
                 value: value,
                 onChanged: onChanged,
-                activeColor: _themeService.switchActiveColor,
                 activeTrackColor: _themeService.switchActiveTrackColor,
-                inactiveThumbColor: _themeService.switchInactiveThumbColor,
-                inactiveTrackColor: _themeService.switchInactiveTrackColor,
+                thumbColor: Colors.white,
+                trackColor: _themeService.switchInactiveTrackColor,
               ),
             ],
           ),

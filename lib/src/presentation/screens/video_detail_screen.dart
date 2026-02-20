@@ -70,9 +70,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
   Set<String> _expandedCategories = {}; // Track which videos have expanded category tags
   HLSVideoPlayerState? _currentVideoPlayerState;
 
+  // Track owner-level comment disabled (whoCanComment = noOne)
+  Map<String, bool> _ownerCommentDisabled = {};
+
   // Playback speed & auto-scroll (persisted across modal opens)
   double _playbackSpeed = 1.0;
   bool _autoScroll = false;
+  bool _isHideToggling = false; // Prevent rapid hide/unhide race condition
 
   @override
   void initState() {
@@ -116,12 +120,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     final video = _videos[_currentPage];
     if (video == null || video['id'] == null) return;
     final videoId = video['id'].toString();
+    final ownerId = video['userId']?.toString();
+    final allowComments = (video['allowComments'] != false) && !(ownerId != null && (_ownerCommentDisabled[ownerId] ?? false));
     
     showModalBottomSheet(
       context: context,
       builder: (context) => CommentSectionWidget(
         videoId: videoId,
-        videoOwnerId: video['userId']?.toString(),
+        videoOwnerId: ownerId,
+        allowComments: allowComments,
         onCommentAdded: () async {
           final count = await _commentService.getCommentCount(videoId);
           if (mounted) {
@@ -161,6 +168,10 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   void _onLogout() {
     print('VideoDetailScreen: Logout event received - resetting statuses');
+    
+    // Clear like/save cache so next login starts fresh
+    LikeService.clearCache();
+    SavedVideoService.clearCache();
     
     // Clear all statuses
     _likeStatus.clear();
@@ -210,9 +221,13 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       _shareCounts[videoId] = _parseIntSafe(video['shareCount']);
       _viewCounts[videoId] = _parseIntSafe(video['viewCount']);
       
-      // Set default values
-      _likeStatus[videoId] = false;
-      _saveStatus[videoId] = false;
+      // Seed from cache so the heart shows correct state immediately (no white flash)
+      _likeStatus[videoId] = _likeService.getCached(videoId) ?? (video['isLiked'] == true ? true : false);
+      // Seed likeCount from cache; fallback to payload (which may be stale)
+      _likeCounts[videoId] = _likeService.getCachedCount(videoId) ?? _parseIntSafe(video['likeCount']);
+      // Seed save status/count from cache
+      _saveStatus[videoId] = _savedVideoService.getCached(videoId) ?? false;
+      _saveCounts[videoId] = _savedVideoService.getCachedCount(videoId) ?? _parseIntSafe(video['saveCount']);
     }
     
     // Increment view count for the initial video
@@ -263,6 +278,15 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
         
         print('Detail screen - All statuses loaded');
       }
+    }
+
+    // Populate owner-level whoCanComment from video response data (no extra API call)
+    for (var video in _videos) {
+      if (video == null || video['userId'] == null) continue;
+      final ownerId = video['userId'].toString();
+      if (_ownerCommentDisabled.containsKey(ownerId)) continue;
+      final whoCanComment = video['ownerWhoCanComment'] ?? 'everyone';
+      _ownerCommentDisabled[ownerId] = (whoCanComment == 'noOne' || whoCanComment == 'onlyMe');
     }
 
     if (mounted) {
@@ -335,6 +359,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
 
   // Quick emoji comment
   Future<void> _sendQuickEmojiComment(String videoId, String emoji) async {
+    // Defensive check: don't allow emoji comment if comments are disabled
+    final currentVideo = _videos.isNotEmpty && _currentPage < _videos.length
+        ? _videos[_currentPage]
+        : null;
+    if (currentVideo != null && currentVideo['allowComments'] == false) return;
+
     if (!_authService.isLoggedIn || _authService.user == null) {
       LoginRequiredDialog.show(context, 'comment');
       return;
@@ -467,6 +497,12 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
     return 0;
   }
 
+  /// Check if comments are effectively enabled for a video
+  bool _isCommentsEffectivelyEnabled(String videoId, String? ownerId) {
+    final ownerDisabled = ownerId != null ? (_ownerCommentDisabled[ownerId] ?? false) : false;
+    return !ownerDisabled;
+  }
+
   // Get visibility icon based on visibility value
   IconData _getVisibilityIcon(String visibility) {
     switch (visibility) {
@@ -581,15 +617,21 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
       builder: (context) => VideoPrivacySheet(
         videoId: videoId,
         userId: userId,
-        currentVisibility: video['visibility'] ?? 'public',
-        allowComments: video['allowComments'] ?? true,
+        // When hidden, force 'private' to stay consistent with TikTok behavior
+        currentVisibility: video['isHidden'] == true ? 'private' : (video['visibility'] ?? 'public'),
+        allowComments: video['isHidden'] == true ? false : (video['allowComments'] ?? true),
         allowDuet: video['allowDuet'] ?? true,
+        isHidden: video['isHidden'] == true,
         onChanged: (visibility, allowComments, allowDuet) {
           if (mounted) {
             setState(() {
               video['visibility'] = visibility;
               video['allowComments'] = allowComments;
               video['allowDuet'] = allowDuet;
+              // Sync: if visibility changed from private, auto-unhide
+              if (visibility != 'private' && video['isHidden'] == true) {
+                video['isHidden'] = false;
+              }
             });
           }
         },
@@ -640,22 +682,34 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
           _showPrivacySettings(video);
         },
         onHideTap: () async {
+          if (_isHideToggling) return; // Prevent race condition
+          _isHideToggling = true;
           final isHidden = video['isHidden'] ?? false;
           try {
             final result = await _videoService.toggleHideVideo(videoId, userId);
             if (result['success'] == true && mounted) {
+              final newIsHidden = result['isHidden'] ?? !isHidden;
               setState(() {
-                video['isHidden'] = result['isHidden'] ?? !isHidden;
+                video['isHidden'] = newIsHidden;
+                // Sync privacy state from backend response
+                if (result['visibility'] != null) {
+                  video['visibility'] = result['visibility'];
+                }
+                if (result['allowComments'] != null) {
+                  video['allowComments'] = result['allowComments'];
+                }
               });
               AppSnackBar.showSuccess(
                 context,
-                result['isHidden'] == true
+                newIsHidden
                     ? (_localeService.isVietnamese ? 'Đã ẩn video' : 'Video hidden')
                     : (_localeService.isVietnamese ? 'Đã hiện video' : 'Video visible'),
               );
             }
           } catch (e) {
             print('Error toggling video visibility: $e');
+          } finally {
+            _isHideToggling = false;
           }
         },
         onDeleteTap: () {
@@ -1141,20 +1195,20 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                         ],
                       ),
                     ),
-                    child: Row(
-                        children: [
-                          // Comment input field
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                final allowComments = video['allowComments'] ?? true;
-                                if (allowComments) {
+                    child: ((video['allowComments'] ?? true) && _isCommentsEffectivelyEnabled(videoId, video['userId']?.toString()))
+                      ? Row(
+                          children: [
+                            // Comment input field (only when comments enabled)
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
                                   // Open comment section
                                   showModalBottomSheet(
                                     context: context,
                                     builder: (context) => CommentSectionWidget(
                                       videoId: videoId,
                                       videoOwnerId: video['userId']?.toString(),
+                                      allowComments: (video['allowComments'] ?? true) && _isCommentsEffectivelyEnabled(videoId, video['userId']?.toString()),
                                       autoFocus: true,
                                       onCommentAdded: () async {
                                         final count = await _commentService.getCommentCount(videoId);
@@ -1177,43 +1231,25 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                     backgroundColor: Colors.transparent,
                                     useSafeArea: false,
                                   );
-                                } else {
-                                  // Show disabled message
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        _localeService.isVietnamese 
-                                            ? 'Chủ video đã tắt bình luận cho video này'
-                                            : 'The video owner has disabled comments for this video',
-                                      ),
-                                      backgroundColor: Colors.grey[800],
-                                      behavior: SnackBarBehavior.floating,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                  );
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        (video['allowComments'] ?? true)
-                                            ? (_localeService.isVietnamese ? 'Thêm bình luận...' : 'Add a comment...')
-                                            : (_localeService.isVietnamese ? 'Bình luận đã bị tắt' : 'Comments are disabled'),
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.7),
-                                          fontSize: 14,
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.15),
+                                    borderRadius: BorderRadius.circular(24),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _localeService.isVietnamese ? 'Thêm bình luận...' : 'Add a comment...',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.7),
+                                            fontSize: 14,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    // Emoji icons like TikTok - tappable to send quick comments
-                                    if (video['allowComments'] ?? true) ...[
+                                      // Emoji icons like TikTok - tappable to send quick comments
                                       const SizedBox(width: 8),
                                       GestureDetector(
                                         onTap: () => _sendQuickEmojiComment(videoId, '😊'),
@@ -1230,13 +1266,26 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                                         child: const Text('🥰', style: TextStyle(fontSize: 18)),
                                       ),
                                     ],
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.comments_disabled_outlined, color: Colors.white.withOpacity(0.5), size: 16),
+                            const SizedBox(width: 8),
+                            Text(
+                              _localeService.isVietnamese ? 'Bình luận đã bị tắt' : 'Comments are disabled',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
                     ),
                 ),
 
@@ -1252,7 +1301,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                       isLiked: _likeStatus[videoId] ?? false,
                       isSaved: _saveStatus[videoId] ?? false,
                       likeCount: _formatCount(_likeCounts[videoId] ?? 0),
-                      commentCount: _formatCount(_commentCounts[videoId] ?? 0),
+                      commentCount: ((video['allowComments'] ?? true) && _isCommentsEffectivelyEnabled(videoId, userId))
+                          ? _formatCount(_commentCounts[videoId] ?? 0)
+                          : '',
                       saveCount: _formatCount(_saveCounts[videoId] ?? 0),
                       shareCount: (_shareCounts[videoId] ?? 0) == 0 ? _localeService.get('share') : _formatCount(_shareCounts[videoId] ?? 0),
                       showManageButton: false,
@@ -1269,6 +1320,7 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                           builder: (context) => CommentSectionWidget(
                             videoId: videoId,
                             videoOwnerId: video['userId']?.toString(),
+                            allowComments: (video['allowComments'] ?? true) && _isCommentsEffectivelyEnabled(videoId, video['userId']?.toString()),
                             onCommentAdded: () async {
                               final count = await _commentService.getCommentCount(videoId);
                               if (mounted) {

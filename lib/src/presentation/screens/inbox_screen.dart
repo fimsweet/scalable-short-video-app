@@ -156,12 +156,13 @@ class _InboxScreenState extends State<InboxScreen> with RouteAware {
       return _onlineStatusCache[userId]!;
     }
 
-    // If not in cache, fetch via WebSocket and subscribe
+    // If not in cache, fetch via REST API which has proper privacy check
+    // (checks showOnlineStatus setting from DB, not just in-memory set)
     try {
-      final status = await _messageService.getOnlineStatus(userId);
+      final status = await _apiService.getOnlineStatus(userId, requesterId: _currentUserId);
       final isOnline = status['isOnline'] == true;
       _onlineStatusCache[userId] = isOnline;
-      // Subscribe to updates for this user
+      // Subscribe to WebSocket updates for this user
       _messageService.subscribeOnlineStatus(userId);
       return isOnline;
     } catch (e) {
@@ -178,20 +179,22 @@ class _InboxScreenState extends State<InboxScreen> with RouteAware {
         .cast<String>()
         .toList();
     
-    // Subscribe to each user's online status
+    // Subscribe to each user's online status via WebSocket for realtime updates
     for (final userId in userIds) {
       _messageService.subscribeOnlineStatus(userId);
     }
     
-    // Fetch initial status for all users via WebSocket
+    // Fetch initial status for all users via REST API (privacy-aware, checks DB)
     if (userIds.isNotEmpty) {
-      _messageService.getMultipleOnlineStatus(userIds).then((statuses) {
+      Future.wait(
+        userIds.map((userId) => _apiService.getOnlineStatus(userId, requesterId: _currentUserId).catchError((_) => <String, dynamic>{})),
+      ).then((statuses) {
         if (mounted) {
           setState(() {
-            for (final status in statuses) {
-              final userId = status['userId']?.toString();
-              if (userId != null) {
-                _onlineStatusCache[userId] = status['isOnline'] == true;
+            for (int i = 0; i < userIds.length; i++) {
+              final status = statuses[i];
+              if (status.isNotEmpty) {
+                _onlineStatusCache[userIds[i]] = status['isOnline'] == true;
               }
             }
           });

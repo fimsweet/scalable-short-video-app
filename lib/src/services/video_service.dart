@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
 import '../config/app_config.dart';
+import 'auth_service.dart';
 
 class VideoService {
   static final VideoService _instance = VideoService._internal();
@@ -111,14 +112,24 @@ class VideoService {
     try {
       print('Fetching video by ID: $videoId');
       
+      // Pass requesterId so backend can block hidden videos for non-owners
+      final currentUserId = AuthService().user?['id']?.toString();
+      String url = '$_baseUrl/videos/$videoId';
+      if (currentUserId != null) {
+        url += '?requesterId=$currentUserId';
+      }
+      
       final response = await http.get(
-        Uri.parse('$_baseUrl/videos/$videoId'),
+        Uri.parse(url),
       );
 
       print('Video response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final video = json.decode(response.body);
+        final decoded = json.decode(response.body);
+        // Backend returns null for hidden videos when requester is not the owner
+        if (decoded == null) return null;
+        final video = decoded as Map<String, dynamic>;
         
         print('Video data: $video');
         print('Video userId: ${video['userId']}');
@@ -293,7 +304,7 @@ class VideoService {
           final bool privacyRestricted = data['privacyRestricted'] == true;
           final String? reason = data['reason'];
           final List<dynamic> videos = (data['data'] ?? [])
-              .where((v) => v != null && v['status'] == 'ready')
+              .where((v) => v != null && v['status'] == 'ready' && v['isHidden'] != true)
               .toList();
           
           return {

@@ -24,6 +24,7 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
 
   List<SuggestedUser> _suggestions = [];
   Set<int> _followedIds = {};
+  Set<int> _requestedIds = {};
   Set<int> _dismissedIds = {};
   bool _isLoading = true;
 
@@ -61,25 +62,37 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
 
     final myId = _authService.user!['id'] as int;
     final isFollowed = _followedIds.contains(user.id);
+    final wasRequested = _requestedIds.contains(user.id);
 
+    // Optimistic: remove all states first
     setState(() {
-      if (isFollowed) {
-        _followedIds.remove(user.id);
-      } else {
-        _followedIds.add(user.id);
+      _followedIds.remove(user.id);
+      _requestedIds.remove(user.id);
+      if (!isFollowed && !wasRequested) {
+        _followedIds.add(user.id); // optimistic follow
       }
     });
 
     try {
-      await _followService.toggleFollow(myId, user.id);
+      final result = await _followService.toggleFollow(myId, user.id);
+      if (mounted) {
+        setState(() {
+          _followedIds.remove(user.id);
+          _requestedIds.remove(user.id);
+          if (result['following'] == true) {
+            _followedIds.add(user.id);
+          } else if (result['requested'] == true) {
+            _requestedIds.add(user.id);
+          }
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
-          if (isFollowed) {
-            _followedIds.add(user.id);
-          } else {
-            _followedIds.remove(user.id);
-          }
+          _followedIds.remove(user.id);
+          _requestedIds.remove(user.id);
+          if (isFollowed) _followedIds.add(user.id);
+          if (wasRequested) _requestedIds.add(user.id);
         });
       }
     }
@@ -230,6 +243,7 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
                 return _SuggestionCard(
                   user: user,
                   isFollowed: _followedIds.contains(user.id),
+                  isRequested: _requestedIds.contains(user.id),
                   onFollow: () => _toggleFollow(user),
                   onDismiss: () => _dismissSuggestion(user.id),
                   onTap: () => _navigateToProfile(user),
@@ -249,6 +263,7 @@ class _SuggestionsGridSectionState extends State<SuggestionsGridSection> {
 class _SuggestionCard extends StatelessWidget {
   final SuggestedUser user;
   final bool isFollowed;
+  final bool isRequested;
   final VoidCallback onFollow;
   final VoidCallback onDismiss;
   final VoidCallback onTap;
@@ -258,6 +273,7 @@ class _SuggestionCard extends StatelessWidget {
   const _SuggestionCard({
     required this.user,
     required this.isFollowed,
+    required this.isRequested,
     required this.onFollow,
     required this.onDismiss,
     required this.onTap,
@@ -364,14 +380,20 @@ class _SuggestionCard extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: onFollow,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: isFollowed
+                          backgroundColor: isRequested
                               ? (themeService.isLightMode 
-                                  ? Colors.grey[200] 
-                                  : Colors.grey[700])
-                              : ThemeService.accentColor,
-                          foregroundColor: isFollowed
-                              ? themeService.textPrimaryColor
-                              : Colors.white,
+                                  ? Colors.orange[50] 
+                                  : Colors.orange.withValues(alpha: 0.15))
+                              : isFollowed
+                                  ? (themeService.isLightMode 
+                                      ? Colors.grey[200] 
+                                      : Colors.grey[700])
+                                  : ThemeService.accentColor,
+                          foregroundColor: isRequested
+                              ? Colors.orange
+                              : isFollowed
+                                  ? themeService.textPrimaryColor
+                                  : Colors.white,
                           elevation: 0,
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           shape: RoundedRectangleBorder(
@@ -379,9 +401,11 @@ class _SuggestionCard extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          isFollowed
-                              ? localeService.get('followed')
-                              : localeService.get('follow'),
+                          isRequested
+                              ? localeService.get('requested')
+                              : isFollowed
+                                  ? localeService.get('followed')
+                                  : localeService.get('follow'),
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,

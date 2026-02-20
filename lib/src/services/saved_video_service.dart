@@ -9,6 +9,21 @@ class SavedVideoService {
 
   String get _baseUrl => AppConfig.videoServiceUrl;
 
+  /// In-memory caches: videoId → saved status / saveCount.
+  /// Updated on every toggleSave / isSavedByUser response.
+  /// Cleared on logout so stale state is never shown.
+  static final Map<String, bool> _saveCache = {};
+  static final Map<String, int> _saveCountCache = {};
+
+  static void clearCache() {
+    _saveCache.clear();
+    _saveCountCache.clear();
+    print('[SavedVideoService] Cache cleared');
+  }
+
+  bool? getCached(String videoId) => _saveCache[videoId];
+  int? getCachedCount(String videoId) => _saveCountCache[videoId];
+
   Future<Map<String, dynamic>> toggleSave(String videoId, String userId) async {
     try {
       final response = await http.post(
@@ -18,7 +33,12 @@ class SavedVideoService {
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        return json.decode(response.body);
+        final result = json.decode(response.body);
+        _saveCache[videoId] = result['saved'] == true;
+        if (result['saveCount'] != null) {
+          _saveCountCache[videoId] = (result['saveCount'] as num).toInt();
+        }
+        return result;
       }
       return {'saved': false};
     } catch (e) {
@@ -47,16 +67,17 @@ class SavedVideoService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final saved = data['saved'] ?? false;
+        final saved = data['saved'] == true;
+        _saveCache[videoId] = saved; // keep cache fresh
         print('isSavedByUser result: $saved');
         return saved;
       }
       
       print('Unexpected status code: ${response.statusCode}');
-      return false;
+      return _saveCache[videoId] ?? false;
     } catch (e) {
       print('Error checking saved status: $e');
-      return false;
+      return _saveCache[videoId] ?? false;
     }
   }
 

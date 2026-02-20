@@ -91,6 +91,78 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     if (mounted) setState(() {});
   }
 
+  void _showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        padding: EdgeInsets.zero,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        duration: const Duration(seconds: 3),
+        content: Container(
+          decoration: BoxDecoration(
+            color: isError
+                ? (_themeService.isLightMode
+                    ? const Color(0xFFFFEBEE)
+                    : const Color(0xFF3E1A1A))
+                : (_themeService.isLightMode
+                    ? const Color(0xFFE8F5E9)
+                    : const Color(0xFF1A3E1A)),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isError
+                  ? Colors.red.withValues(alpha: 0.3)
+                  : Colors.green.withValues(alpha: 0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: isError
+                      ? Colors.red.withValues(alpha: 0.15)
+                      : Colors.green.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded,
+                  color: isError ? Colors.red : Colors.green,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: isError
+                        ? (_themeService.isLightMode ? Colors.red.shade800 : Colors.red.shade300)
+                        : (_themeService.isLightMode ? Colors.green.shade800 : Colors.green.shade300),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -163,22 +235,17 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? _localeService.get('login_failed')),
-              backgroundColor: Colors.red,
-            ),
-          );
+          // Localize known backend error messages
+          String errorMessage = result['message'] ?? _localeService.get('login_failed');
+          if (errorMessage == 'Invalid credentials' || errorMessage == 'invalid credentials') {
+            errorMessage = _localeService.get('invalid_credentials');
+          }
+          _showSnackBar(errorMessage);
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('error')}: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('${_localeService.get('error')}: $e');
       }
     } finally {
       if (mounted) {
@@ -299,33 +366,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           await _auth.login(userData, token);
           
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(_localeService.get('account_reactivated')),
-                backgroundColor: Colors.green,
-              ),
-            );
+            _showSnackBar(_localeService.get('account_reactivated'), isError: false);
             Navigator.pop(context, true);
           }
         }
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? _localeService.get('error')),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showSnackBar(result['message'] ?? _localeService.get('error'));
         }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('error')}: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('${_localeService.get('error')}: $e');
       }
     } finally {
       if (mounted) {
@@ -593,12 +645,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       
       if (!googleResult.success) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(googleResult.error ?? _localeService.get('google_signin_failed')),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar(googleResult.error ?? _localeService.get('google_signin_failed'));
         setState(() => _isGoogleLoading = false);
         return;
       }
@@ -674,24 +721,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         
         if (!mounted) return;
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('login_successful')),
-            backgroundColor: Colors.green,
-          ),
-        );
+        _showSnackBar(_localeService.get('login_successful'), isError: false);
         
         // Pop back to previous screen with success
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${_localeService.get('error')}: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('${_localeService.get('error')}: ${e.toString()}');
     } finally {
       if (mounted) {
         setState(() => _isGoogleLoading = false);

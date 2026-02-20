@@ -2,12 +2,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
-import 'package:scalable_short_video_app/src/services/fcm_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/blocked_users_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/activity_history_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/analytics_screen.dart';
@@ -28,14 +28,14 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final ApiService _apiService = ApiService();
-  final FcmService _fcmService = FcmService();
   
   bool _twoFactorEnabled = false;
   List<String> _twoFactorMethods = [];
-  bool _loginAlertsEnabled = false; // Default to false, will be loaded from API
-  bool _isLoadingLoginAlerts = true; // Loading state for toggle
   bool _hasPassword = true; // Default to true, will be updated from API
   bool _isLoadingPassword = true;
+  
+  String? _linkedPhone;
+  bool _isLoadingAccountInfo = true;
 
   @override
   void initState() {
@@ -44,16 +44,35 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     _localeService.addListener(_onLocaleChanged);
     _checkHasPassword();
     _load2FASettings();
-    _loadLoginAlertsStatus();
+    _loadAccountInfo();
   }
 
-  Future<void> _loadLoginAlertsStatus() async {
-    final enabled = await _fcmService.getLoginAlertsStatus();
-    if (mounted) {
-      setState(() {
-        _loginAlertsEnabled = enabled;
-        _isLoadingLoginAlerts = false;
-      });
+  Future<void> _loadAccountInfo() async {
+    final token = await _authService.getToken();
+    if (token == null) {
+      if (mounted) setState(() => _isLoadingAccountInfo = false);
+      return;
+    }
+    
+    try {
+      final result = await _apiService.getAccountInfo(token);
+      if (result['success'] == true && result['data'] != null && mounted) {
+        final accountInfo = result['data'] as Map<String, dynamic>;
+        setState(() {
+          final phone = accountInfo['phoneNumber'] as String?;
+          if (phone != null && phone.isNotEmpty) {
+            _linkedPhone = phone;
+          } else {
+            _linkedPhone = null;
+          }
+          _isLoadingAccountInfo = false;
+        });
+      } else {
+        if (mounted) setState(() => _isLoadingAccountInfo = false);
+      }
+    } catch (e) {
+      print('Error loading account info: $e');
+      if (mounted) setState(() => _isLoadingAccountInfo = false);
     }
   }
 
@@ -175,53 +194,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                 },
                 showDivider: true,
               ),
-              _buildSettingSwitch(
-                icon: Icons.notifications_active_outlined,
-                iconColor: Colors.purple,
-                title: _localeService.get('login_alerts'),
-                subtitle: _localeService.get('login_alerts_desc'),
-                value: _loginAlertsEnabled,
-                isLoading: _isLoadingLoginAlerts,
-                onChanged: _isLoadingLoginAlerts ? null : (value) async {
-                  final previousValue = _loginAlertsEnabled;
-                  setState(() => _loginAlertsEnabled = value);
-                  
-                  final success = await _fcmService.toggleLoginAlerts(value);
-                  if (success) {
-                    _showSnackBar(
-                      value ? _localeService.get('enabled') : _localeService.get('disabled'),
-                      _themeService.snackBarBackground,
-                    );
-                  } else {
-                    // Revert if failed
-                    setState(() => _loginAlertsEnabled = previousValue);
-                    _showSnackBar(
-                      _localeService.get('error_occurred'),
-                      Colors.red,
-                    );
-                  }
-                },
-              ),
-            ]),
-            
-            const SizedBox(height: 24),
-            
-            // Account Info Section
-            _buildSectionTitle(_localeService.get('account_info')),
-            _buildSettingsGroup([
-              _buildMenuItem(
-                icon: Icons.email_outlined,
-                iconColor: Colors.cyan,
-                title: _localeService.get('email'),
-                subtitle: _authService.user?['email'] ?? _localeService.get('not_set'),
-                onTap: () => _showChangeEmailDialog(),
-                showDivider: true,
-              ),
               _buildMenuItem(
                 icon: Icons.phone_outlined,
                 iconColor: Colors.teal,
                 title: _localeService.get('phone_number'),
-                subtitle: _authService.user?['phoneNumber'] ?? _localeService.get('not_linked'),
+                subtitle: _getPhoneDisplayText(),
                 onTap: () => _showAddPhoneDialog(),
                 showDivider: true,
               ),
@@ -461,13 +438,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                   ),
                 )
               else
-                Switch(
+                CupertinoSwitch(
                   value: value,
                   onChanged: onChanged,
-                  activeColor: _themeService.switchActiveColor,
                   activeTrackColor: _themeService.switchActiveTrackColor,
-                  inactiveThumbColor: _themeService.switchInactiveThumbColor,
-                  inactiveTrackColor: _themeService.switchInactiveTrackColor,
+                  thumbColor: Colors.white,
+                  trackColor: _themeService.switchInactiveTrackColor,
                 ),
             ],
           ),
@@ -1017,8 +993,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                         );
                                         
                                         if (result['success'] == true) {
-                                          Navigator.pop(context);
                                           if (!completer.isCompleted) completer.complete(true);
+                                          Navigator.pop(context);
                                         } else {
                                           setSheetState(() {
                                             isVerifying = false;
@@ -2043,13 +2019,15 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
   void _showDisable2FADialog() {
     final user = _authService.user;
     final hasEmail = user != null && user['email'] != null;
+    final hasTotp = _twoFactorMethods.contains('totp');
+    final hasPhone = user != null && user['phoneNumber'] != null && _twoFactorMethods.contains('sms');
     
     bool isSendingOtp = false;
-    bool isOtpStep = false;
+    bool isOtpStep = hasTotp; // TOTP skips send step, go directly to code entry
     bool isVerifying = false;
     String otpCode = '';
     String? otpError;
-    String? selectedMethod;
+    String? selectedMethod = hasTotp ? 'totp' : (hasEmail ? 'email' : (hasPhone ? 'sms' : null));
     
     showModalBottomSheet(
       context: context,
@@ -2221,13 +2199,18 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                     }
                                     
                                     if (!isOtpStep) {
-                                      // Send OTP
+                                      // For TOTP: go directly to code entry
+                                      if (selectedMethod == 'totp') {
+                                        setSheetState(() {
+                                          isOtpStep = true;
+                                        });
+                                        return;
+                                      }
+                                      
+                                      // Send OTP for email/sms
                                       setSheetState(() => isSendingOtp = true);
                                       
-                                      // Choose method for OTP
-                                      String otpMethod = hasEmail ? 'email' : 'sms';
-                                      
-                                      final result = await _apiService.send2FASettingsOtp(token, otpMethod);
+                                      final result = await _apiService.send2FASettingsOtp(token, selectedMethod!);
                                       
                                       if (result['success'] == true) {
                                         if (result['method'] == 'sms' && result['phoneNumber'] != null) {
@@ -2240,7 +2223,6 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                         } else {
                                           setSheetState(() {
                                             isOtpStep = true;
-                                            selectedMethod = 'email';
                                             isSendingOtp = false;
                                           });
                                         }
@@ -2252,7 +2234,7 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
                                         );
                                       }
                                     } else {
-                                      // Verify OTP and disable 2FA
+                                      // Verify OTP/TOTP and disable 2FA
                                       setSheetState(() => isVerifying = true);
                                       
                                       final result = await _apiService.verify2FASettings(
@@ -2784,7 +2766,40 @@ class _AccountManagementScreenState extends State<AccountManagementScreen> {
     NavigationUtils.slideToScreen(
       context,
       const PhoneManagementScreen(),
-    );
+    ).then((_) {
+      // Refresh phone state when returning from phone management
+      _loadAccountInfo();
+    });
+  }
+
+  /// Returns masked phone for display on account management (TikTok-style)
+  String _getPhoneDisplayText() {
+    if (_isLoadingAccountInfo) {
+      return '...';
+    }
+    
+    // Use _linkedPhone from API if available, fallback to authService
+    final phone = _linkedPhone ?? _authService.user?['phoneNumber'];
+    
+    if (phone == null || phone.toString().isEmpty) {
+      return _localeService.isVietnamese ? 'Thêm số điện thoại' : 'Add phone number';
+    }
+    return _maskPhone(phone.toString());
+  }
+
+  /// Mask phone number TikTok-style: +84 *** *** 539
+  String _maskPhone(String phone) {
+    // Normalize to +84 format
+    String normalized = phone;
+    if (normalized.startsWith('0')) {
+      normalized = '+84${normalized.substring(1)}';
+    }
+    if (normalized.length >= 9) {
+      final lastDigits = normalized.substring(normalized.length - 3);
+      final prefix = normalized.substring(0, 3); // +84
+      return '$prefix *** *** $lastDigits';
+    }
+    return phone;
   }
 
   void _showDevicesDialog() {

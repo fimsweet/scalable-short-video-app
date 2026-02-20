@@ -58,14 +58,18 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
     try {
       final userId = _authService.user!['id'].toString();
       
-      // Load followers and blocked users in parallel
+      // Load conversations, followers-with-status, following-with-status, and blocked users in parallel
       final results = await Future.wait([
-        _apiService.getFollowers(userId),
+        _messageService.getConversations(userId),
+        _apiService.getFollowersWithStatus(userId),
+        _apiService.getFollowingWithStatus(userId),
         _apiService.getBlockedUsers(userId),
       ]);
       
-      final followers = results[0] as List<dynamic>;
-      final blockedUsers = results[1] as List<dynamic>;
+      final conversations = results[0] as List<dynamic>;
+      final followersWithStatus = results[1] as List<Map<String, dynamic>>;
+      final followingWithStatus = results[2] as List<Map<String, dynamic>>;
+      final blockedUsers = results[3] as List<dynamic>;
       
       // Get set of blocked user IDs for fast lookup
       final blockedUserIds = blockedUsers
@@ -73,14 +77,110 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
           .whereType<String>()
           .toSet();
       
-      // Filter out blocked users from followers list
-      final filteredList = followers
-          .where((user) => !blockedUserIds.contains(user['id']?.toString()))
-          .toList();
+      // Build relationship map: userId -> {isFriend, isFollowing, isFollower}
+      final Map<String, Map<String, dynamic>> relationMap = {};
+      
+      // Following with status (people I follow)
+      for (final f in followingWithStatus) {
+        final uid = f['userId']?.toString();
+        if (uid != null && !blockedUserIds.contains(uid)) {
+          relationMap[uid] = {
+            'isFriend': f['isMutual'] == true,
+            'isFollowing': true,
+            'isFollower': false,
+          };
+        }
+      }
+      
+      // Followers with status (people who follow me)
+      for (final f in followersWithStatus) {
+        final uid = f['userId']?.toString();
+        if (uid != null && !blockedUserIds.contains(uid)) {
+          if (relationMap.containsKey(uid)) {
+            relationMap[uid]!['isFollower'] = true;
+            if (f['isMutual'] == true) {
+              relationMap[uid]!['isFriend'] = true;
+            }
+          } else {
+            relationMap[uid] = {
+              'isFriend': f['isMutual'] == true,
+              'isFollowing': false,
+              'isFollower': true,
+            };
+          }
+        }
+      }
+      
+      // Build recent conversation partner order map
+      final Map<String, int> recentChatOrder = {};
+      for (int i = 0; i < conversations.length; i++) {
+        final conv = conversations[i];
+        // Conversation has participants array or recipientId
+        final participants = conv['participants'] as List<dynamic>? ?? [];
+        for (final p in participants) {
+          final pId = p['userId']?.toString() ?? p.toString();
+          if (pId != userId && !blockedUserIds.contains(pId)) {
+            if (!recentChatOrder.containsKey(pId)) {
+              recentChatOrder[pId] = i; // lower index = more recent
+              // Also ensure this user is in relationMap
+              if (!relationMap.containsKey(pId)) {
+                relationMap[pId] = {
+                  'isFriend': false,
+                  'isFollowing': false,
+                  'isFollower': false,
+                };
+              }
+            }
+          }
+        }
+      }
+      
+      // Fetch user info for all users in relationMap
+      final allUserIds = relationMap.keys.toList();
+      final Map<String, Map<String, dynamic>> mergedUsers = {};
+      
+      await Future.wait(
+        allUserIds.map((uid) async {
+          final userInfo = await _apiService.getUserById(uid);
+          if (userInfo != null) {
+            mergedUsers[uid] = {
+              ...userInfo,
+              'id': int.tryParse(uid) ?? uid,
+              ...relationMap[uid]!,
+              'recentChatOrder': recentChatOrder[uid] ?? 999999,
+            };
+          }
+        }),
+      );
+      
+      // Sort: recent chats first → friends → following → followers
+      final sortedUsers = mergedUsers.values.toList();
+      sortedUsers.sort((a, b) {
+        final aRecent = a['recentChatOrder'] as int? ?? 999999;
+        final bRecent = b['recentChatOrder'] as int? ?? 999999;
+        final aFriend = a['isFriend'] == true;
+        final bFriend = b['isFriend'] == true;
+        final aFollowing = a['isFollowing'] == true;
+        final bFollowing = b['isFollowing'] == true;
+        
+        // Priority: recent chats → friends → following → followers
+        int aPriority = aRecent < 999999 ? 0 : (aFriend ? 1 : (aFollowing ? 2 : 3));
+        int bPriority = bRecent < 999999 ? 0 : (bFriend ? 1 : (bFollowing ? 2 : 3));
+        
+        if (aPriority != bPriority) return aPriority.compareTo(bPriority);
+        
+        // Within same priority, sort by recency for chats
+        if (aPriority == 0) return aRecent.compareTo(bRecent);
+        
+        // Otherwise alphabetical
+        final aName = (a['username'] ?? '').toString().toLowerCase();
+        final bName = (b['username'] ?? '').toString().toLowerCase();
+        return aName.compareTo(bName);
+      });
       
       if (mounted) {
         setState(() {
-          _followers = List<Map<String, dynamic>>.from(filteredList);
+          _followers = sortedUsers;
           _filteredFollowers = _followers;
           _isLoading = false;
         });
@@ -163,26 +263,42 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
       final shareContent = '[VIDEO_SHARE:${widget.videoId}]';
       int successCount = 0;
       int lastShareCount = 0;
+      List<String> failedUsernames = [];
 
       for (var userId in _selectedUserIds) {
         try {
           // Send message
-          await _messageService.sendMessage(
+          final result = await _messageService.sendMessage(
             recipientId: userId,
             content: shareContent,
           );
 
+          if (result['success'] == false) {
+            // Find username for this userId
+            final user = _followers.firstWhere(
+              (u) => u['id']?.toString() == userId,
+              orElse: () => {'username': userId},
+            );
+            failedUsernames.add(user['username']?.toString() ?? userId);
+            continue;
+          }
+
           // Record share
-          final result = await _shareService.shareVideo(
+          final shareResult = await _shareService.shareVideo(
             widget.videoId,
             currentUserId,
             userId,
           );
           
-          lastShareCount = result['shareCount'] ?? lastShareCount;
+          lastShareCount = shareResult['shareCount'] ?? lastShareCount;
           successCount++;
         } catch (e) {
           print('Error sending to $userId: $e');
+          final user = _followers.firstWhere(
+            (u) => u['id']?.toString() == userId,
+            orElse: () => {'username': userId},
+          );
+          failedUsernames.add(user['username']?.toString() ?? userId);
         }
       }
 
@@ -194,11 +310,18 @@ class _ShareVideoSheetState extends State<ShareVideoSheet> {
         
         Navigator.pop(context); // Close sheet
         
+        // Build message with success + failure info
+        String toastMessage = '${LocaleService().get('shared_to_x_people')} $successCount ${LocaleService().get('people')}';
+        if (failedUsernames.isNotEmpty) {
+          final failedNames = failedUsernames.join(', ');
+          toastMessage += '\n${_localeService.isVietnamese ? 'Không thể gửi tới: $failedNames' : 'Could not send to: $failedNames'}';
+        }
+        
         // Show floating toast using root overlay
         late OverlayEntry overlayEntry;
         overlayEntry = OverlayEntry(
           builder: (context) => _AnimatedShareToast(
-            message: '${LocaleService().get('shared_to_x_people')} $successCount ${LocaleService().get('people')}',
+            message: toastMessage,
             onDismiss: () {
               overlayEntry.remove();
             },

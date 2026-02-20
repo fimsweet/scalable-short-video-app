@@ -346,10 +346,14 @@ class ApiService {
   }
 
   /// Get user's online status
-  Future<Map<String, dynamic>> getOnlineStatus(String userId) async {
+  Future<Map<String, dynamic>> getOnlineStatus(String userId, {String? requesterId}) async {
     try {
+      String url = '$_baseUrl/users/$userId/online-status';
+      if (requesterId != null) {
+        url += '?requesterId=$requesterId';
+      }
       final response = await http.get(
-        Uri.parse('$_baseUrl/users/$userId/online-status'),
+        Uri.parse(url),
       );
       
       if (response.statusCode == 200) {
@@ -1034,6 +1038,42 @@ class ApiService {
     }
   }
 
+  /// Get followers with mutual (friend) status
+  Future<List<Map<String, dynamic>>> getFollowersWithStatus(String userId, {int limit = 200, int offset = 0}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/followers-with-status/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('Error getting followers with status: $e');
+      return [];
+    }
+  }
+
+  /// Get following with mutual (friend) status
+  Future<List<Map<String, dynamic>>> getFollowingWithStatus(String userId, {int limit = 200, int offset = 0}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/following-with-status/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['data'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('Error getting following with status: $e');
+      return [];
+    }
+  }
+
   /// Check if username is available
   Future<Map<String, dynamic>> checkUsernameAvailability(String username) async {
     try {
@@ -1315,10 +1355,10 @@ class ApiService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
       }
-      return {'allowed': true}; // Default to allowed on error
+      return {'allowed': false, 'reason': 'Không thể kiểm tra quyền'};
     } catch (e) {
       print('Error checking privacy permission: $e');
-      return {'allowed': true};
+      return {'allowed': false, 'reason': 'Không thể kiểm tra quyền'};
     }
   }
 

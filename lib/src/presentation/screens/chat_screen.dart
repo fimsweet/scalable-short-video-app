@@ -90,6 +90,7 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _onlineStatusSubscription;
   StreamSubscription? _messageUnsentSubscription;
   StreamSubscription? _messageEditedSubscription;
+  StreamSubscription? _privacySettingsSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
   String get _conversationId {
@@ -190,37 +191,26 @@ class _ChatScreenState extends State<ChatScreen> {
       final userId = data['userId']?.toString();
       if (userId == widget.recipientId && mounted) {
         final isOnline = data['isOnline'] == true;
-        setState(() {
-          _recipientIsOnline = isOnline;
-          if (isOnline) {
-            _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Active now';
-          } else {
+        if (!isOnline) {
+          // Offline events are always trustworthy
+          setState(() {
+            _recipientIsOnline = false;
             _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
             // Fetch proper lastSeen text from user-service
             _fetchOnlineStatus();
-          }
-        });
+          });
+        } else {
+          // For online events, verify via REST API (has proper privacy check)
+          _fetchOnlineStatus();
+        }
       }
     });
   }
 
   Future<void> _fetchOnlineStatus() async {
     try {
-      // First, try WebSocket (real-time, checks gateway's live connections)
-      final wsStatus = await _messageService.getOnlineStatus(widget.recipientId);
-      if (mounted) {
-        final isOnline = wsStatus['isOnline'] == true;
-        if (isOnline) {
-          setState(() {
-            _recipientIsOnline = true;
-            _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Active now';
-          });
-          return;
-        }
-      }
-      
-      // Fallback to REST API for lastSeen-based status text (e.g., "3 phút trước")
-      final status = await _apiService.getOnlineStatus(widget.recipientId);
+      // Use REST API which has proper privacy check (checks showOnlineStatus setting)
+      final status = await _apiService.getOnlineStatus(widget.recipientId, requesterId: _currentUserId);
       if (mounted) {
         setState(() {
           _recipientIsOnline = status['isOnline'] == true;
@@ -359,6 +349,19 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     });
 
+    // Listen for privacy settings changes (real-time)
+    _privacySettingsSubscription = _messageService.privacySettingsChangedStream.listen((data) {
+      final userId = data['userId']?.toString();
+      if (userId == widget.recipientId && mounted) {
+        // Recipient changed their privacy settings — re-check message permission
+        _checkMessagePermission();
+        // Also re-check online status if showOnlineStatus changed
+        if (data['showOnlineStatus'] != null) {
+          _fetchOnlineStatus();
+        }
+      }
+    });
+
     await _loadMessages();
   }
 
@@ -422,15 +425,24 @@ class _ChatScreenState extends State<ChatScreen> {
         'send_message',
       );
       
-      if (mounted && result['allowed'] != true) {
-        setState(() {
-          if (result['isDeactivated'] == true) {
-            _isRecipientDeactivated = true;
-          } else {
-            _isMessageRestricted = true;
-            _messageRestrictedReason = result['reason'] as String?;
-          }
-        });
+      if (mounted) {
+        if (result['allowed'] == true) {
+          // Permission granted — clear any previous restriction
+          setState(() {
+            _isMessageRestricted = false;
+            _messageRestrictedReason = null;
+            _isRecipientDeactivated = false;
+          });
+        } else {
+          setState(() {
+            if (result['isDeactivated'] == true) {
+              _isRecipientDeactivated = true;
+            } else {
+              _isMessageRestricted = true;
+              _messageRestrictedReason = result['reason'] as String?;
+            }
+          });
+        }
       }
     } catch (e) {
       print('Error checking message permission: $e');
@@ -726,6 +738,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _onlineStatusSubscription?.cancel();
     _messageUnsentSubscription?.cancel();
     _messageEditedSubscription?.cancel();
+    _privacySettingsSubscription?.cancel();
     // Unsubscribe from online status updates
     _messageService.unsubscribeOnlineStatus(widget.recipientId);
     // Clear active chat user for in-app notification suppression
@@ -886,9 +899,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _openSharedVideo(String videoId) async {
     try {
-      final video = await _getVideoWithCache(videoId);
+      // Always fetch fresh from API (bypass cache) to check current visibility
+      final video = await _videoService.getVideoById(videoId);
+      // Update cache with fresh data
+      _videoCache[videoId] = video;
       
-      if (video != null && mounted) {
+      if (video != null && video['isHidden'] != true && mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -3256,7 +3272,8 @@ class _VideoShareBubbleState extends State<_VideoShareBubble> {
       final cached = widget.videoCache[widget.videoId];
       setState(() {
         _videoData = cached;
-        _videoExists = cached != null;
+        // Video is unavailable if null or hidden
+        _videoExists = cached != null && cached['isHidden'] != true;
         _isLoading = false;
       });
       return;
@@ -3268,7 +3285,8 @@ class _VideoShareBubbleState extends State<_VideoShareBubble> {
     if (mounted) {
       setState(() {
         _videoData = video;
-        _videoExists = video != null;
+        // Video is unavailable if null or hidden
+        _videoExists = video != null && video['isHidden'] != true;
         _isLoading = false;
       });
     }

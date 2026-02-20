@@ -30,7 +30,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  /// Incremented by MainScreen each time the profile tab is selected.
+  /// Triggers a full data refresh in [didUpdateWidget].
+  final int refreshTrigger;
+
+  const ProfileScreen({super.key, this.refreshTrigger = 0});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -61,6 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
   int _followingCount = 0;
   int _unreadCount = 0;
   int _unreadMessageCount = 0;
+  int _pendingFollowRequestCount = 0;
   int _likedCount = 0;
   int _videoGridKey = 0; // Key to force rebuild video grid
 
@@ -76,6 +81,9 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     _loadFollowStats();
     _loadLikedCount();
     
+    // Listen for like changes (from any screen) to refresh received-likes count in real-time
+    LikeService.likeChangeNotifier.addListener(_onLikeChanged);
+    
     // Start polling for notifications
     if (_authService.isLoggedIn && _authService.user != null) {
       final userId = _authService.user!['id'].toString();
@@ -86,6 +94,36 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
           setState(() {
             _unreadCount = count;
           });
+        }
+      });
+      
+      // Listen for pending follow request count changes (real-time via polling)
+      _notificationService.pendingFollowCountStream.listen((count) {
+        if (mounted) {
+          setState(() {
+            _pendingFollowRequestCount = count;
+          });
+        }
+      });
+      
+      // Real-time notification badge via WebSocket (instant, parallel to polling)
+      _messageService.newNotificationStream.listen((_) {
+        if (mounted) {
+          // Immediately refresh badge counts from server
+          _notificationService.refreshBadgeCounts();
+        }
+      });
+      
+      // Real-time message badge via WebSocket (instant update when new message arrives)
+      _messageService.newMessageStream.listen((message) {
+        if (mounted) {
+          // Only increment if the message is from someone else
+          final senderId = message['senderId']?.toString();
+          if (senderId != null && senderId != userId) {
+            setState(() {
+              _unreadMessageCount++;
+            });
+          }
         }
       });
       
@@ -104,6 +142,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _onLikeChanged() {
+    _loadLikedCount();
   }
 
   Future<void> _loadUnreadMessageCount(String userId) async {
@@ -152,6 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     _suggestionsAnimController?.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
+    LikeService.likeChangeNotifier.removeListener(_onLikeChanged);
     super.dispose();
   }
 
@@ -162,13 +205,29 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
     setState(() {
       _videoGridKey++;
     });
+
+    // Refresh all data when the profile tab becomes visible again
+    if (widget.refreshTrigger != oldWidget.refreshTrigger) {
+      _refreshAllProfileData();
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // Reload stats when app resumes
-      _loadFollowStats();
+      // Reload ALL stats when app resumes (not just follow stats)
+      _refreshAllProfileData();
+    }
+  }
+
+  /// Refresh all profile data: follow stats, liked count, notification badges,
+  /// and unread message count. Called on tab switch and app resume.
+  void _refreshAllProfileData() {
+    _loadFollowStats();
+    _loadLikedCount();
+    _notificationService.refreshBadgeCounts();
+    if (_authService.isLoggedIn && _authService.user != null) {
+      _loadUnreadMessageCount(_authService.user!['id'].toString());
     }
   }
 
@@ -506,13 +565,13 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         }
         
         final userId = userIdValue.toString();
-        final videos = await _likeService.getUserLikedVideos(userId);
+        final count = await _likeService.getTotalReceivedLikes(userId);
         
         if (mounted) {
           setState(() {
-            _likedCount = videos.length;
+            _likedCount = count;
           });
-          print('Liked count: ${videos.length}');
+          print('Total received likes: $count');
         }
       } catch (e) {
         print('Error loading liked count: $e');
@@ -529,6 +588,88 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
         });
       }
     }
+  }
+
+  void _showTotalLikesDialog() {
+    final displayName = _authService.fullName ?? _authService.username ?? '';
+    final message = _localeService.get('total_likes_received_message')
+        .replaceAll('{count}', _likedCount.toString());
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.favorite, color: Colors.redAccent, size: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _localeService.get('total_likes_received'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _themeService.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$displayName $message',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _themeService.textSecondaryColor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _likedCount.toString(),
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.redAccent,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    backgroundColor: _themeService.isLightMode
+                        ? Colors.grey[100]
+                        : Colors.grey[800],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text(
+                    _localeService.get('close'),
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _onMessageIconTap() async {
@@ -687,53 +828,49 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                     context,
                     const NotificationsScreen(),
                   ).then((_) {
-                    // Refresh unread count after returning
-                    if (_authService.isLoggedIn && _authService.user != null) {
-                      final userId = _authService.user!['id'].toString();
-                      _notificationService.getUnreadCount(userId).then((count) {
-                        if (mounted) {
-                          setState(() {
-                            _unreadCount = count;
-                          });
-                        }
-                      });
-                    }
+                    // Refresh all badge counts immediately after returning
+                    _notificationService.refreshBadgeCounts();
                   });
                 },
-                icon: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Icon(
-                      Icons.notifications_outlined,
-                      size: 26,
-                      color: _themeService.iconColor,
-                    ),
-                    if (_unreadCount > 0)
-                      Positioned(
-                        right: -5,
-                        top: -3,
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 16,
-                            minHeight: 16,
-                          ),
-                          child: Text(
-                            _unreadCount > 99 ? '99+' : _unreadCount.toString(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
+                icon: Builder(
+                  builder: (context) {
+                    final totalBadge = _unreadCount + _pendingFollowRequestCount;
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Icon(
+                          Icons.notifications_outlined,
+                          size: 26,
+                          color: _themeService.iconColor,
+                        ),
+                        if (totalBadge > 0)
+                          Positioned(
+                            right: -5,
+                            top: -3,
+                            child: Container(
+                              padding: const EdgeInsets.all(3),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 16,
+                                minHeight: 16,
+                              ),
+                              child: Text(
+                                totalBadge > 99 ? '99+' : totalBadge.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
                             ),
                             textAlign: TextAlign.center,
                           ),
                         ),
                       ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
                 splashColor: Colors.transparent,
                 highlightColor: Colors.transparent,
@@ -984,7 +1121,7 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                                   // Stats row — equal-width columns, left-aligned (Instagram-style)
                                   Row(
                                     children: [
-                                      Expanded(child: _ProfileStat(count: _likedCount.toString(), label: _localeService.get('likes'), onTap: null)),
+                                      Expanded(child: _ProfileStat(count: _likedCount.toString(), label: _localeService.get('likes'), onTap: () => _showTotalLikesDialog())),
                                       Expanded(child: _ProfileStat(count: _followerCount.toString(), label: _localeService.get('followers'), onTap: () => _navigateToFollowerFollowing(0))),
                                       Expanded(child: _ProfileStat(count: _followingCount.toString(), label: _localeService.get('following'), onTap: () => _navigateToFollowerFollowing(1))),
                                     ],
@@ -1189,16 +1326,19 @@ class _ProfileStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeService = ThemeService();
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(count, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeService.textPrimaryColor)),
+        Text(label, style: TextStyle(color: themeService.textSecondaryColor)),
+      ],
+    );
+    if (onTap == null) return content;
     return GestureDetector(
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(count, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: themeService.textPrimaryColor)),
-            Text(label, style: TextStyle(color: themeService.textSecondaryColor)),
-          ],
-        ),
-      );
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: content,
+    );
   }
 }
 

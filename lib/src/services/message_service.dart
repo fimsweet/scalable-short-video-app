@@ -37,6 +37,10 @@ class MessageService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _messageDeletedForMeController = 
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _privacySettingsChangedController = 
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _newNotificationController = 
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Streams
   Stream<Map<String, dynamic>> get newMessageStream => _newMessageController.stream;
@@ -47,6 +51,8 @@ class MessageService {
   Stream<Map<String, dynamic>> get messageUnsentStream => _messageUnsentController.stream;
   Stream<Map<String, dynamic>> get messageEditedStream => _messageEditedController.stream;
   Stream<Map<String, dynamic>> get messageDeletedForMeStream => _messageDeletedForMeController.stream;
+  Stream<Map<String, dynamic>> get privacySettingsChangedStream => _privacySettingsChangedController.stream;
+  Stream<Map<String, dynamic>> get newNotificationStream => _newNotificationController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -139,6 +145,22 @@ class MessageService {
       print('Message edited: $data');
       if (data != null) {
         _messageEditedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for privacy settings changes (real-time)
+    _socket!.on('privacySettingsChanged', (data) {
+      print('Privacy settings changed: $data');
+      if (data != null) {
+        _privacySettingsChangedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for new notification events (real-time badge update via WebSocket)
+    _socket!.on('newNotification', (data) {
+      print('🔔 New notification via WebSocket: $data');
+      if (data != null) {
+        _newNotificationController.add(Map<String, dynamic>.from(data));
       }
     });
 
@@ -330,7 +352,13 @@ class MessageService {
         
         return data;
       }
-      return {'success': false};
+      // Parse error reason from 403 (blocked/privacy) responses
+      String? errorReason;
+      try {
+        final errData = json.decode(response.body);
+        errorReason = errData['message']?.toString() ?? errData['reason']?.toString();
+      } catch (_) {}
+      return {'success': false, 'reason': errorReason ?? 'Send failed', 'statusCode': response.statusCode};
     } catch (e) {
       print('Error sending message: $e');
       return {'success': false};
@@ -405,6 +433,7 @@ class MessageService {
     _messageSentController.close();
     _messagesReadController.close();
     _userTypingController.close();
+    _newNotificationController.close();
   }
 
   // Get conversation settings (mute, pin, theme, nickname)
@@ -705,6 +734,27 @@ class MessageService {
     } catch (e) {
       print('Error translating message: $e');
       return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Notify video-service about privacy settings changes (triggers WebSocket broadcast)
+  Future<void> notifyPrivacySettingsChanged({
+    required String userId,
+    String? whoCanSendMessages,
+    bool? showOnlineStatus,
+  }) async {
+    try {
+      final body = <String, dynamic>{'userId': userId};
+      if (whoCanSendMessages != null) body['whoCanSendMessages'] = whoCanSendMessages;
+      if (showOnlineStatus != null) body['showOnlineStatus'] = showOnlineStatus;
+
+      await http.post(
+        Uri.parse('$_baseUrl/messages/privacy-settings-changed'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode(body),
+      );
+    } catch (e) {
+      print('Error notifying privacy settings changed: $e');
     }
   }
 }
