@@ -159,9 +159,11 @@ class _VideoOwnerOptionsSheetState extends State<VideoOwnerOptionsSheet> {
       builder: (context) => VideoPrivacySheet(
         videoId: widget.videoId,
         userId: widget.userId,
-        currentVisibility: widget.visibility,
-        allowComments: widget.allowComments,
+        // When hidden, force 'private' to stay consistent with TikTok behavior
+        currentVisibility: widget.isHidden ? 'private' : widget.visibility,
+        allowComments: widget.isHidden ? false : widget.allowComments,
         allowDuet: widget.allowDuet,
+        isHidden: widget.isHidden,
         onChanged: widget.onPrivacyChanged,
       ),
     );

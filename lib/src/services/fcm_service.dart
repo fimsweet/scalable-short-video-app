@@ -11,6 +11,7 @@ import 'theme_service.dart';
 import 'locale_service.dart';
 import 'in_app_notification_service.dart';
 import 'message_service.dart';
+import 'notification_service.dart';
 
 /// Flutter local notifications plugin instance (shared with background handler)
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -392,7 +393,7 @@ class FcmService {
     try {
       final authToken = await _authService.getToken();
       if (authToken == null) {
-        print('No auth token available');
+        print('[FCM] No auth token available, cannot register FCM token');
         return false;
       }
       
@@ -405,26 +406,34 @@ class FcmService {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          print('FCM token sent to server');
+          print('[FCM] FCM token registered successfully on server');
           return true;
+        } else {
+          print('[FCM] Server rejected FCM token update: ${data['message']}');
+          return false;
         }
       }
+      print('[FCM] FCM token registration failed with status: ${response.statusCode}');
       return false;
     } catch (e) {
-      print('Error sending FCM token to server: $e');
+      print('[FCM] Error sending FCM token to server: $e');
       return false;
     }
   }
 
   /// Register FCM token after login
   Future<bool> registerToken() async {
-    if (_fcmToken == null) {
-      await _getToken();
-    }
+    // Always get a fresh token from Firebase to avoid stale tokens
+    await _getToken();
     
     if (_fcmToken != null) {
-      return await _sendTokenToServer(_fcmToken!);
+      final success = await _sendTokenToServer(_fcmToken!);
+      if (!success) {
+        print('[FCM] WARNING: FCM token registration failed - push notifications will not work!');
+      }
+      return success;
     }
+    print('[FCM] No FCM token available from Firebase');
     return false;
   }
 
@@ -445,6 +454,10 @@ class FcmService {
       _loginAlertController.add(message);
       return;
     }
+    
+    // Immediately refresh badge counts for all notification types
+    // This ensures the profile badge updates in real-time
+    NotificationService().refreshBadgeCounts();
     
     // Route to in-app notification banner (TikTok-style)
     _showInAppNotificationBanner(message);

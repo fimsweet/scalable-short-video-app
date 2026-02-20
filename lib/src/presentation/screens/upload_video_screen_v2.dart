@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
@@ -1466,14 +1467,15 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                     ),
                     SizedBox(
                       height: 28,
-                      child: Switch(
+                      child: CupertinoSwitch(
                         value: _allowComments,
                         onChanged: (val) {
                           HapticFeedback.lightImpact();
                           setState(() => _allowComments = val);
                         },
-                        activeColor: ThemeService.accentColor,
-                        inactiveTrackColor: _themeService.switchInactiveTrackColor,
+                        activeTrackColor: ThemeService.accentColor,
+                        thumbColor: Colors.white,
+                        trackColor: _themeService.switchInactiveTrackColor,
                       ),
                     ),
                   ],

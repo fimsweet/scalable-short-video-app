@@ -6,6 +6,7 @@ import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_settings_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_username_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/edit_display_name_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/phone_management_screen.dart';
 import 'package:scalable_short_video_app/src/utils/navigation_utils.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -996,9 +997,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  String _maskEmail(String email) {
+    final parts = email.split('@');
+    if (parts.length != 2) return email;
+    final name = parts[0];
+    final domain = parts[1];
+    if (name.length <= 2) {
+      return '${name[0]}***@$domain';
+    }
+    return '${name[0]}***${name[name.length - 1]}@$domain';
+  }
+
+  String _maskPhone(String phone) {
+    String normalized = phone;
+    if (normalized.startsWith('0')) {
+      normalized = '+84${normalized.substring(1)}';
+    }
+    if (normalized.length >= 9) {
+      final lastDigits = normalized.substring(normalized.length - 3);
+      final prefix = normalized.substring(0, 3); // +84
+      return '$prefix *** *** $lastDigits';
+    }
+    return phone;
+  }
+
   Widget _buildAccountInfoSection() {
     final hasEmail = _linkedEmail != null && _linkedEmail!.isNotEmpty;
     final hasPhone = _linkedPhone != null && _linkedPhone!.isNotEmpty;
+    final isGoogleAuth = _authProvider == 'google';
     
     return Column(
       children: [
@@ -1006,17 +1032,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _buildAccountInfoItem(
           icon: Icons.email_outlined,
           label: 'Email',
-          value: hasEmail ? _linkedEmail! : null,
-          onTap: () => _showEmailBottomSheet(hasEmail ? _linkedEmail : null),
+          value: hasEmail ? _maskEmail(_linkedEmail!) : null,
+          onTap: isGoogleAuth 
+              ? () {
+                  _showSnackBar(_localeService.get('google_email_cannot_change') ?? 'Email liên kết với Google không thể thay đổi', Colors.orange);
+                }
+              : () => _showEmailBottomSheet(hasEmail ? _linkedEmail : null),
           showDivider: true,
+          canEdit: !isGoogleAuth,
         ),
         
         // Phone row
         _buildAccountInfoItem(
           icon: Icons.phone_outlined,
           label: _localeService.get('phone_number'),
-          value: hasPhone ? ApiService.formatPhoneForDisplay(_linkedPhone!) : null,
-          onTap: () => _showPhoneBottomSheet(hasPhone ? _linkedPhone : null),
+          value: hasPhone ? _maskPhone(_linkedPhone!) : null,
+          onTap: () {
+            NavigationUtils.slideToScreen(
+              context,
+              const PhoneManagementScreen(),
+            ).then((_) {
+              // Immediately update from cached authService value (already synced by PhoneManagementScreen)
+              final cachedPhone = _authService.user?['phoneNumber'] as String?;
+              if (cachedPhone != null && cachedPhone.isNotEmpty) {
+                setState(() => _linkedPhone = cachedPhone);
+              } else {
+                setState(() => _linkedPhone = null);
+              }
+              // Also refresh from API to ensure full consistency
+              _loadAccountInfo();
+            });
+          },
+          canEdit: true,
         ),
       ],
     );
@@ -1028,6 +1075,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     String? value,
     required VoidCallback onTap,
     bool showDivider = false,
+    bool canEdit = true,
   }) {
     final hasValue = value != null && value.isNotEmpty;
     
@@ -1066,11 +1114,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                 ),
-                Icon(
-                  hasValue ? Icons.edit_outlined : Icons.add,
-                  color: hasValue ? _themeService.textSecondaryColor : Colors.blue,
-                  size: 20,
-                ),
+                if (canEdit)
+                  Icon(
+                    hasValue ? Icons.edit_outlined : Icons.add,
+                    color: hasValue ? _themeService.textSecondaryColor : Colors.blue,
+                    size: 20,
+                  ),
               ],
             ),
           ),
@@ -2038,6 +2087,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                         setState(() {
                                           _linkedPhone = phoneNumber;
                                         });
+                                        await _authService.updatePhoneNumber(phoneNumber);
                                         _showSnackBar(_localeService.get('phone_linked_success'), Colors.green);
                                       } else {
                                         setSheetState(() {

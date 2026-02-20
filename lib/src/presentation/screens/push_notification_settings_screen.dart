@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
@@ -348,13 +349,12 @@ class _PushNotificationSettingsScreenState
               ],
             ),
           ),
-          Switch(
+          CupertinoSwitch(
             value: value,
             onChanged: enabled ? onChanged : null,
-            activeColor: _themeService.switchActiveColor,
             activeTrackColor: _themeService.switchActiveTrackColor,
-            inactiveThumbColor: _themeService.switchInactiveThumbColor,
-            inactiveTrackColor: _themeService.switchInactiveTrackColor,
+            thumbColor: Colors.white,
+            trackColor: _themeService.switchInactiveTrackColor,
           ),
         ],
       ),

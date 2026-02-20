@@ -5,6 +5,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
+import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
@@ -24,24 +25,40 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
   final VideoService _videoService = VideoService();
+  final FollowService _followService = FollowService();
 
+  // Tab controller
+  late TabController _tabController;
+
+  // Notifications tab state
   List<dynamic> _notifications = [];
   bool _isLoading = true;
   Map<String, Map<String, dynamic>> _userCache = {};
-  
-  // Animation controllers for swipe
   final Map<String, double> _swipeOffsets = {};
+
+  // Follow requests tab state
+  List<Map<String, dynamic>> _followRequests = [];
+  bool _isLoadingRequests = true;
+  bool _hasMoreRequests = false;
+  int _requestOffset = 0;
+  final int _requestLimit = 20;
+  int _pendingRequestCount = 0;
+  final Set<int> _processingIds = {};
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
     _loadNotifications();
+    _loadFollowRequests();
+    _loadPendingCount();
   }
 
   @override
   void dispose() {
+    _tabController.dispose();
     _themeService.removeListener(_onThemeChanged);
     _localeService.removeListener(_onLocaleChanged);
     super.dispose();
@@ -82,6 +99,102 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _loadPendingCount() async {
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+    try {
+      final userId = _authService.user!['id'] as int;
+      final count = await _followService.getPendingRequestCount(userId);
+      if (mounted) {
+        setState(() => _pendingRequestCount = count);
+      }
+    } catch (e) {
+      print('Error loading pending count: $e');
+    }
+  }
+
+  Future<void> _loadFollowRequests({bool loadMore = false}) async {
+    if (!_authService.isLoggedIn || _authService.user == null) return;
+
+    if (!loadMore) {
+      setState(() => _isLoadingRequests = true);
+      _requestOffset = 0;
+    }
+
+    try {
+      final userId = _authService.user!['id'] as int;
+      final result = await _followService.getPendingRequests(
+        userId,
+        limit: _requestLimit,
+        offset: _requestOffset,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (loadMore) {
+            _followRequests.addAll(List<Map<String, dynamic>>.from(result['data'] ?? []));
+          } else {
+            _followRequests = List<Map<String, dynamic>>.from(result['data'] ?? []);
+          }
+          _hasMoreRequests = result['hasMore'] ?? false;
+          _pendingRequestCount = result['total'] ?? _followRequests.length;
+          _isLoadingRequests = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading follow requests: $e');
+      if (mounted) {
+        setState(() => _isLoadingRequests = false);
+      }
+    }
+  }
+
+  Future<void> _approveRequest(int followerId) async {
+    if (_processingIds.contains(followerId)) return;
+    
+    final userId = _authService.user!['id'] as int;
+    setState(() => _processingIds.add(followerId));
+
+    final success = await _followService.approveFollowRequest(followerId, userId);
+
+    if (mounted) {
+      setState(() {
+        _processingIds.remove(followerId);
+        if (success) {
+          _followRequests.removeWhere((r) => r['userId'] == followerId);
+          _pendingRequestCount = (_pendingRequestCount - 1).clamp(0, 999999);
+        }
+      });
+
+      if (success) {
+        AppSnackBar.showSuccess(
+          context,
+          _localeService.isVietnamese 
+              ? 'Đã chấp nhận yêu cầu theo dõi' 
+              : 'Follow request accepted',
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectRequest(int followerId) async {
+    if (_processingIds.contains(followerId)) return;
+    
+    final userId = _authService.user!['id'] as int;
+    setState(() => _processingIds.add(followerId));
+
+    final success = await _followService.rejectFollowRequest(followerId, userId);
+
+    if (mounted) {
+      setState(() {
+        _processingIds.remove(followerId);
+        if (success) {
+          _followRequests.removeWhere((r) => r['userId'] == followerId);
+          _pendingRequestCount = (_pendingRequestCount - 1).clamp(0, 999999);
+        }
+      });
     }
   }
 
@@ -186,6 +299,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         }
         break;
       case 'follow':
+      case 'follow_request':
+      case 'follow_request_accepted':
         // Navigate to user profile
         if (senderId != null) {
           Navigator.push(
@@ -204,7 +319,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   Future<void> _navigateToVideo(String videoId) async {
     try {
       final video = await _videoService.getVideoById(videoId);
-      if (video != null && mounted) {
+      if (video != null && video['isHidden'] != true && mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -213,6 +328,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
               initialIndex: 0,
             ),
           ),
+        );
+      } else if (mounted) {
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese 
+              ? 'Video không khả dụng hoặc đã bị xóa' 
+              : 'Video is unavailable or has been deleted',
         );
       }
     } catch (e) {
@@ -231,7 +353,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   Future<void> _navigateToVideoWithComments(String videoId) async {
     try {
       final video = await _videoService.getVideoById(videoId);
-      if (video != null && mounted) {
+      if (video != null && video['isHidden'] != true && mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -241,6 +363,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
               openCommentsOnLoad: true,
             ),
           ),
+        );
+      } else if (mounted) {
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese 
+              ? 'Video không khả dụng hoặc đã bị xóa' 
+              : 'Video is unavailable or has been deleted',
         );
       }
     } catch (e) {
@@ -420,7 +549,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   IconData _getNotificationIcon(String type) {
     switch (type) {
       case 'follow':
+      case 'follow_request_accepted':
         return Icons.person_add_rounded;
+      case 'follow_request':
+        return Icons.person_add_alt_1_rounded;
       case 'comment':
         return Icons.chat_bubble_rounded;
       case 'like':
@@ -433,7 +565,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   Color _getNotificationColor(String type) {
     switch (type) {
       case 'follow':
+      case 'follow_request_accepted':
         return const Color(0xFF0095F6); // Instagram blue
+      case 'follow_request':
+        return const Color(0xFFFF9500); // Orange
       case 'comment':
         return const Color(0xFF00C853); // Green
       case 'like':
@@ -466,6 +601,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                 text: _localeService.isVietnamese 
                     ? ' bắt đầu theo dõi bạn' 
                     : ' started following you',
+                style: normalStyle,
+              ),
+            ],
+          ),
+        );
+      case 'follow_request':
+        return RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(text: username, style: boldStyle),
+              TextSpan(
+                text: _localeService.isVietnamese 
+                    ? ' đã gửi yêu cầu theo dõi bạn' 
+                    : ' sent you a follow request',
+                style: normalStyle,
+              ),
+            ],
+          ),
+        );
+      case 'follow_request_accepted':
+        return RichText(
+          text: TextSpan(
+            children: [
+              TextSpan(text: username, style: boldStyle),
+              TextSpan(
+                text: _localeService.isVietnamese 
+                    ? ' đã chấp nhận yêu cầu theo dõi của bạn' 
+                    : ' accepted your follow request',
                 style: normalStyle,
               ),
             ],
@@ -693,8 +856,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
                       ),
                     ),
                     
-                    // Action button for follow
-                    if (type == 'follow')
+                    // Action button for follow / follow_request_accepted
+                    if (type == 'follow' || type == 'follow_request_accepted')
                       Container(
                         margin: const EdgeInsets.only(left: 8),
                         child: _buildFollowButton(notification),
@@ -744,9 +907,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
 
   @override
   Widget build(BuildContext context) {
-    final groupedNotifications = _groupNotificationsByTime();
-    final groupOrder = ['today', 'yesterday', 'this_week', 'this_month', 'older'];
-    
     return Scaffold(
       backgroundColor: _themeService.backgroundColor,
       appBar: AppBar(
@@ -766,7 +926,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         ),
         centerTitle: true,
         actions: [
-          if (_notifications.any((n) => !(n['isRead'] ?? false)))
+          if (_tabController.index == 0 && _notifications.any((n) => !(n['isRead'] ?? false)))
             TextButton(
               onPressed: _markAllAsRead,
               child: Text(
@@ -778,116 +938,396 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
               ),
             ),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(46),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: _themeService.dividerColor.withOpacity(0.15),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              onTap: (_) => setState(() {}),
+              indicatorColor: _themeService.textPrimaryColor,
+              indicatorWeight: 2,
+              indicatorSize: TabBarIndicatorSize.label,
+              labelColor: _themeService.textPrimaryColor,
+              unselectedLabelColor: _themeService.textSecondaryColor,
+              labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
+              dividerColor: Colors.transparent,
+              splashFactory: NoSplash.splashFactory,
+              overlayColor: WidgetStateProperty.all(Colors.transparent),
+              tabs: [
+                Tab(text: _localeService.isVietnamese ? 'Hoạt động' : 'Activity'),
+                Tab(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _localeService.isVietnamese ? 'Yêu cầu theo dõi' : 'Follow Requests',
+                      ),
+                      if (_pendingRequestCount > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            _pendingRequestCount > 99 ? '99+' : _pendingRequestCount.toString(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      body: _isLoading
-          ? Center(
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildNotificationsTab(),
+          _buildFollowRequestsTab(),
+        ],
+      ),
+    );
+  }
+
+  // ==================== NOTIFICATIONS TAB ====================
+
+  Widget _buildNotificationsTab() {
+    final groupedNotifications = _groupNotificationsByTime();
+    final groupOrder = ['today', 'yesterday', 'this_week', 'this_month', 'older'];
+
+    if (_isLoading) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: ThemeService.accentColor,
+              strokeWidth: 3,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _localeService.isVietnamese 
+                  ? 'Đang tải thông báo...' 
+                  : 'Loading notifications...',
+              style: TextStyle(color: _themeService.textSecondaryColor),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_notifications.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[100] 
+                    : Colors.grey[900],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.notifications_off_outlined, 
+                size: 60, 
+                color: _themeService.textSecondaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _localeService.get('no_notifications'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor, 
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                _localeService.isVietnamese 
+                    ? 'Khi có người tương tác với bạn, thông báo sẽ xuất hiện ở đây' 
+                    : 'When someone interacts with you, you\'ll see it here',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor, 
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadNotifications,
+      color: ThemeService.accentColor,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: groupOrder.fold<int>(0, (count, key) {
+          final group = groupedNotifications[key]!;
+          if (group.isEmpty) return count;
+          return count + 1 + group.length;
+        }),
+        itemBuilder: (context, index) {
+          int currentIndex = 0;
+          
+          for (var key in groupOrder) {
+            final group = groupedNotifications[key]!;
+            if (group.isEmpty) continue;
+            
+            if (index == currentIndex) {
+              return _buildGroupHeader(_getGroupTitle(key));
+            }
+            currentIndex++;
+            
+            for (int i = 0; i < group.length; i++) {
+              if (index == currentIndex) {
+                final notification = group[i];
+                final senderId = notification['senderId']?.toString() ?? '';
+                
+                return FutureBuilder<Map<String, dynamic>>(
+                  future: _getUserInfo(senderId),
+                  builder: (context, snapshot) {
+                    final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
+                    return _buildNotificationItem(notification, userInfo);
+                  },
+                );
+              }
+              currentIndex++;
+            }
+          }
+          
+          return const SizedBox.shrink();
+        },
+      ),
+    );
+  }
+
+  // ==================== FOLLOW REQUESTS TAB ====================
+
+  Widget _buildFollowRequestsTab() {
+    if (_isLoadingRequests) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: _themeService.textPrimaryColor,
+        ),
+      );
+    }
+
+    if (_followRequests.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: _themeService.isLightMode 
+                    ? Colors.grey[100] 
+                    : Colors.grey[900],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.person_add_disabled_outlined, 
+                size: 60, 
+                color: _themeService.textSecondaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _localeService.isVietnamese 
+                  ? 'Không có yêu cầu theo dõi nào' 
+                  : 'No follow requests',
+              style: TextStyle(
+                color: _themeService.textPrimaryColor, 
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Text(
+                _localeService.isVietnamese 
+                    ? 'Khi ai đó gửi yêu cầu theo dõi, bạn sẽ thấy ở đây' 
+                    : 'When someone sends you a follow request, you\'ll see it here',
+                style: TextStyle(
+                  color: _themeService.textSecondaryColor, 
+                  fontSize: 14,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollEndNotification &&
+            notification.metrics.extentAfter < 200 &&
+            _hasMoreRequests &&
+            !_isLoadingRequests) {
+          _requestOffset += _requestLimit;
+          _loadFollowRequests(loadMore: true);
+        }
+        return false;
+      },
+      child: RefreshIndicator(
+        onRefresh: () async {
+          await _loadFollowRequests();
+        },
+        color: const Color(0xFFFF2D55),
+        child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _followRequests.length,
+          itemBuilder: (context, index) {
+            final request = _followRequests[index];
+            return _buildFollowRequestItem(request);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFollowRequestItem(Map<String, dynamic> request) {
+    final userId = request['userId'] as int;
+    final username = request['username'] ?? 'user';
+    final fullName = request['fullName'] as String?;
+    final avatar = request['avatar'] as String?;
+    final isProcessing = _processingIds.contains(userId);
+
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UserProfileScreen(userId: userId),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // Avatar
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[800],
+              backgroundImage: avatar != null && avatar.isNotEmpty && _apiService.getAvatarUrl(avatar).isNotEmpty
+                  ? NetworkImage(_apiService.getAvatarUrl(avatar))
+                  : null,
+              child: avatar == null || avatar.isEmpty || _apiService.getAvatarUrl(avatar).isEmpty
+                  ? Icon(Icons.person, color: _themeService.textSecondaryColor, size: 24)
+                  : null,
+            ),
+            const SizedBox(width: 14),
+            
+            // User info
+            Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircularProgressIndicator(
-                    color: ThemeService.accentColor,
-                    strokeWidth: 3,
-                  ),
-                  const SizedBox(height: 16),
                   Text(
-                    _localeService.isVietnamese 
-                        ? 'Đang tải thông báo...' 
-                        : 'Loading notifications...',
-                    style: TextStyle(color: _themeService.textSecondaryColor),
+                    username,
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                  if (fullName != null && fullName.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      fullName,
+                      style: TextStyle(
+                        color: _themeService.textSecondaryColor,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            )
-          : _notifications.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: _themeService.isLightMode 
-                              ? Colors.grey[100] 
-                              : Colors.grey[900],
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.notifications_off_outlined, 
-                          size: 60, 
-                          color: _themeService.textSecondaryColor,
-                        ),
+            ),
+            
+            // Approve / Reject buttons
+            if (isProcessing)
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () => _approveRequest(userId),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF2D55),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        _localeService.get('no_notifications'),
-                        style: TextStyle(
-                          color: _themeService.textPrimaryColor, 
-                          fontSize: 20,
+                      child: Text(
+                        _localeService.isVietnamese ? 'Chấp nhận' : 'Accept',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 40),
-                        child: Text(
-                          _localeService.isVietnamese 
-                              ? 'Khi có người tương tác với bạn, thông báo sẽ xuất hiện ở đây' 
-                              : 'When someone interacts with you, you\'ll see it here',
-                          style: TextStyle(
-                            color: _themeService.textSecondaryColor, 
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _rejectRequest(userId),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: _themeService.isLightMode ? Colors.grey[200] : Colors.grey[800],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _localeService.isVietnamese ? 'Từ chối' : 'Reject',
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadNotifications,
-                  color: ThemeService.accentColor,
-                  child: ListView.builder(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: groupOrder.fold<int>(0, (count, key) {
-                      final group = groupedNotifications[key]!;
-                      if (group.isEmpty) return count;
-                      return count + 1 + group.length; // header + items
-                    }),
-                    itemBuilder: (context, index) {
-                      int currentIndex = 0;
-                      
-                      for (var key in groupOrder) {
-                        final group = groupedNotifications[key]!;
-                        if (group.isEmpty) continue;
-                        
-                        // Header
-                        if (index == currentIndex) {
-                          return _buildGroupHeader(_getGroupTitle(key));
-                        }
-                        currentIndex++;
-                        
-                        // Items
-                        for (int i = 0; i < group.length; i++) {
-                          if (index == currentIndex) {
-                            final notification = group[i];
-                            final senderId = notification['senderId']?.toString() ?? '';
-                            
-                            return FutureBuilder<Map<String, dynamic>>(
-                              future: _getUserInfo(senderId),
-                              builder: (context, snapshot) {
-                                final userInfo = snapshot.data ?? {'username': 'user', 'avatar': null};
-                                return _buildNotificationItem(notification, userInfo);
-                              },
-                            );
-                          }
-                          currentIndex++;
-                        }
-                      }
-                      
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ),
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -9,11 +9,15 @@ class NotificationService {
   NotificationService._internal();
 
   String get _baseUrl => AppConfig.videoServiceUrl;
+  String get _userBaseUrl => AppConfig.userServiceUrl;
   
   Timer? _pollTimer;
+  String? _pollingUserId;
   final StreamController<int> _unreadCountController = StreamController<int>.broadcast();
+  final StreamController<int> _pendingFollowCountController = StreamController<int>.broadcast();
   
   Stream<int> get unreadCountStream => _unreadCountController.stream;
+  Stream<int> get pendingFollowCountStream => _pendingFollowCountController.stream;
 
   Future<List<dynamic>> getNotifications(String userId) async {
     try {
@@ -45,6 +49,23 @@ class NotificationService {
       return 0;
     } catch (e) {
       print('Error getting unread count: $e');
+      return 0;
+    }
+  }
+
+  Future<int> getPendingFollowCount(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_userBaseUrl/follows/pending-count/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['count'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print('Error getting pending follow count: $e');
       return 0;
     }
   }
@@ -94,13 +115,30 @@ class NotificationService {
 
   void startPolling(String userId, {Duration interval = const Duration(seconds: 10)}) {
     stopPolling();
+    _pollingUserId = userId;
     
     _pollTimer = Timer.periodic(interval, (timer) async {
-      final count = await getUnreadCount(userId);
-      _unreadCountController.add(count);
+      await _fetchAndEmitCounts(userId);
     });
 
-    getUnreadCount(userId).then((count) => _unreadCountController.add(count));
+    // Fetch immediately
+    _fetchAndEmitCounts(userId);
+  }
+
+  /// Immediately refresh all badge counts (call after FCM push for follow_request, etc.)
+  Future<void> refreshBadgeCounts() async {
+    if (_pollingUserId != null) {
+      await _fetchAndEmitCounts(_pollingUserId!);
+    }
+  }
+
+  Future<void> _fetchAndEmitCounts(String userId) async {
+    final results = await Future.wait([
+      getUnreadCount(userId),
+      getPendingFollowCount(userId),
+    ]);
+    _unreadCountController.add(results[0]);
+    _pendingFollowCountController.add(results[1]);
   }
 
   void stopPolling() {
@@ -111,5 +149,6 @@ class NotificationService {
   void dispose() {
     stopPolling();
     _unreadCountController.close();
+    _pendingFollowCountController.close();
   }
 }

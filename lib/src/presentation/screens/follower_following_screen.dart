@@ -9,7 +9,9 @@ import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.da
 
 class FollowerFollowingScreen extends StatefulWidget {
   final int initialIndex;
-  const FollowerFollowingScreen({super.key, this.initialIndex = 0});
+  final int? userId; // Optional: view another user's lists
+  final String? username; // Optional: display name for the app bar
+  const FollowerFollowingScreen({super.key, this.initialIndex = 0, this.userId, this.username});
 
   @override
   State<FollowerFollowingScreen> createState() => _FollowerFollowingScreenState();
@@ -18,19 +20,37 @@ class FollowerFollowingScreen extends StatefulWidget {
 class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final AuthService _authService = AuthService();
+  final FollowService _followService = FollowService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+
+  // Privacy state for viewing other user's lists
+  bool _isOwnProfile = true;
+  bool _followersPrivacyRestricted = false;
+  bool _followingPrivacyRestricted = false;
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
     _localeService.addListener(_onLocaleChanged);
+
+    final targetUserId = widget.userId;
+    final currentUserId = _authService.isLoggedIn && _authService.user != null
+        ? _authService.user!['id'] as int
+        : null;
+    _isOwnProfile = targetUserId == null || targetUserId == currentUserId;
+
+    // If viewing another user, only show 2 tabs (no Friends tab)
     _tabController = TabController(
-      length: 3,
+      length: _isOwnProfile ? 3 : 2,
       vsync: this,
-      initialIndex: widget.initialIndex,
+      initialIndex: widget.initialIndex.clamp(0, _isOwnProfile ? 2 : 1),
     );
+
+    if (!_isOwnProfile && currentUserId != null && targetUserId != null) {
+      _checkListPrivacy(targetUserId, currentUserId);
+    }
   }
 
   void _onThemeChanged() {
@@ -45,6 +65,29 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
     }
   }
 
+  Future<void> _checkListPrivacy(int targetUserId, int currentUserId) async {
+    try {
+      final followersCheck = await _followService.checkListPrivacy(
+        targetUserId: targetUserId,
+        requesterId: currentUserId,
+        listType: 'followers',
+      );
+      final followingCheck = await _followService.checkListPrivacy(
+        targetUserId: targetUserId,
+        requesterId: currentUserId,
+        listType: 'following',
+      );
+      if (mounted) {
+        setState(() {
+          _followersPrivacyRestricted = followersCheck['allowed'] != true;
+          _followingPrivacyRestricted = followingCheck['allowed'] != true;
+        });
+      }
+    } catch (e) {
+      print('Error checking list privacy: $e');
+    }
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -55,7 +98,8 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
 
   @override
   Widget build(BuildContext context) {
-    final username = _authService.username ?? 'user';
+    final username = widget.username ?? _authService.username ?? 'user';
+    final targetUserId = widget.userId;
 
     return Scaffold(
       backgroundColor: _themeService.backgroundColor,
@@ -77,17 +121,9 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: _themeService.dividerColor,
-                  width: 0.5,
-                ),
-              ),
-            ),
-            child: TabBar(
+          child: TabBar(
               controller: _tabController,
+              dividerColor: Colors.transparent,
               indicatorColor: _themeService.textPrimaryColor,
               indicatorWeight: 2,
               indicatorSize: TabBarIndicatorSize.label,
@@ -106,19 +142,90 @@ class _FollowerFollowingScreenState extends State<FollowerFollowingScreen> with 
               tabs: [
                 Tab(text: _localeService.get('followers')),
                 Tab(text: _localeService.get('following')),
-                Tab(text: _localeService.get('friends')),
+                if (_isOwnProfile)
+                  Tab(text: _localeService.get('friends')),
               ],
             ),
-          ),
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _ModernUserList(key: const PageStorageKey('followers'), type: 'follower', themeService: _themeService, localeService: _localeService),
-          _ModernUserList(key: const PageStorageKey('following'), type: 'following', themeService: _themeService, localeService: _localeService),
-          _FriendsList(key: const PageStorageKey('friends'), themeService: _themeService, localeService: _localeService),
+          // Followers tab
+          _followersPrivacyRestricted
+              ? _buildPrivacyGate()
+              : _ModernUserList(
+                  key: const PageStorageKey('followers'),
+                  type: 'follower',
+                  themeService: _themeService,
+                  localeService: _localeService,
+                  targetUserId: targetUserId,
+                ),
+          // Following tab
+          _followingPrivacyRestricted
+              ? _buildPrivacyGate()
+              : _ModernUserList(
+                  key: const PageStorageKey('following'),
+                  type: 'following',
+                  themeService: _themeService,
+                  localeService: _localeService,
+                  targetUserId: targetUserId,
+                ),
+          // Friends tab (own profile only)
+          if (_isOwnProfile)
+            _FriendsList(
+              key: const PageStorageKey('friends'),
+              themeService: _themeService,
+              localeService: _localeService,
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPrivacyGate() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _themeService.textSecondaryColor.withOpacity(0.5),
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 32,
+                color: _themeService.textSecondaryColor,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _localeService.get('list_privacy_restricted'),
+              style: TextStyle(
+                color: _themeService.textPrimaryColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _localeService.get('list_privacy_restricted_desc'),
+              style: TextStyle(
+                color: _themeService.textSecondaryColor,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -128,7 +235,8 @@ class _ModernUserList extends StatefulWidget {
   final String type;
   final ThemeService themeService;
   final LocaleService localeService;
-  const _ModernUserList({super.key, required this.type, required this.themeService, required this.localeService});
+  final int? targetUserId; // Optional: view another user's lists
+  const _ModernUserList({super.key, required this.type, required this.themeService, required this.localeService, this.targetUserId});
 
   @override
   State<_ModernUserList> createState() => _ModernUserListState();
@@ -148,6 +256,7 @@ class _ModernUserListState extends State<_ModernUserList> {
   final int _pageSize = 20;
   Map<int, bool> _followStatus = {};
   Map<int, bool> _mutualStatus = {}; // NEW: Track mutual status
+  Map<int, bool> _requestedStatus = {}; // Track pending follow requests
   Map<int, bool> _isProcessing = {};
 
   @override
@@ -175,7 +284,7 @@ class _ModernUserListState extends State<_ModernUserList> {
     
     setState(() => _isLoadingMore = true);
     
-    final userId = _authService.user!['id'] as int;
+    final userId = widget.targetUserId ?? (_authService.user!['id'] as int);
     
     try {
       final result = widget.type == 'follower'
@@ -214,7 +323,7 @@ class _ModernUserListState extends State<_ModernUserList> {
       return;
     }
 
-    final userId = _authService.user!['id'] as int;
+    final userId = widget.targetUserId ?? (_authService.user!['id'] as int);
     
     // Reset pagination state
     _currentOffset = 0;
@@ -222,6 +331,7 @@ class _ModernUserListState extends State<_ModernUserList> {
     _users.clear();
     _followStatus.clear();
     _mutualStatus.clear();
+    _requestedStatus.clear();
 
     try {
       // Use new paginated API
@@ -269,6 +379,7 @@ class _ModernUserListState extends State<_ModernUserList> {
 
     if (mounted) {
       final newFollowing = result['following'] ?? false;
+      final isRequested = result['requested'] ?? false;
       
       // Check mutual status after toggle
       final isMutual = newFollowing 
@@ -278,6 +389,7 @@ class _ModernUserListState extends State<_ModernUserList> {
       setState(() {
         _followStatus[targetUserId] = newFollowing;
         _mutualStatus[targetUserId] = isMutual;
+        _requestedStatus[targetUserId] = isRequested;
         _isProcessing[targetUserId] = false;
 
         // REMOVED: Don't remove user from list when unfollowing
@@ -290,7 +402,16 @@ class _ModernUserListState extends State<_ModernUserList> {
   }
 
   void _navigateToProfile(int userId) {
-    Navigator.push(
+    // If tapping own profile, pop back to root profile
+    final currentUserId = _authService.isLoggedIn && _authService.user != null
+        ? _authService.user!['id'] as int
+        : null;
+    if (currentUserId != null && userId == currentUserId) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    // Replace current screen to avoid infinite stacking
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => UserProfileScreen(userId: userId),
@@ -349,6 +470,7 @@ class _ModernUserListState extends State<_ModernUserList> {
         final userId = user['userId'] as int;
         final isFollowing = _followStatus[userId] ?? false;
         final isMutual = _mutualStatus[userId] ?? false;
+        final isRequested = _requestedStatus[userId] ?? false;
         
         return _UserListItem(
           userId: userId,
@@ -356,7 +478,8 @@ class _ModernUserListState extends State<_ModernUserList> {
           themeService: widget.themeService,
           localeService: widget.localeService,
           isFollowing: isFollowing,
-          isMutual: isMutual, // NEW
+          isMutual: isMutual,
+          isRequested: isRequested,
           isProcessing: _isProcessing[userId] ?? false,
           listType: widget.type,
           onToggleFollow: () => _toggleFollow(userId),
@@ -373,11 +496,12 @@ class _UserListItem extends StatelessWidget {
   final ThemeService themeService;
   final LocaleService localeService;
   final bool isFollowing;
-  final bool isMutual; // NEW
+  final bool isMutual;
+  final bool isRequested;
   final bool isProcessing;
   final String listType;
   final VoidCallback onToggleFollow;
-  final VoidCallback onTap; // NEW
+  final VoidCallback onTap;
 
   const _UserListItem({
     required this.userId,
@@ -385,15 +509,18 @@ class _UserListItem extends StatelessWidget {
     required this.themeService,
     required this.localeService,
     required this.isFollowing,
-    required this.isMutual, // NEW
+    required this.isMutual,
+    required this.isRequested,
     required this.isProcessing,
     required this.listType,
     required this.onToggleFollow,
-    required this.onTap, // NEW
+    required this.onTap,
   });
 
   String _getButtonText() {
-    if (isMutual) {
+    if (isRequested) {
+      return localeService.get('requested');
+    } else if (isMutual) {
       return localeService.get('friends');
     } else if (isFollowing) {
       return localeService.get('following_status');
@@ -459,17 +586,21 @@ class _UserListItem extends StatelessWidget {
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                     decoration: BoxDecoration(
-                      color: isMutual && themeService.isLightMode
-                          ? const Color(0xFFFF2D55) // Red background for "Bạn bè" in light mode
-                          : (isMutual || isFollowing 
-                              ? Colors.transparent
-                              : const Color(0xFFFF2D55)),
+                      color: isRequested
+                          ? Colors.transparent
+                          : (isMutual && themeService.isLightMode
+                              ? const Color(0xFFFF2D55)
+                              : (isMutual || isFollowing 
+                                  ? Colors.transparent
+                                  : const Color(0xFFFF2D55))),
                       border: Border.all(
-                        color: isMutual && themeService.isLightMode
-                            ? Colors.transparent
-                            : (isMutual || isFollowing 
-                                ? (themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!)
-                                : Colors.transparent),
+                        color: isRequested
+                            ? Colors.orange
+                            : (isMutual && themeService.isLightMode
+                                ? Colors.transparent
+                                : (isMutual || isFollowing 
+                                    ? (themeService.isLightMode ? Colors.grey[400]! : Colors.grey[700]!)
+                                    : Colors.transparent)),
                         width: 1,
                       ),
                       borderRadius: BorderRadius.circular(8),
@@ -485,8 +616,12 @@ class _UserListItem extends StatelessWidget {
                           )
                         : Text(
                             _getButtonText(),
-                            style: const TextStyle(
-                              color: Colors.white,
+                            style: TextStyle(
+                              color: isRequested
+                                  ? Colors.orange
+                                  : ((isMutual && themeService.isLightMode) || (!isMutual && !isFollowing)
+                                      ? Colors.white
+                                      : (themeService.isLightMode ? Colors.grey[800]! : Colors.white)),
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -616,7 +751,16 @@ class _FriendsListState extends State<_FriendsList> {
   }
 
   void _navigateToProfile(int userId) {
-    Navigator.push(
+    // If tapping own profile, pop back to root profile
+    final currentUserId = _authService.isLoggedIn && _authService.user != null
+        ? _authService.user!['id'] as int
+        : null;
+    if (currentUserId != null && userId == currentUserId) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    // Push and remove follower/following screen to avoid infinite stacking
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => UserProfileScreen(userId: userId),

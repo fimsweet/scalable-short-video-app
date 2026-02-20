@@ -21,6 +21,7 @@ class _SuggestionsBottomSheetState extends State<SuggestionsBottomSheet> {
 
   List<SuggestedUser> _suggestions = [];
   Set<int> _followedIds = {};
+  Set<int> _requestedIds = {};
   Set<int> _dismissedIds = {};
   bool _isLoading = true;
 
@@ -58,27 +59,37 @@ class _SuggestionsBottomSheetState extends State<SuggestionsBottomSheet> {
 
     final myId = _authService.user!['id'] as int;
     final isFollowed = _followedIds.contains(user.id);
+    final wasRequested = _requestedIds.contains(user.id);
 
     // Optimistic update
     setState(() {
-      if (isFollowed) {
-        _followedIds.remove(user.id);
-      } else {
+      _followedIds.remove(user.id);
+      _requestedIds.remove(user.id);
+      if (!isFollowed && !wasRequested) {
         _followedIds.add(user.id);
       }
     });
 
     try {
-      await _followService.toggleFollow(myId, user.id);
-    } catch (e) {
-      // Revert on error
+      final result = await _followService.toggleFollow(myId, user.id);
       if (mounted) {
         setState(() {
-          if (isFollowed) {
+          _followedIds.remove(user.id);
+          _requestedIds.remove(user.id);
+          if (result['following'] == true) {
             _followedIds.add(user.id);
-          } else {
-            _followedIds.remove(user.id);
+          } else if (result['requested'] == true) {
+            _requestedIds.add(user.id);
           }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _followedIds.remove(user.id);
+          _requestedIds.remove(user.id);
+          if (isFollowed) _followedIds.add(user.id);
+          if (wasRequested) _requestedIds.add(user.id);
         });
       }
     }
@@ -202,6 +213,7 @@ class _SuggestionsBottomSheetState extends State<SuggestionsBottomSheet> {
                           return _SuggestionCard(
                             user: user,
                             isFollowed: _followedIds.contains(user.id),
+                            isRequested: _requestedIds.contains(user.id),
                             onFollow: () => _toggleFollow(user),
                             onDismiss: () => _dismissSuggestion(user.id),
                             onTap: () => _navigateToProfile(user),
@@ -223,6 +235,7 @@ class _SuggestionsBottomSheetState extends State<SuggestionsBottomSheet> {
 class _SuggestionCard extends StatelessWidget {
   final SuggestedUser user;
   final bool isFollowed;
+  final bool isRequested;
   final VoidCallback onFollow;
   final VoidCallback onDismiss;
   final VoidCallback onTap;
@@ -232,6 +245,7 @@ class _SuggestionCard extends StatelessWidget {
   const _SuggestionCard({
     required this.user,
     required this.isFollowed,
+    required this.isRequested,
     required this.onFollow,
     required this.onDismiss,
     required this.onTap,
@@ -359,6 +373,7 @@ class _SuggestionCard extends StatelessWidget {
                 // Follow button
                 _FollowButton(
                   isFollowed: isFollowed,
+                  isRequested: isRequested,
                   onPressed: onFollow,
                   themeService: themeService,
                   localeService: localeService,
@@ -390,12 +405,14 @@ class _SuggestionCard extends StatelessWidget {
 
 class _FollowButton extends StatelessWidget {
   final bool isFollowed;
+  final bool isRequested;
   final VoidCallback onPressed;
   final ThemeService themeService;
   final LocaleService localeService;
 
   const _FollowButton({
     required this.isFollowed,
+    required this.isRequested,
     required this.onPressed,
     required this.themeService,
     required this.localeService,
@@ -408,12 +425,16 @@ class _FollowButton extends StatelessWidget {
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: isFollowed
-              ? (themeService.isLightMode ? Colors.grey[200] : Colors.grey[700])
-              : ThemeService.accentColor,
-          foregroundColor: isFollowed
-              ? themeService.textPrimaryColor
-              : Colors.white,
+          backgroundColor: isRequested
+              ? (themeService.isLightMode ? Colors.orange[50] : Colors.orange.withValues(alpha: 0.15))
+              : isFollowed
+                  ? (themeService.isLightMode ? Colors.grey[200] : Colors.grey[700])
+                  : ThemeService.accentColor,
+          foregroundColor: isRequested
+              ? Colors.orange
+              : isFollowed
+                  ? themeService.textPrimaryColor
+                  : Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           shape: RoundedRectangleBorder(
@@ -422,9 +443,11 @@ class _FollowButton extends StatelessWidget {
           minimumSize: const Size(80, 36),
         ),
         child: Text(
-          isFollowed
-              ? localeService.get('followed')
-              : localeService.get('follow'),
+          isRequested
+              ? localeService.get('requested')
+              : isFollowed
+                  ? localeService.get('followed')
+                  : localeService.get('follow'),
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,

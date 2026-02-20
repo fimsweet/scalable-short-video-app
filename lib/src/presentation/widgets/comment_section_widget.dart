@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:scalable_short_video_app/src/services/comment_service.dart';
@@ -6,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/login_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
@@ -128,12 +130,25 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
   Future<void> _checkCommentPermission() async {
     if (widget.videoOwnerId == null) return;
     try {
-      final token = await _authService.getToken();
-      if (token == null) return;
       final userId = _authService.userId?.toString();
       if (userId == null) return;
-      // Skip check if user is commenting on their own video
-      if (userId == widget.videoOwnerId) return;
+
+      // If user is the video owner, check their own privacy settings
+      if (userId == widget.videoOwnerId) {
+        final settings = await _apiService.getPrivacySettings(userId);
+        final whoCanComment = settings['whoCanComment'] ?? 'everyone';
+        if (whoCanComment == 'noOne' || whoCanComment == 'onlyMe') {
+          if (mounted) {
+            setState(() {
+              _isCommentRestricted = true;
+              _commentRestrictedReason = _localeService.get('comments_disabled');
+            });
+          }
+        }
+        return;
+      }
+
+      // For other users, check via privacy permission API
       final result = await _apiService.checkPrivacyPermission(
         userId,
         widget.videoOwnerId!,
@@ -146,7 +161,13 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
         });
       }
     } catch (e) {
-      // If check fails, allow commenting (backend will enforce)
+      // If check fails, default to restricted for safety
+      if (mounted) {
+        setState(() {
+          _isCommentRestricted = true;
+          _commentRestrictedReason = 'Không thể kiểm tra quyền bình luận';
+        });
+      }
     }
   }
 
@@ -269,7 +290,8 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
     } catch (e) {
       print('Error sending comment: $e');
       if (mounted) {
-        AppSnackBar.showError(context, '${_localeService.get('comment_error')}: $e');
+        final errorMsg = e.toString().replaceAll('Exception: ', '');
+        AppSnackBar.showError(context, errorMsg);
       }
     } finally {
       if (mounted) {
@@ -406,7 +428,9 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${_comments.length} ${_localeService.get('x_comments')}',
+                    (_isCommentRestricted || !widget.allowComments)
+                        ? _localeService.get('x_comments')
+                        : '${_comments.length} ${_localeService.get('x_comments')}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -434,6 +458,32 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
             
             Container(height: 0.5, color: _themeService.dividerColor),
             
+            // When comments are disabled (user-level or per-video), show centered message
+            if (_isCommentRestricted || !widget.allowComments)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.comments_disabled_outlined,
+                        size: 56,
+                        color: _themeService.textSecondaryColor,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _localeService.get('comments_disabled'),
+                        style: TextStyle(
+                          color: _themeService.textSecondaryColor,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else ...[
             // Comments list
             Expanded(
               child: _isLoading
@@ -580,6 +630,7 @@ class _CommentSectionWidgetState extends State<CommentSectionWidget> {
                   : _buildLoggedOutPrompt(bottomPadding)
             else
               _buildCommentsDisabledBanner(bottomPadding),
+            ], // end else ...[
           ],
         ),
       ),
@@ -931,6 +982,11 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
   bool _loadingReplies = false;
   bool _isCensored = true; // Whether this toxic comment is currently hidden
   
+  // Translation state
+  bool _isTranslated = false;
+  String? _translatedText;
+  bool _isTranslating = false;
+  
   AnimationController? _likeAnimController;
   Animation<double>? _likeScaleAnimation;
 
@@ -1083,83 +1139,244 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isLightMode ? Colors.grey[400] : Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            if (isOwnComment && canEdit)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: CommentTheme.accent.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.edit_outlined, color: CommentTheme.accent),
-                ),
-                title: Text(
-                  widget.localeService.isVietnamese ? 'Chỉnh sửa' : 'Edit',
-                  style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditDialog();
-                },
-              ),
-            if (isOwnComment)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                ),
-                title: Text(widget.localeService.get('delete_comment'), style: const TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final userId = widget.authService.user!['id'].toString();
-                  final deleted = await widget.commentService.deleteComment(
-                    widget.comment['id'].toString(),
-                    userId,
-                  );
-                  if (deleted) widget.onDelete();
-                },
-              ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        decoration: BoxDecoration(
+          color: isLightMode ? Colors.white : const Color(0xFF262626),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 36,
+                height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: isLightMode ? Colors.grey[350] : Colors.grey[700],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: const Icon(Icons.flag_outlined, color: Colors.orange),
               ),
-              title: Text(
-                widget.localeService.get('report'), 
-                style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+              // Copy
+              _buildOptionTile(
+                ctx: ctx,
+                icon: Icons.content_copy_rounded,
+                label: widget.localeService.get('copy_comment'),
+                iconColor: isLightMode ? Colors.grey[700]! : Colors.grey[300]!,
+                textColor: isLightMode ? Colors.black87 : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _copyComment();
+                },
               ),
-              onTap: () => Navigator.pop(context),
+              _optionDivider(isLightMode),
+              // Translate / See original
+              _buildOptionTile(
+                ctx: ctx,
+                icon: _isTranslated ? Icons.g_translate_rounded : Icons.translate_rounded,
+                label: _isTranslated
+                    ? widget.localeService.get('show_original')
+                    : widget.localeService.get('see_translation'),
+                iconColor: const Color(0xFF4285F4),
+                textColor: isLightMode ? Colors.black87 : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (_isTranslated) {
+                    setState(() {
+                      _isTranslated = false;
+                      _translatedText = null;
+                    });
+                  } else {
+                    _translateComment();
+                  }
+                },
+              ),
+              if (isOwnComment && canEdit) ...[
+                _optionDivider(isLightMode),
+                _buildOptionTile(
+                  ctx: ctx,
+                  icon: Icons.edit_rounded,
+                  label: widget.localeService.get('edit_comment'),
+                  iconColor: isLightMode ? Colors.grey[700]! : Colors.grey[300]!,
+                  textColor: isLightMode ? Colors.black87 : Colors.white,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showEditDialog();
+                  },
+                ),
+              ],
+              if (isOwnComment) ...[
+                _optionDivider(isLightMode),
+                _buildOptionTile(
+                  ctx: ctx,
+                  icon: Icons.delete_outline_rounded,
+                  label: widget.localeService.get('delete_comment'),
+                  iconColor: Colors.red,
+                  textColor: Colors.red,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmDelete();
+                  },
+                ),
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile({
+    required BuildContext ctx,
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: iconColor),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+              ),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
     );
+  }
+
+  Widget _optionDivider(bool isLightMode) {
+    return Divider(
+      height: 1,
+      thickness: 0.5,
+      indent: 20,
+      endIndent: 20,
+      color: isLightMode ? Colors.grey[200] : Colors.grey[800],
+    );
+  }
+
+  void _copyComment() {
+    // Copy the currently displayed text (translated if showing translation, else original)
+    final isToxic = widget.comment['isToxic'] == true;
+    final originalText = isToxic && widget.filterComments && _isCensored
+        ? (widget.comment['censoredContent'] ?? widget.comment['content'] ?? '')
+        : (widget.comment['content'] ?? '');
+    final textToCopy = _isTranslated && _translatedText != null
+        ? _translatedText!
+        : originalText.toString();
+    
+    Clipboard.setData(ClipboardData(text: textToCopy));
+    AppSnackBar.showSuccess(context, widget.localeService.get('comment_copied'));
+  }
+
+  void _confirmDelete() {
+    final isLightMode = widget.themeService.isLightMode;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isLightMode ? Colors.white : const Color(0xFF262626),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          widget.localeService.get('confirm_delete'),
+          style: TextStyle(
+            color: isLightMode ? Colors.black87 : Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          widget.localeService.get('delete_comment_confirm'),
+          style: TextStyle(
+            color: isLightMode ? Colors.black54 : Colors.grey[400],
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              widget.localeService.get('cancel'),
+              style: TextStyle(
+                color: isLightMode ? Colors.grey[600] : Colors.grey[400],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final userId = widget.authService.user!['id'].toString();
+              final deleted = await widget.commentService.deleteComment(
+                widget.comment['id'].toString(),
+                userId,
+              );
+              if (deleted) widget.onDelete();
+            },
+            child: Text(
+              widget.localeService.get('delete_comment'),
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _translateComment() async {
+    final isToxic = widget.comment['isToxic'] == true;
+    final textToTranslate = isToxic 
+        ? (widget.comment['censoredContent'] ?? widget.comment['content'] ?? '')
+        : (widget.comment['content'] ?? '');
+    
+    if (textToTranslate.toString().trim().isEmpty) return;
+    
+    // Translate TO user's current language (same as chat does)
+    final targetLang = widget.localeService.isVietnamese ? 'vi' : 'en';
+    
+    setState(() => _isTranslating = true);
+    
+    try {
+      final result = await MessageService().translateMessage(textToTranslate.toString(), targetLang);
+      
+      if (!mounted) return;
+      
+      if (result['success'] == true && result['translatedText'] != null) {
+        setState(() {
+          _translatedText = result['translatedText'].toString();
+          _isTranslated = true;
+          _isTranslating = false;
+        });
+      } else {
+        setState(() => _isTranslating = false);
+        if (mounted) {
+          AppSnackBar.showError(context, widget.localeService.get('translation_error'));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTranslating = false);
+        AppSnackBar.showError(context, widget.localeService.get('translation_error'));
+      }
+    }
   }
 
   void _showEditDialog() {
@@ -1403,18 +1620,90 @@ class _CommentItemState extends State<_CommentItem> with SingleTickerProviderSta
                           ],
                         ),
                         const SizedBox(height: 6),
-                        // Comment content: show censored or full based on isToxic + filter + _isCensored
+                        // Comment content: show translated, censored, or full
                         if ((widget.comment['content'] ?? '').toString().trim().isNotEmpty && 
-                            widget.comment['content'] != '📷') ...[  
-                          Text(
-                            (widget.comment['isToxic'] == true && widget.filterComments && _isCensored
-                                ? (widget.comment['censoredContent'] ?? widget.comment['content'] ?? '')
-                                : (widget.comment['content'] ?? '')
-                            ).toString(),
-                            style: TextStyle(
-                              color: widget.themeService.textPrimaryColor,
-                              fontSize: 14,
-                              height: 1.4,
+                            widget.comment['content'] != '📷') ...[
+                          if (_isTranslated && _translatedText != null)
+                            Text(
+                              _translatedText!,
+                              style: TextStyle(
+                                color: widget.themeService.textPrimaryColor,
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            )
+                          else
+                            Text(
+                              (widget.comment['isToxic'] == true && widget.filterComments && _isCensored
+                                  ? (widget.comment['censoredContent'] ?? widget.comment['content'] ?? '')
+                                  : (widget.comment['content'] ?? '')
+                              ).toString(),
+                              style: TextStyle(
+                                color: widget.themeService.textPrimaryColor,
+                                fontSize: 14,
+                                height: 1.4,
+                              ),
+                            ),
+                        ],
+                        // Translation indicator
+                        if (_isTranslating) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                widget.localeService.get('translating'),
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        if (_isTranslated && _translatedText != null) ...[
+                          const SizedBox(height: 4),
+                          GestureDetector(
+                            onTap: () => setState(() {
+                              _isTranslated = false;
+                              _translatedText = null;
+                            }),
+                            child: Row(
+                              children: [
+                                Icon(Icons.translate_rounded, size: 12, color: Colors.grey[500]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.localeService.get('translated'),
+                                  style: TextStyle(
+                                    color: Colors.grey[500],
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '·',
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.localeService.get('show_original'),
+                                  style: TextStyle(
+                                    color: const Color(0xFF4285F4),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -1718,6 +2007,11 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
   int _likeCount = 0;
   bool _isCensored = true;
   
+  // Translation state
+  bool _isTranslated = false;
+  String? _translatedText;
+  bool _isTranslating = false;
+  
   AnimationController? _likeAnimController;
   Animation<double>? _likeScaleAnimation;
 
@@ -1791,83 +2085,243 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: isLightMode ? Colors.white : const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isLightMode ? Colors.grey[400] : Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            if (isOwnComment && canEdit)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: CommentTheme.accent.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.edit_outlined, color: CommentTheme.accent),
-                ),
-                title: Text(
-                  widget.localeService.isVietnamese ? 'Chỉnh sửa' : 'Edit',
-                  style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showEditDialog();
-                },
-              ),
-            if (isOwnComment)
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                ),
-                title: Text(widget.localeService.get('delete_comment'), style: const TextStyle(color: Colors.red)),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final userId = widget.authService.user!['id'].toString();
-                  final deleted = await widget.commentService.deleteComment(
-                    widget.reply['id'].toString(),
-                    userId,
-                  );
-                  if (deleted) widget.onDelete();
-                },
-              ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+        decoration: BoxDecoration(
+          color: isLightMode ? Colors.white : const Color(0xFF262626),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 36,
+                height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: isLightMode ? Colors.grey[350] : Colors.grey[700],
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: const Icon(Icons.flag_outlined, color: Colors.orange),
               ),
-              title: Text(
-                widget.localeService.get('report'), 
-                style: TextStyle(color: isLightMode ? Colors.black87 : Colors.white),
+              // Copy
+              _buildOptionTile(
+                ctx: ctx,
+                icon: Icons.content_copy_rounded,
+                label: widget.localeService.get('copy_comment'),
+                iconColor: isLightMode ? Colors.grey[700]! : Colors.grey[300]!,
+                textColor: isLightMode ? Colors.black87 : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _copyReply();
+                },
               ),
-              onTap: () => Navigator.pop(context),
+              _optionDivider(isLightMode),
+              // Translate / See original
+              _buildOptionTile(
+                ctx: ctx,
+                icon: _isTranslated ? Icons.g_translate_rounded : Icons.translate_rounded,
+                label: _isTranslated
+                    ? widget.localeService.get('show_original')
+                    : widget.localeService.get('see_translation'),
+                iconColor: const Color(0xFF4285F4),
+                textColor: isLightMode ? Colors.black87 : Colors.white,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (_isTranslated) {
+                    setState(() {
+                      _isTranslated = false;
+                      _translatedText = null;
+                    });
+                  } else {
+                    _translateReply();
+                  }
+                },
+              ),
+              if (isOwnComment && canEdit) ...[
+                _optionDivider(isLightMode),
+                _buildOptionTile(
+                  ctx: ctx,
+                  icon: Icons.edit_rounded,
+                  label: widget.localeService.get('edit_reply'),
+                  iconColor: isLightMode ? Colors.grey[700]! : Colors.grey[300]!,
+                  textColor: isLightMode ? Colors.black87 : Colors.white,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showEditDialog();
+                  },
+                ),
+              ],
+              if (isOwnComment) ...[
+                _optionDivider(isLightMode),
+                _buildOptionTile(
+                  ctx: ctx,
+                  icon: Icons.delete_outline_rounded,
+                  label: widget.localeService.get('delete_comment'),
+                  iconColor: Colors.red,
+                  textColor: Colors.red,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmDelete();
+                  },
+                ),
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOptionTile({
+    required BuildContext ctx,
+    required IconData icon,
+    required String label,
+    required Color iconColor,
+    required Color textColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: iconColor),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+              ),
             ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
     );
+  }
+
+  Widget _optionDivider(bool isLightMode) {
+    return Divider(
+      height: 1,
+      thickness: 0.5,
+      indent: 20,
+      endIndent: 20,
+      color: isLightMode ? Colors.grey[200] : Colors.grey[800],
+    );
+  }
+
+  void _copyReply() {
+    final isToxic = widget.reply['isToxic'] == true;
+    final originalText = isToxic && widget.filterComments && _isCensored
+        ? (widget.reply['censoredContent'] ?? widget.reply['content'] ?? '')
+        : (widget.reply['content'] ?? '');
+    final textToCopy = _isTranslated && _translatedText != null
+        ? _translatedText!
+        : originalText.toString();
+    
+    Clipboard.setData(ClipboardData(text: textToCopy));
+    AppSnackBar.showSuccess(context, widget.localeService.get('comment_copied'));
+  }
+
+  void _confirmDelete() {
+    final isLightMode = widget.themeService.isLightMode;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isLightMode ? Colors.white : const Color(0xFF262626),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          widget.localeService.get('confirm_delete'),
+          style: TextStyle(
+            color: isLightMode ? Colors.black87 : Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          widget.localeService.get('delete_reply_confirm'),
+          style: TextStyle(
+            color: isLightMode ? Colors.black54 : Colors.grey[400],
+            fontSize: 14,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              widget.localeService.get('cancel'),
+              style: TextStyle(
+                color: isLightMode ? Colors.grey[600] : Colors.grey[400],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final userId = widget.authService.user!['id'].toString();
+              final deleted = await widget.commentService.deleteComment(
+                widget.reply['id'].toString(),
+                userId,
+              );
+              if (deleted) widget.onDelete();
+            },
+            child: Text(
+              widget.localeService.get('delete_comment'),
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _translateReply() async {
+    final isToxic = widget.reply['isToxic'] == true;
+    final textToTranslate = isToxic 
+        ? (widget.reply['censoredContent'] ?? widget.reply['content'] ?? '')
+        : (widget.reply['content'] ?? '');
+    
+    if (textToTranslate.toString().trim().isEmpty) return;
+    
+    // Translate TO user's current language (same as chat does)
+    final targetLang = widget.localeService.isVietnamese ? 'vi' : 'en';
+    
+    setState(() => _isTranslating = true);
+    
+    try {
+      final result = await MessageService().translateMessage(textToTranslate.toString(), targetLang);
+      
+      if (!mounted) return;
+      
+      if (result['success'] == true && result['translatedText'] != null) {
+        setState(() {
+          _translatedText = result['translatedText'].toString();
+          _isTranslated = true;
+          _isTranslating = false;
+        });
+      } else {
+        setState(() => _isTranslating = false);
+        if (mounted) {
+          AppSnackBar.showError(context, widget.localeService.get('translation_error'));
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTranslating = false);
+        AppSnackBar.showError(context, widget.localeService.get('translation_error'));
+      }
+    }
   }
 
   void _showEditDialog() {
@@ -2078,13 +2532,78 @@ class _ReplyItemState extends State<_ReplyItem> with SingleTickerProviderStateMi
                       ],
                     ),
                     const SizedBox(height: 5),
-                    // Reply content: show censored or full
-                    _buildReplyContent(
-                      (widget.reply['isToxic'] == true && widget.filterComments && _isCensored
-                          ? (widget.reply['censoredContent'] ?? widget.reply['content'] ?? '')
-                          : (widget.reply['content'] ?? '')
-                      ).toString(),
-                    ),
+                    // Reply content: show translated, censored, or full
+                    if (_isTranslated && _translatedText != null)
+                      _buildReplyContent(_translatedText!)
+                    else
+                      _buildReplyContent(
+                        (widget.reply['isToxic'] == true && widget.filterComments && _isCensored
+                            ? (widget.reply['censoredContent'] ?? widget.reply['content'] ?? '')
+                            : (widget.reply['content'] ?? '')
+                        ).toString(),
+                      ),
+                    // Translation indicator
+                    if (_isTranslating) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 9,
+                            height: 9,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            widget.localeService.get('translating'),
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 10,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (_isTranslated && _translatedText != null) ...[
+                      const SizedBox(height: 3),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _isTranslated = false;
+                          _translatedText = null;
+                        }),
+                        child: Row(
+                          children: [
+                            Icon(Icons.translate_rounded, size: 11, color: Colors.grey[500]),
+                            const SizedBox(width: 3),
+                            Text(
+                              widget.localeService.get('translated'),
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 10,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '·',
+                              style: TextStyle(color: Colors.grey[500], fontSize: 10),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              widget.localeService.get('show_original'),
+                              style: TextStyle(
+                                color: const Color(0xFF4285F4),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     // Toxic warning + reveal/hide toggle
                     if (widget.reply['isToxic'] == true && widget.filterComments) ...[
                       const SizedBox(height: 3),

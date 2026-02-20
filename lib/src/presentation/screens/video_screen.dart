@@ -72,8 +72,13 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   Map<String, bool> _videoAllowComments = {};
   Map<String, bool> _videoAllowDuet = {};
   
+  // Track owner-level comment disabled (whoCanComment = noOne)
+  Map<String, bool> _ownerCommentDisabled = {};
+  
   // Track follow status for each user
   Map<String, bool> _followStatus = {};
+  // Track requested (pending) status for follow approval
+  Map<String, bool> _requestedStatus = {};
   
   // Track save status for each video
   Map<String, bool> _saveStatus = {};
@@ -121,6 +126,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   double _playbackSpeed = 1.0;
   bool _autoScroll = false;
   bool _autoScrollTriggered = false; // Prevent duplicate triggers
+  bool _isHideToggling = false; // Prevent rapid hide/unhide race condition
 
   /// Public: whether the current feed tab is "For You" (đề xuất)
   bool get isOnForYouTab => _selectedFeedTab == 2;
@@ -270,10 +276,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   
   void _onAuthChanged() {
     print('VideoScreen: Auth state changed - reloading videos');
+    // Clear like/save cache on auth change so stale state isn't shown
+    LikeService.clearCache();
+    SavedVideoService.clearCache();
     // Clear caches and reload
     _likeStatus.clear();
     _saveStatus.clear();
     _followStatus.clear();
+    _requestedStatus.clear();
     _forYouVideos.clear();
     _followingVideos.clear();
     _friendsVideos.clear();
@@ -372,6 +382,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     _likeCounts.clear();
     _commentCounts.clear();
     _followStatus.clear();
+    _requestedStatus.clear();
     _currentVideoPlayerState = null;
     super.dispose();
   }
@@ -626,9 +637,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
       _videoAllowComments[videoId] = video['allowComments'] ?? true;
       _videoAllowDuet[videoId] = video['allowDuet'] ?? true;
       
-      // Set default values - NOT logged in defaults to false
-      _likeStatus[videoId] = false;
-      _saveStatus[videoId] = false;
+      // Seed from cache so heart/bookmark shows correct immediately; fallback to payload or false
+      _likeStatus[videoId] = _likeService.getCached(videoId) ?? (video['isLiked'] == true ? true : false);
+      _likeCounts[videoId] = _likeService.getCachedCount(videoId) ?? _parseIntSafe(video['likeCount']);
+      _saveStatus[videoId] = _savedVideoService.getCached(videoId) ?? false;
+      _saveCounts[videoId] = _savedVideoService.getCachedCount(videoId) ?? _parseIntSafe(video['saveCount']);
     }
 
     // IMPORTANT: Update UI immediately with default values
@@ -657,7 +670,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
               print('Video $videoId liked: $isLiked');
             }).catchError((e) {
               print('Error checking like status for $videoId: $e');
-              _likeStatus[videoId] = false;
+              // keep cache seed on error - don't override with false
             })
           );
           
@@ -668,7 +681,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
               print('Video $videoId saved: $isSaved');
             }).catchError((e) {
               print('Error checking save status for $videoId: $e');
-              _saveStatus[videoId] = false;
+              // keep cache seed on error - don't override with false
             })
           );
         }
@@ -703,10 +716,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         final videoOwnerId = int.tryParse(video['userId'].toString());
         if (videoOwnerId != null && videoOwnerId != currentUserId) {
           followFutures.add(
-            _followService.isFollowing(currentUserId, videoOwnerId).then((isFollowing) {
-              _followStatus[videoOwnerId.toString()] = isFollowing;
+            _followService.getFollowStatus(currentUserId, videoOwnerId).then((status) {
+              _followStatus[videoOwnerId.toString()] = status == 'following';
+              _requestedStatus[videoOwnerId.toString()] = status == 'pending';
             }).catchError((e) {
               _followStatus[videoOwnerId.toString()] = false;
+              _requestedStatus[videoOwnerId.toString()] = false;
             })
           );
         }
@@ -719,6 +734,15 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         setState(() {});
       }
     }
+
+    // Populate owner-level whoCanComment from video response data (no extra API call)
+    for (var video in readyVideos) {
+      if (video == null || video['userId'] == null) continue;
+      final ownerId = video['userId'].toString();
+      if (_ownerCommentDisabled.containsKey(ownerId)) continue;
+      final whoCanComment = video['ownerWhoCanComment'] ?? 'everyone';
+      _ownerCommentDisabled[ownerId] = (whoCanComment == 'noOne' || whoCanComment == 'onlyMe');
+    }
   }
 
   // Add helper method to safely parse int
@@ -727,6 +751,14 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     if (value is int) return value;
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
+  }
+
+  /// Check if comments are effectively enabled for a video
+  /// Combines per-video allowComments AND owner-level whoCanComment
+  bool _isCommentsEffectivelyEnabled(String videoId, String? ownerId) {
+    final perVideo = _videoAllowComments[videoId] ?? true;
+    final ownerDisabled = ownerId != null ? (_ownerCommentDisabled[ownerId] ?? false) : false;
+    return perVideo && !ownerDisabled;
   }
 
   IconData _getVisibilityIcon(String visibility) {
@@ -933,26 +965,35 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     
     final result = await _followService.toggleFollow(currentUserId, videoOwnerId);
     final isNowFollowing = result['following'] ?? false;
+    final isRequested = result['requested'] ?? false;
 
     if (mounted) {
       setState(() {
         _followStatus[videoOwnerId.toString()] = isNowFollowing;
+        _requestedStatus[videoOwnerId.toString()] = isRequested;
       });
       
-      print('${isNowFollowing ? '✅' : '❌'} Follow toggled - Status: $isNowFollowing');
+      print('${isNowFollowing ? '✅' : isRequested ? '⏳' : '❌'} Follow toggled - Following: $isNowFollowing, Requested: $isRequested');
       // Videos stay visible — they are only removed on next feed refresh/reload
     }
   }
   
   /// Build context-aware follow/friend button based on current feed tab
   Widget _buildFollowButton(int videoOwnerId, bool isFollowing, int videoIndex) {
+    final isRequested = _requestedStatus[videoOwnerId.toString()] ?? false;
     // Determine button text and style based on tab context
     String buttonText;
     Color borderColor;
     Color textColor;
     IconData? icon;
     
-    if (_selectedFeedTab == 1 && isFollowing) {
+    if (isRequested) {
+      // Pending follow request
+      buttonText = _localeService.get('requested');
+      borderColor = Colors.orange.withValues(alpha: 0.7);
+      textColor = Colors.orange.withValues(alpha: 0.9);
+      icon = Icons.hourglass_top_rounded;
+    } else if (_selectedFeedTab == 1 && isFollowing) {
       // Friends tab — mutual friends, show "Bạn bè" with icon
       buttonText = _localeService.isVietnamese ? 'Bạn bè' : 'Friends';
       borderColor = Colors.grey[600]!;
@@ -1181,9 +1222,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
             builder: (context) => VideoPrivacySheet(
               videoId: videoId,
               userId: userId,
-              currentVisibility: _videoVisibility[videoId] ?? 'public',
-              allowComments: _videoAllowComments[videoId] ?? true,
+              currentVisibility: video['isHidden'] == true ? 'private' : (_videoVisibility[videoId] ?? 'public'),
+              allowComments: video['isHidden'] == true ? false : (_videoAllowComments[videoId] ?? true),
               allowDuet: _videoAllowDuet[videoId] ?? true,
+              isHidden: video['isHidden'] == true,
               onChanged: (visibility, allowComments, allowDuet) {
                 if (mounted) {
                   setState(() {
@@ -1193,6 +1235,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                     video['visibility'] = visibility;
                     video['allowComments'] = allowComments;
                     video['allowDuet'] = allowDuet;
+                    // Sync: if visibility changed from private, auto-unhide
+                    if (visibility != 'private' && video['isHidden'] == true) {
+                      video['isHidden'] = false;
+                    }
                   });
                 }
               },
@@ -1200,22 +1246,36 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
           );
         },
         onHideTap: () async {
+          if (_isHideToggling) return; // Prevent race condition
+          _isHideToggling = true;
           final isHidden = video['isHidden'] ?? false;
           try {
             final result = await _videoService.toggleHideVideo(videoId, userId);
             if (result['success'] == true && mounted) {
+              final newIsHidden = result['isHidden'] ?? !isHidden;
               setState(() {
-                video['isHidden'] = result['isHidden'] ?? !isHidden;
+                video['isHidden'] = newIsHidden;
+                // Sync privacy state from backend response
+                if (result['visibility'] != null) {
+                  video['visibility'] = result['visibility'];
+                  _videoVisibility[videoId] = result['visibility'];
+                }
+                if (result['allowComments'] != null) {
+                  video['allowComments'] = result['allowComments'];
+                  _videoAllowComments[videoId] = result['allowComments'] == true;
+                }
               });
               AppSnackBar.showSuccess(
                 context,
-                result['isHidden'] == true
+                newIsHidden
                     ? (_localeService.isVietnamese ? 'Đã ẩn video' : 'Video hidden')
                     : (_localeService.isVietnamese ? 'Đã hiện video' : 'Video visible'),
               );
             }
           } catch (e) {
             print('Error toggling video visibility: $e');
+          } finally {
+            _isHideToggling = false;
           }
         },
         onDeleteTap: () {
@@ -1528,14 +1588,19 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
                           builder: (context) => VideoPrivacySheet(
                             videoId: videoId,
                             userId: userId!,
-                            currentVisibility: _videoVisibility[videoId] ?? 'public',
-                            allowComments: _videoAllowComments[videoId] ?? true,
+                            currentVisibility: video['isHidden'] == true ? 'private' : (_videoVisibility[videoId] ?? 'public'),
+                            allowComments: video['isHidden'] == true ? false : (_videoAllowComments[videoId] ?? true),
                             allowDuet: _videoAllowDuet[videoId] ?? true,
+                            isHidden: video['isHidden'] == true,
                             onChanged: (visibility, allowComments, allowDuet) {
                               setState(() {
                                 _videoVisibility[videoId] = visibility;
                                 _videoAllowComments[videoId] = allowComments;
                                 _videoAllowDuet[videoId] = allowDuet;
+                                // Sync: if visibility changed from private, auto-unhide
+                                if (visibility != 'private' && video['isHidden'] == true) {
+                                  video['isHidden'] = false;
+                                }
                               });
                             },
                           ),
@@ -1646,6 +1711,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
   
   /// Build video controls (like, comment, share, etc.)
   Widget _buildVideoControls(dynamic video, String videoId, String? userId) {
+    final commentsEnabled = _isCommentsEffectivelyEnabled(videoId, userId);
     return GestureDetector(
       onTap: () {},
       behavior: HitTestBehavior.opaque,
@@ -1659,7 +1725,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         isLiked: _likeStatus[videoId] ?? false,
         isSaved: _saveStatus[videoId] ?? false,
         likeCount: _formatCount(_likeCounts[videoId] ?? 0),
-        commentCount: (_videoAllowComments[videoId] ?? true) 
+        commentCount: commentsEnabled 
             ? _formatCount(_commentCounts[videoId] ?? 0) 
             : '',
         saveCount: _formatCount(_saveCounts[videoId] ?? 0),
@@ -1673,7 +1739,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
               child: CommentSectionWidget(
                 videoId: videoId,
                 videoOwnerId: userId,
-                allowComments: _videoAllowComments[videoId] ?? true,
+                allowComments: commentsEnabled,
                 onCommentAdded: () async {
                   final count = await _commentService.getCommentCount(videoId);
                   if (mounted) setState(() => _commentCounts[videoId] = count);
@@ -1884,10 +1950,11 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     // Re-check follow status for each owner
     for (final ownerId in ownerIds) {
       try {
-        final isFollowing = await _followService.isFollowing(currentUserId, ownerId);
+        final status = await _followService.getFollowStatus(currentUserId, ownerId);
         if (mounted) {
           setState(() {
-            _followStatus[ownerId.toString()] = isFollowing;
+            _followStatus[ownerId.toString()] = status == 'following';
+            _requestedStatus[ownerId.toString()] = status == 'pending';
           });
         }
       } catch (e) {

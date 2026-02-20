@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 
 class VideoPrivacySheet extends StatefulWidget {
@@ -10,6 +12,7 @@ class VideoPrivacySheet extends StatefulWidget {
   final String currentVisibility; // 'public', 'friends', 'private'
   final bool allowComments;
   final bool allowDuet;
+  final bool isHidden;
   final Function(String visibility, bool allowComments, bool allowDuet)? onChanged;
 
   const VideoPrivacySheet({
@@ -19,6 +22,7 @@ class VideoPrivacySheet extends StatefulWidget {
     this.currentVisibility = 'public',
     this.allowComments = true,
     this.allowDuet = true,
+    this.isHidden = false,
     this.onChanged,
   });
 
@@ -30,11 +34,13 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
   final VideoService _videoService = VideoService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final ApiService _apiService = ApiService();
   
   late String _selectedVisibility;
   late bool _allowComments;
   late bool _allowDuet;
   bool _isUpdating = false;
+  String _globalWhoCanComment = 'everyone'; // User's global comment privacy setting
 
   @override
   void initState() {
@@ -43,6 +49,7 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
     _allowComments = widget.allowComments;
     _allowDuet = widget.allowDuet;
     _themeService.addListener(_onThemeChanged);
+    _loadGlobalCommentSetting();
   }
 
   @override
@@ -53,6 +60,19 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadGlobalCommentSetting() async {
+    try {
+      final settings = await _apiService.getPrivacySettings(widget.userId);
+      if (mounted && settings['whoCanComment'] != null) {
+        setState(() {
+          _globalWhoCanComment = settings['whoCanComment'] as String;
+        });
+      }
+    } catch (e) {
+      // Keep default 'everyone'
+    }
   }
 
   bool get _hasChanges =>
@@ -248,6 +268,35 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
             
             Divider(color: _themeService.dividerColor, height: 1),
             
+            // [INFO] Show banner when video is currently hidden
+            if (widget.isHidden && _selectedVisibility != 'private')
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9500).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFFF9500).withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Color(0xFFFF9500), size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _localeService.isVietnamese
+                            ? 'Video đang bị ẩn. Đổi sang "${_selectedVisibility == 'public' ? 'Mọi người' : 'Bạn bè'}" sẽ tự động hiện video.'
+                            : 'Video is currently hidden. Changing to "${_selectedVisibility == 'public' ? 'Everyone' : 'Friends'}" will automatically unhide it.',
+                        style: TextStyle(
+                          color: _themeService.textPrimaryColor,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
             // Visibility section
             Padding(
               padding: const EdgeInsets.all(16),
@@ -298,6 +347,15 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
                   // Allow comments toggle
                   _buildToggleOption(
                     label: _localeService.isVietnamese ? 'Cho phép bình luận' : 'Allow comments',
+                    subtitle: _globalWhoCanComment == 'noOne'
+                        ? (_localeService.isVietnamese
+                            ? 'Bạn đã tắt bình luận ở cài đặt quyền riêng tư chung. Cài đặt này sẽ bị ghi đè.'
+                            : 'You disabled comments in global privacy settings. This setting will be overridden.')
+                        : _globalWhoCanComment == 'friends'
+                            ? (_localeService.isVietnamese
+                                ? 'Chỉ bạn bè mới có thể bình luận theo cài đặt quyền riêng tư chung.'
+                                : 'Only friends can comment based on your global privacy settings.')
+                            : null,
                     value: _allowComments,
                     onChanged: (v) => setState(() => _allowComments = v),
                   ),
@@ -455,13 +513,12 @@ class _VideoPrivacySheetState extends State<VideoPrivacySheet> {
               ],
             ),
           ),
-          Switch(
+          CupertinoSwitch(
             value: value,
             onChanged: onChanged,
-            activeColor: Colors.white,
             activeTrackColor: const Color(0xFF34C759),
-            inactiveThumbColor: Colors.white,
-            inactiveTrackColor: _themeService.switchInactiveTrackColor,
+            thumbColor: Colors.white,
+            trackColor: _themeService.switchInactiveTrackColor,
           ),
         ],
       ),

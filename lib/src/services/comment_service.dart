@@ -58,8 +58,14 @@ class CommentService {
         if (response.statusCode == 201 || response.statusCode == 200) {
           return json.decode(response.body);
         }
-        print('Failed to create comment with image: ${response.statusCode}');
-        return null;
+        // Parse error message from backend
+        try {
+          final errorBody = json.decode(response.body);
+          throw Exception(errorBody['message'] ?? 'Không thể gửi bình luận');
+        } catch (e) {
+          if (e is Exception && e.toString().contains('Exception:')) rethrow;
+          throw Exception('Không thể gửi bình luận');
+        }
       } else {
         // Regular JSON request without image
         final response = await http.post(
@@ -76,7 +82,14 @@ class CommentService {
         if (response.statusCode == 201 || response.statusCode == 200) {
           return json.decode(response.body);
         }
-        return null;
+        // Parse error message from backend
+        try {
+          final errorBody = json.decode(response.body);
+          throw Exception(errorBody['message'] ?? 'Không thể gửi bình luận');
+        } catch (e) {
+          if (e is Exception && e.toString().contains('Exception:')) rethrow;
+          throw Exception('Không thể gửi bình luận');
+        }
       }
     } catch (e) {
       print('Error creating comment: $e');

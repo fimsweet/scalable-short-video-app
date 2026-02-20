@@ -115,8 +115,8 @@ class AuthService {
     
     // Register FCM token for push notifications
     try {
-      await FcmService().registerToken();
-      print('FCM token registered');
+      final fcmRegistered = await FcmService().registerToken();
+      print('FCM token registration: ${fcmRegistered ? 'SUCCESS' : 'FAILED'}');
     } catch (e) {
       print('Failed to register FCM token: $e');
     }
@@ -214,8 +214,8 @@ class AuthService {
       
       // Register FCM token for push notifications
       try {
-        await FcmService().registerToken();
-        print('FCM token registered after auto-login');
+        final fcmRegistered = await FcmService().registerToken();
+        print('FCM token registration after auto-login: ${fcmRegistered ? 'SUCCESS' : 'FAILED'}');
       } catch (e) {
         print('Failed to register FCM token: $e');
       }
@@ -297,6 +297,20 @@ class AuthService {
     }
     
     print('Username updated in AuthService: $username');
+  }
+
+  /// Update phone number in local storage and memory
+  Future<void> updatePhoneNumber(String? phoneNumber) async {
+    await _storage.write(key: 'phoneNumber', value: phoneNumber);
+    
+    // Update in-memory user object
+    if (_user != null) {
+      _user!['phoneNumber'] = phoneNumber;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user', json.encode(_user));
+    }
+    
+    print('PhoneNumber updated in AuthService: $phoneNumber');
   }
 
   // ============= Google OAuth Methods =============

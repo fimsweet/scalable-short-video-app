@@ -49,6 +49,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // GlobalKey to access VideoScreenState for refresh
   GlobalKey<VideoScreenState> _videoScreenKey = GlobalKey<VideoScreenState>();
 
+  // Incremented every time the profile tab is selected to trigger data refresh
+  int _profileRefreshTrigger = 0;
+
   // Whether home feed is currently refreshing (shows loading icon)
   bool _isRefreshingFeed = false;
 
@@ -62,7 +65,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   void switchToProfileTab() {
     _videoPlaybackService.setVideoTabInvisible();
     setState(() {
-      _selectedIndex = 1; // Profile tab index
+      _selectedIndex = 1;
+      _profileRefreshTrigger++;
     });
   }
 
@@ -302,13 +306,23 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _navigateToVideoFromBanner(InAppNotification notification) async {
     try {
       final video = await VideoService().getVideoById(notification.videoId!);
-      if (video != null && mounted) {
+      if (video != null && video['isHidden'] != true && mounted) {
         NavigationUtils.slideToScreen(
           context,
           VideoDetailScreen(
             videos: [video],
             initialIndex: 0,
             openCommentsOnLoad: notification.type == InAppNotificationType.comment,
+          ),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              LocaleService().isVietnamese 
+                  ? 'Video không khả dụng hoặc đã bị xóa'
+                  : 'Video is unavailable or has been deleted',
+            ),
           ),
         );
       }
@@ -359,6 +373,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       _fcmService.clearNotifications();
       // Reconnect WebSocket + resume heartbeat when app comes to foreground
       _connectOnlineStatus();
+      // Re-register FCM token to ensure it's fresh (tokens can become stale)
+      if (_authService.isLoggedIn) {
+        _fcmService.registerToken();
+      }
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       // Stop heartbeat when app goes to background (socket auto-disconnects on kill)
       _heartbeatTimer?.cancel();
@@ -375,7 +393,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           // VideoScreen uses GlobalKey to access state for refresh
           VideoScreen(key: _videoScreenKey),
           // ProfileScreen can be rebuilt when auth changes
-          ProfileScreen(key: ValueKey('profile_screen_$_rebuildKey')),
+          ProfileScreen(
+            key: ValueKey('profile_screen_$_rebuildKey'),
+            refreshTrigger: _profileRefreshTrigger,
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -447,7 +468,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
               } else if (index == 2) {
                 // Switching to Profile tab - pause video via service
                 _videoPlaybackService.setVideoTabInvisible();
-                setState(() => _selectedIndex = 1);
+                setState(() {
+                  _selectedIndex = 1;
+                  _profileRefreshTrigger++;
+                });
               } else {
                 if (_selectedIndex == 0) {
                   // Already on feed — spin home icon & refresh feed
@@ -502,6 +526,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       setState(() {
         _rebuildKey++;
         _selectedIndex = 1;
+        _profileRefreshTrigger++;
       });
     } else if (_selectedIndex == 0) {
       // Resume video if we're back on video tab

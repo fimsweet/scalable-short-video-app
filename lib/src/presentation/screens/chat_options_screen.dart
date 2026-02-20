@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -58,7 +59,6 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
   bool _isMuted = false;
   bool _isBlocked = false;
   bool _isLoading = true;
-  bool _isRecipientOnline = false;
   bool _isAutoTranslate = false;
   
   // Chat customization
@@ -123,16 +123,11 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
         isBlocked = await _apiService.isUserBlocked(currentUser['id'].toString(), widget.recipientId);
       }
       
-      // Check online status
-      final onlineStatus = await _apiService.getOnlineStatus(widget.recipientId);
-      final isOnline = onlineStatus['isOnline'] == true;
-      
       if (mounted) {
         setState(() {
           _isMuted = settings['isMuted'] ?? false;
           _isBlocked = isBlocked;
           _nickname = settings['nickname'];
-          _isRecipientOnline = isOnline;
           _isAutoTranslate = settings['autoTranslate'] ?? false;
           // Parse theme color if saved
           final themeColorId = settings['themeColor'];
@@ -256,13 +251,12 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
           ),
           Transform.scale(
             scale: 0.8,
-            child: Switch.adaptive(
+            child: CupertinoSwitch(
               value: _isAutoTranslate,
               onChanged: _toggleAutoTranslate,
-              activeColor: Colors.teal,
-              activeTrackColor: Colors.teal.withOpacity(0.3),
-              inactiveThumbColor: _themeService.textSecondaryColor,
-              inactiveTrackColor: _themeService.dividerColor,
+              activeTrackColor: Colors.teal,
+              thumbColor: Colors.white,
+              trackColor: _themeService.switchInactiveTrackColor,
             ),
           ),
         ],
@@ -925,21 +919,7 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
                 ),
               ),
             ),
-            Positioned(
-              bottom: 4,
-              right: 4,
-              child: _isRecipientOnline 
-                ? Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: _themeService.backgroundColor, width: 3),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-            ),
+
           ],
         ),
         const SizedBox(height: 16),

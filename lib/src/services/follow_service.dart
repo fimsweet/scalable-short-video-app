@@ -232,6 +232,28 @@ class FollowService {
     }
   }
 
+  /// Check if requester can view target user's followers/following/liked list
+  /// Returns { allowed: bool, reason?: string }
+  Future<Map<String, dynamic>> checkListPrivacy({
+    required int targetUserId,
+    required int requesterId,
+    required String listType, // 'followers', 'following', or 'likedVideos'
+  }) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/check-list-privacy/$targetUserId?requesterId=$requesterId&listType=$listType'),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'allowed': false, 'reason': 'Error checking privacy'};
+    } catch (e) {
+      print('Error checking list privacy: $e');
+      return {'allowed': false, 'reason': 'Error checking privacy'};
+    }
+  }
+
   /// Get suggested users to follow
   /// Returns users based on mutual friends, similar taste, liked content, popularity, etc.
   Future<List<SuggestedUser>> getSuggestions(int userId, {int limit = 15}) async {
@@ -252,6 +274,105 @@ class FollowService {
     } catch (e) {
       print('Error getting suggestions: $e');
       return [];
+    }
+  }
+
+  /// Get follow status between two users
+  /// Returns: 'none', 'pending', 'following'
+  Future<String> getFollowStatus(int followerId, int followingId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/status/$followerId/$followingId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['status'] ?? 'none';
+      }
+      return 'none';
+    } catch (e) {
+      print('Error getting follow status: $e');
+      return 'none';
+    }
+  }
+
+  /// Get pending incoming follow requests for a user (paginated)
+  Future<Map<String, dynamic>> getPendingRequests(int userId, {int limit = 20, int offset = 0}) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/pending-requests/$userId?limit=$limit&offset=$offset'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'data': List<Map<String, dynamic>>.from(data['data'] ?? []),
+          'hasMore': data['hasMore'] ?? false,
+          'total': data['total'] ?? 0,
+        };
+      }
+      return {'data': [], 'hasMore': false, 'total': 0};
+    } catch (e) {
+      print('Error getting pending requests: $e');
+      return {'data': [], 'hasMore': false, 'total': 0};
+    }
+  }
+
+  /// Get count of pending follow requests
+  Future<int> getPendingRequestCount(int userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_baseUrl/follows/pending-count/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['count'] ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      print('Error getting pending count: $e');
+      return 0;
+    }
+  }
+
+  /// Approve a follow request
+  Future<bool> approveFollowRequest(int followerId, int followingId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/follows/approve'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'followerId': followerId, 'followingId': followingId}),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['success'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      print('Error approving follow request: $e');
+      return false;
+    }
+  }
+
+  /// Reject a follow request
+  Future<bool> rejectFollowRequest(int followerId, int followingId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/follows/reject'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'followerId': followerId, 'followingId': followingId}),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['success'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      print('Error rejecting follow request: $e');
+      return false;
     }
   }
 }

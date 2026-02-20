@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
@@ -6,8 +7,10 @@ import 'package:scalable_short_video_app/src/services/follow_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/like_service.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_screen.dart';
+import 'package:scalable_short_video_app/src/presentation/screens/follower_following_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -25,35 +28,84 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   final VideoService _videoService = VideoService();
   final ThemeService _themeService = ThemeService();
   final LocaleService _localeService = LocaleService();
+  final LikeService _likeService = LikeService();
 
   Map<String, dynamic>? _userInfo;
   bool _isLoading = true;
   bool _isFollowing = false;
   bool _isMutual = false;
+  bool _isRequested = false;
   bool _isProcessing = false;
   bool _isBlocked = false;
   bool _isDeactivated = false;
   int _followerCount = 0;
   int _followingCount = 0;
+  int _totalReceivedLikes = 0;
   List<dynamic> _userVideos = [];
   bool _isPrivacyRestricted = false;
   String? _privacyReason;
+  bool _isOnline = false;
+  Timer? _onlineStatusTimer;
 
   @override
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    LikeService.likeChangeNotifier.addListener(_onLikeChanged);
     _loadUserData();
+    // Periodically refresh online status every 15 seconds
+    _onlineStatusTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _refreshOnlineStatus();
+    });
   }
 
   @override
   void dispose() {
+    _onlineStatusTimer?.cancel();
     _themeService.removeListener(_onThemeChanged);
+    LikeService.likeChangeNotifier.removeListener(_onLikeChanged);
     super.dispose();
+  }
+
+  Future<void> _refreshOnlineStatus() async {
+    try {
+      final requesterId = _authService.isLoggedIn && _authService.user != null
+          ? _authService.user!['id'].toString()
+          : null;
+      final onlineResult = await _apiService.getOnlineStatus(
+        widget.userId.toString(),
+        requesterId: requesterId,
+      );
+      final isOnline = onlineResult['isOnline'] == true;
+      if (mounted && isOnline != _isOnline) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error refreshing online status: $e');
+    }
   }
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onLikeChanged() {
+    _refreshReceivedLikes();
+  }
+
+  Future<void> _refreshReceivedLikes() async {
+    try {
+      final count = await _likeService.getTotalReceivedLikes(widget.userId.toString());
+      if (mounted) {
+        setState(() {
+          _totalReceivedLikes = count;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error refreshing received likes: $e');
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -65,6 +117,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       
       // Load follow stats
       final stats = await _followService.getStats(widget.userId);
+
+      // Load total received likes
+      final receivedLikes = await _likeService.getTotalReceivedLikes(widget.userId.toString());
       
       // Load user videos with privacy check
       final currentUserId = _authService.isLoggedIn && _authService.user != null
@@ -81,8 +136,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // Check follow status and block status
       if (_authService.isLoggedIn && _authService.user != null) {
         final currentUserId = _authService.user!['id'] as int;
-        final isFollowing = await _followService.isFollowing(currentUserId, widget.userId);
-        final isMutual = await _followService.isMutualFollow(currentUserId, widget.userId);
+        final followStatus = await _followService.getFollowStatus(currentUserId, widget.userId);
+        final isFollowing = followStatus == 'following';
+        final isRequested = followStatus == 'pending';
+        final isMutual = isFollowing ? await _followService.isMutualFollow(currentUserId, widget.userId) : false;
         
         // Safely check blocked status with fallback
         bool isBlocked = false;
@@ -99,9 +156,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           setState(() {
             _isFollowing = isFollowing;
             _isMutual = isMutual;
+            _isRequested = isRequested;
             _isBlocked = isBlocked;
           });
         }
+      }
+
+      // Fetch online status (respects target user's showOnlineStatus setting)
+      bool isOnline = false;
+      try {
+        final requesterId = _authService.isLoggedIn && _authService.user != null
+            ? _authService.user!['id'].toString()
+            : null;
+        final onlineResult = await _apiService.getOnlineStatus(
+          widget.userId.toString(),
+          requesterId: requesterId,
+        );
+        isOnline = onlineResult['isOnline'] == true;
+      } catch (e) {
+        debugPrint('Error fetching online status: $e');
       }
 
       if (mounted) {
@@ -110,9 +183,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           _isDeactivated = userInfo?['isDeactivated'] == true;
           _followerCount = stats['followerCount'] ?? 0;
           _followingCount = stats['followingCount'] ?? 0;
+          _totalReceivedLikes = receivedLikes;
           _userVideos = videos;
           _isPrivacyRestricted = privacyRestricted;
           _privacyReason = privacyReason;
+          _isOnline = isOnline;
           _isLoading = false;
         });
       }
@@ -140,15 +215,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final result = await _followService.toggleFollow(currentUserId, widget.userId);
 
     if (mounted) {
-      final newFollowing = result['following'] ?? false;
+      final status = result['status'] ?? 'none';
+      final newFollowing = status == 'accepted';
+      final newRequested = status == 'pending';
       final isMutual = newFollowing 
           ? await _followService.isMutualFollow(currentUserId, widget.userId)
           : false;
       
+      final wasFollowing = _isFollowing;
       setState(() {
         _isFollowing = newFollowing;
+        _isRequested = newRequested;
         _isMutual = isMutual;
-        _followerCount += newFollowing ? 1 : -1;
+        // Only update follower count for actual follow/unfollow (not pending)
+        if (newFollowing && !wasFollowing) {
+          _followerCount += 1;
+        } else if (!newFollowing && wasFollowing) {
+          _followerCount -= 1;
+        }
         _isProcessing = false;
       });
     }
@@ -365,10 +449,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       if (success) {
         setState(() {
           _isBlocked = !_isBlocked;
-          // If blocking, also unfollow
-          if (_isBlocked && _isFollowing) {
+          // If blocking, also unfollow and cancel request
+          if (_isBlocked && (_isFollowing || _isRequested)) {
             _isFollowing = false;
-            _followerCount--;
+            _isRequested = false;
+            if (_isFollowing) _followerCount--;
           }
         });
         
@@ -449,31 +534,55 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 )
               : DefaultTabController(
                   length: 1,
-                  child: NestedScrollView(
+                  child: RefreshIndicator(
+                    onRefresh: _loadUserData,
+                    color: const Color(0xFFFF2D55),
+                    child: NestedScrollView(
                     headerSliverBuilder: (context, _) => [
                       SliverToBoxAdapter(
                         child: Column(
                           children: [
                             const SizedBox(height: 20),
-                            // Avatar
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[900]!,
-                                  width: 1,
+                            // Avatar with online status
+                            Stack(
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: _themeService.isLightMode ? Colors.grey[300]! : Colors.grey[900]!,
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: CircleAvatar(
+                                    radius: 48,
+                                    backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[900],
+                                    backgroundImage: _userInfo!['avatar'] != null && _apiService.getAvatarUrl(_userInfo!['avatar']).isNotEmpty
+                                        ? NetworkImage(_apiService.getAvatarUrl(_userInfo!['avatar']))
+                                        : null,
+                                    child: _userInfo!['avatar'] == null || _apiService.getAvatarUrl(_userInfo!['avatar']).isEmpty
+                                        ? Icon(Icons.person, size: 48, color: _themeService.textSecondaryColor)
+                                        : null,
+                                  ),
                                 ),
-                              ),
-                              child: CircleAvatar(
-                                radius: 48,
-                                backgroundColor: _themeService.isLightMode ? Colors.grey[300] : Colors.grey[900],
-                                backgroundImage: _userInfo!['avatar'] != null && _apiService.getAvatarUrl(_userInfo!['avatar']).isNotEmpty
-                                    ? NetworkImage(_apiService.getAvatarUrl(_userInfo!['avatar']))
-                                    : null,
-                                child: _userInfo!['avatar'] == null || _apiService.getAvatarUrl(_userInfo!['avatar']).isEmpty
-                                    ? Icon(Icons.person, size: 48, color: _themeService.textSecondaryColor)
-                                    : null,
-                              ),
+                                if (_isOnline)
+                                  Positioned(
+                                    bottom: 2,
+                                    right: 2,
+                                    child: Container(
+                                      width: 16,
+                                      height: 16,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF4CAF50),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: _themeService.backgroundColor,
+                                          width: 2.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 12),
                             
@@ -510,9 +619,21 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               padding: const EdgeInsets.symmetric(horizontal: 48),
                               child: Row(
                                 children: [
-                                  Expanded(child: _buildStatItem(_followingCount.toString(), _localeService.get('following'))),
-                                  Expanded(child: _buildStatItem(_followerCount.toString(), _localeService.get('followers'))),
-                                  Expanded(child: _buildStatItem(_userVideos.length.toString(), _localeService.get('likes'))),
+                                  Expanded(child: _buildStatItem(
+                                    _followingCount.toString(), 
+                                    _localeService.get('following'),
+                                    onTap: () => _navigateToFollowList(1),
+                                  )),
+                                  Expanded(child: _buildStatItem(
+                                    _followerCount.toString(), 
+                                    _localeService.get('followers'),
+                                    onTap: () => _navigateToFollowList(0),
+                                  )),
+                                  Expanded(child: _buildStatItem(
+                                    _totalReceivedLikes.toString(), 
+                                    _localeService.get('likes'),
+                                    onTap: () => _showTotalLikesDialog(),
+                                  )),
                                 ],
                               ),
                             ),
@@ -618,12 +739,100 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       ],
                     ),
                   ),
+                  ),
                 ),
     );
   }
 
-  Widget _buildStatItem(String count, String label) {
-    return Column(
+  void _showTotalLikesDialog() {
+    final isOwnProfile = _authService.isLoggedIn && 
+        _authService.user != null && 
+        (_authService.user!['id'] as num?)?.toInt() == widget.userId;
+    final displayName = isOwnProfile
+        ? _localeService.get('you')
+        : (_userInfo?['fullName'] ?? _userInfo?['username'] ?? '');
+    final message = _localeService.get('total_likes_received_message')
+        .replaceAll('{count}', _totalReceivedLikes.toString());
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: _themeService.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.favorite, color: Colors.redAccent, size: 28),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _localeService.get('total_likes_received'),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: _themeService.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$displayName $message',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _themeService.textSecondaryColor,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _totalReceivedLikes.toString(),
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.redAccent,
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    backgroundColor: _themeService.isLightMode
+                        ? Colors.grey[100]
+                        : Colors.grey[800],
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Text(
+                    _localeService.get('close'),
+                    style: TextStyle(
+                      color: _themeService.textPrimaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(String count, String label, {VoidCallback? onTap}) {
+    final content = Column(
       children: [
         Text(
           count,
@@ -643,24 +852,45 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       ],
     );
+
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: content,
+      );
+    }
+    return content;
+  }
+
+  void _navigateToFollowList(int initialIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FollowerFollowingScreen(
+          initialIndex: initialIndex,
+          userId: widget.userId,
+          username: _userInfo?['username'] ?? 'user',
+        ),
+      ),
+    );
   }
 
   Widget _buildFollowButton() {
-    // In light mode: white background with border (like Edit button)
-    // In dark mode: grey background
-    // For Follow (not following): always use pink color
     final isFollowingState = _isFollowing;
+    final isRequestedState = _isRequested;
+    final isInactive = isFollowingState || isRequestedState; // grey/white states
     
     return GestureDetector(
       onTap: _isProcessing ? null : _toggleFollow,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: isFollowingState 
+          color: isInactive 
               ? (_themeService.isLightMode ? Colors.white : Colors.grey[800])
               : const Color(0xFFFF2D55),
           borderRadius: BorderRadius.circular(8),
-          border: isFollowingState && _themeService.isLightMode
+          border: isInactive && _themeService.isLightMode
               ? Border.all(color: const Color(0xFFE8E8E8), width: 1.5)
               : null,
           boxShadow: _themeService.isLightMode
@@ -681,9 +911,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: _themeService.textPrimaryColor),
               )
             : Text(
-                _isMutual ? _localeService.get('friends') : (isFollowingState ? _localeService.get('following_status') : _localeService.get('follow')),
+                isRequestedState 
+                    ? _localeService.get('requested')
+                    : (_isMutual ? _localeService.get('friends') : (isFollowingState ? _localeService.get('following_status') : _localeService.get('follow'))),
                 style: TextStyle(
-                  color: isFollowingState 
+                  color: isInactive 
                       ? _themeService.textPrimaryColor 
                       : Colors.white,
                   fontWeight: FontWeight.bold,
@@ -893,9 +1125,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(height: 10),
             Text(
               isPrivateAccount
-                  ? (_localeService.isVietnamese 
-                      ? 'Theo dõi tài khoản này để xem video của họ' 
-                      : 'Follow this account to see their videos')
+                  ? (_isRequested 
+                      ? (_localeService.isVietnamese 
+                          ? 'Đã gửi yêu cầu theo dõi. Đang đợi phê duyệt.' 
+                          : 'Follow request sent. Waiting for approval.')
+                      : (_localeService.isVietnamese 
+                          ? 'Theo dõi tài khoản này để xem video của họ' 
+                          : 'Follow this account to see their videos'))
                   : (_privacyReason ?? (_localeService.isVietnamese 
                       ? 'Bạn không có quyền xem video này' 
                       : 'You don\'t have permission to view these videos')),
@@ -908,12 +1144,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             if (isPrivateAccount && !_isFollowing) ...[
               const SizedBox(height: 24),
               SizedBox(
-                width: 180,
+                width: 200,
                 child: ElevatedButton(
                   onPressed: _isProcessing ? null : _toggleFollow,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF2D55),
-                    foregroundColor: Colors.white,
+                    backgroundColor: _isRequested 
+                        ? (_themeService.isLightMode ? Colors.grey[200] : Colors.grey[800])
+                        : const Color(0xFFFF2D55),
+                    foregroundColor: _isRequested 
+                        ? _themeService.textPrimaryColor 
+                        : Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     elevation: 0,
@@ -921,7 +1161,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   child: _isProcessing
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : Text(
-                          _localeService.get('follow'),
+                          _isRequested 
+                              ? _localeService.get('requested')
+                              : _localeService.get('follow'),
                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                         ),
                 ),
