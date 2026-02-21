@@ -565,7 +565,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                         : null,
                                   ),
                                 ),
-                                if (_isOnline)
+                                if (_isOnline && _isFollowing)
                                   Positioned(
                                     bottom: 2,
                                     right: 2,

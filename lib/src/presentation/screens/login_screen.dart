@@ -7,6 +7,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
+import 'package:scalable_short_video_app/src/services/firebase_phone_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -1252,20 +1253,40 @@ class _TwoFactorVerificationPageState extends State<_TwoFactorVerificationPage> 
     final result = await widget.apiService.send2FAOtp(widget.userId, _selectedMethod);
 
     if (mounted) {
-      setState(() {
-        _isSendingOtp = false;
-        if (result['success'] == true) {
-          _otpSent = true;
-          _successMessage = widget.localeService.get('2fa_sent_success');
-          // Clear success message after 3 seconds
-          Future.delayed(const Duration(seconds: 3), () {
-            if (mounted) setState(() => _successMessage = null);
+      if (result['success'] == true && _selectedMethod == 'sms' && result['phoneNumber'] != null) {
+        // Use Firebase Phone Auth to send SMS OTP
+        final phoneAuthService = FirebasePhoneAuthService();
+        final sent = await phoneAuthService.sendOtp(result['phoneNumber']);
+        if (mounted) {
+          setState(() {
+            _isSendingOtp = false;
+            if (sent) {
+              _otpSent = true;
+              _successMessage = widget.localeService.get('2fa_sent_success');
+              Future.delayed(const Duration(seconds: 3), () {
+                if (mounted) setState(() => _successMessage = null);
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+            } else {
+              _errorMessage = phoneAuthService.errorMessage ?? widget.localeService.get('error');
+            }
           });
-          WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
-        } else {
-          _errorMessage = result['message'];
         }
-      });
+      } else if (mounted) {
+        setState(() {
+          _isSendingOtp = false;
+          if (result['success'] == true) {
+            _otpSent = true;
+            _successMessage = widget.localeService.get('2fa_sent_success');
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted) setState(() => _successMessage = null);
+            });
+            WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
+          } else {
+            _errorMessage = result['message'];
+          }
+        });
+      }
     }
   }
 
@@ -1280,9 +1301,27 @@ class _TwoFactorVerificationPageState extends State<_TwoFactorVerificationPage> 
       _errorMessage = null;
     });
 
+    // For SMS: verify with Firebase first
+    if (_selectedMethod == 'sms') {
+      final phoneAuthService = FirebasePhoneAuthService();
+      final idToken = await phoneAuthService.verifyOtp(_otpController.text.trim());
+      if (idToken == null) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = phoneAuthService.errorMessage ?? widget.localeService.get('2fa_invalid_otp');
+            _otpController.clear();
+          });
+          _shakeController.forward(from: 0);
+          _focusNode.requestFocus();
+        }
+        return;
+      }
+    }
+
     final result = await widget.apiService.verify2FAOtp(
       widget.userId,
-      _otpController.text.trim(),
+      _selectedMethod == 'sms' ? 'firebase_verified' : _otpController.text.trim(),
       _selectedMethod,
     );
 

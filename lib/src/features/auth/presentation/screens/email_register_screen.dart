@@ -193,16 +193,38 @@ class _EmailRegisterScreenState extends State<EmailRegisterScreen>
     return RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email);
   }
   
+  /// Validate username format (same rules as UsernameCreationScreen)
+  String? _validateUsername(String value) {
+    if (value.isEmpty) {
+      return _localeService.get('username_required');
+    }
+    if (value.length < 3) {
+      return _localeService.get('username_too_short').replaceAll('{min}', '3');
+    }
+    if (value.length > 30) {
+      return _localeService.get('username_too_long').replaceAll('{max}', '30');
+    }
+    // Only allow letters, numbers, underscores, and dots (blocks Vietnamese chars)
+    if (!RegExp(r'^[a-zA-Z0-9_.]+$').hasMatch(value)) {
+      return _localeService.get('username_invalid_chars');
+    }
+    // Cannot start with a number
+    if (RegExp(r'^[0-9]').hasMatch(value)) {
+      return _localeService.get('username_cannot_start_with_number');
+    }
+    return null;
+  }
+
   Future<void> _checkUsernameAvailability() async {
     final username = _usernameController.text.trim();
     
-    if (username.isEmpty) {
-      setState(() => _errorMessage = _localeService.get('please_enter_username'));
-      return;
-    }
-    
-    if (username.length < 3) {
-      setState(() => _errorMessage = _localeService.get('username_min_length'));
+    // Validate format first
+    final validationError = _validateUsername(username);
+    if (validationError != null) {
+      setState(() {
+        _errorMessage = validationError;
+        _hasCheckedUsername = false;
+      });
       return;
     }
 
@@ -230,6 +252,14 @@ class _EmailRegisterScreenState extends State<EmailRegisterScreen>
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  /// Auto-check availability then navigate if valid
+  Future<void> _onUsernameNextWithCheck() async {
+    await _checkUsernameAvailability();
+    if (_hasCheckedUsername && _isUsernameAvailable) {
+      _animateToEmailPasswordScreen();
     }
   }
 
@@ -730,40 +760,32 @@ class _EmailRegisterScreenState extends State<EmailRegisterScreen>
           ),
         ),
         const SizedBox(height: 16),
-        
-        // Check availability button
-        if (!_hasCheckedUsername || !_isUsernameAvailable)
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: _isLoading ? null : _checkUsernameAvailability,
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+
+        // Show success message if username was checked and available
+        if (_hasCheckedUsername && _isUsernameAvailable)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                const SizedBox(width: 4),
+                Text(
+                  _localeService.get('username_available'),
+                  style: const TextStyle(color: Colors.green, fontSize: 12),
                 ),
-              ),
-              child: Text(
-                _localeService.get('check_availability'),
-                style: const TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
+              ],
             ),
           ),
         
-        const SizedBox(height: 40),
+        const SizedBox(height: 24),
 
-        // Next button
+        // Next button (auto-checks availability then navigates)
         SizedBox(
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: (_hasCheckedUsername && _isUsernameAvailable && !_isLoading) 
-                ? _animateToEmailPasswordScreen 
+            onPressed: (_usernameController.text.trim().length >= 3 && !_isLoading) 
+                ? _onUsernameNextWithCheck 
                 : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
@@ -773,14 +795,23 @@ class _EmailRegisterScreenState extends State<EmailRegisterScreen>
               ),
               elevation: 0,
             ),
-            child: Text(
-              _localeService.get('next'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text(
+                  _localeService.get('next'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
           ),
         ),
       ],

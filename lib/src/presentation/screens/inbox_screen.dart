@@ -151,24 +151,14 @@ class _InboxScreenState extends State<InboxScreen> with RouteAware {
   }
 
   Future<bool> _getOnlineStatus(String userId) async {
-    // First check cache (updated by WebSocket)
+    // Use WebSocket cache (updated by subscription and realtime events)
     if (_onlineStatusCache.containsKey(userId)) {
       return _onlineStatusCache[userId]!;
     }
 
-    // If not in cache, fetch via REST API which has proper privacy check
-    // (checks showOnlineStatus setting from DB, not just in-memory set)
-    try {
-      final status = await _apiService.getOnlineStatus(userId, requesterId: _currentUserId);
-      final isOnline = status['isOnline'] == true;
-      _onlineStatusCache[userId] = isOnline;
-      // Subscribe to WebSocket updates for this user
-      _messageService.subscribeOnlineStatus(userId);
-      return isOnline;
-    } catch (e) {
-      print('Error fetching online status: $e');
-      return false;
-    }
+    // If not yet in cache, subscribe and return false until WebSocket responds
+    _messageService.subscribeOnlineStatus(userId);
+    return false;
   }
 
   // Subscribe to online status for all users in conversations
@@ -180,26 +170,10 @@ class _InboxScreenState extends State<InboxScreen> with RouteAware {
         .toList();
     
     // Subscribe to each user's online status via WebSocket for realtime updates
+    // The gateway sends back current status immediately on subscribe
+    // which is received by _onlineStatusSubscription and updates the cache
     for (final userId in userIds) {
       _messageService.subscribeOnlineStatus(userId);
-    }
-    
-    // Fetch initial status for all users via REST API (privacy-aware, checks DB)
-    if (userIds.isNotEmpty) {
-      Future.wait(
-        userIds.map((userId) => _apiService.getOnlineStatus(userId, requesterId: _currentUserId).catchError((_) => <String, dynamic>{})),
-      ).then((statuses) {
-        if (mounted) {
-          setState(() {
-            for (int i = 0; i < userIds.length; i++) {
-              final status = statuses[i];
-              if (status.isNotEmpty) {
-                _onlineStatusCache[userIds[i]] = status['isOnline'] == true;
-              }
-            }
-          });
-        }
-      });
     }
   }
 
@@ -295,6 +269,13 @@ class _InboxScreenState extends State<InboxScreen> with RouteAware {
       return isMe 
           ? (_localeService.isVietnamese ? 'Bạn đã chia sẻ một video' : 'You shared a video')
           : (_localeService.isVietnamese ? '$otherUsername đã chia sẻ một video' : '$otherUsername shared a video');
+    }
+
+    // Handle theme change system message
+    if (content.startsWith('[THEME_CHANGE:') && content.endsWith(']')) {
+      return isMe
+          ? (_localeService.isVietnamese ? 'Bạn đã đổi chủ đề cuộc trò chuyện' : 'You changed the chat theme')
+          : (_localeService.isVietnamese ? '$otherUsername đã đổi chủ đề cuộc trò chuyện' : '$otherUsername changed the chat theme');
     }
     
     // Handle stacked images (4+ images)

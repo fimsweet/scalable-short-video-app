@@ -4,6 +4,7 @@ import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/api_service.dart';
+import 'package:scalable_short_video_app/src/presentation/widgets/app_snackbar.dart';
 import 'package:intl/intl.dart';
 
 class PinnedMessagesScreen extends StatefulWidget {
@@ -74,34 +75,29 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
     }
   }
 
-  Future<void> _unpinMessage(String messageId) async {
+  Future<bool> _unpinMessage(String messageId) async {
     try {
       final success = await _messageService.unpinMessage(messageId);
-      if (success) {
+      if (success && mounted) {
         setState(() {
-          _pinnedMessages.removeWhere((m) => m['id'] == messageId);
+          _pinnedMessages.removeWhere((m) => m['id']?.toString() == messageId);
         });
-        _showSnackBar(
+        AppSnackBar.showSuccess(
+          context,
           _localeService.isVietnamese ? 'Đã bỏ ghim tin nhắn' : 'Message unpinned',
-          Colors.green,
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      if (mounted) {
+        AppSnackBar.showError(
+          context,
+          _localeService.isVietnamese ? 'Lỗi khi bỏ ghim' : 'Error unpinning',
         );
       }
-    } catch (e) {
-      _showSnackBar(
-        _localeService.isVietnamese ? 'Lỗi khi bỏ ghim' : 'Error unpinning',
-        Colors.red,
-      );
+      return false;
     }
-  }
-
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   String _formatDate(String? dateStr) {
@@ -215,7 +211,7 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
                         child: const Icon(Icons.push_pin_outlined, color: Colors.white),
                       ),
                       confirmDismiss: (direction) async {
-                        return await showDialog(
+                        final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (context) => AlertDialog(
                             backgroundColor: _themeService.cardColor,
@@ -247,9 +243,10 @@ class _PinnedMessagesScreenState extends State<PinnedMessagesScreen> {
                             ],
                           ),
                         );
-                      },
-                      onDismissed: (direction) {
-                        _unpinMessage(message['id']?.toString() ?? '');
+                        if (confirmed != true) return false;
+                        // Perform unpin — handles removal via setState internally
+                        await _unpinMessage(message['id']?.toString() ?? '');
+                        return false; // Always return false — we handle removal via setState in _unpinMessage
                       },
                       child: InkWell(
                         onTap: () {

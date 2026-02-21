@@ -122,13 +122,21 @@ class FcmService {
       final settings = await _messaging.getNotificationSettings();
       if (settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional) {
-        // Permission already granted, get token
-        await _getToken();
+        // Permission already granted, get token (simple retrieval, no deletion)
+        // We intentionally do NOT call deleteToken() here because:
+        //  1. User might not be logged in yet → can't send token to server
+        //  2. deleteToken() invalidates the token the server knows about
+        //  3. This creates a gap where push notifications don't work
+        // The force-refresh happens in registerToken() after login.
+        _fcmToken = await _messaging.getToken();
+        if (_fcmToken != null) {
+          print('[FCM] Init token (${_fcmToken!.length} chars): ${_fcmToken!.substring(0, 20)}...');
+        }
       }
       
       // Listen for token refresh
       _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((newToken) {
-        print('FCM Token refreshed');
+        print('[FCM] Token refreshed (${newToken.length} chars): ${newToken.substring(0, 30)}...');
         _fcmToken = newToken;
         _sendTokenToServer(newToken);
       });
@@ -367,24 +375,57 @@ class FcmService {
     }
   }
 
-  /// Get FCM token
+  /// Get FCM token — simple retrieval without deletion
   Future<String?> _getToken() async {
     try {
-      // For web, you need to pass vapidKey
       if (kIsWeb) {
-        // _fcmToken = await _messaging.getToken(vapidKey: 'YOUR_VAPID_KEY');
         print('Web FCM not configured');
         return null;
       }
       
       _fcmToken = await _messaging.getToken();
       if (_fcmToken != null) {
-        print('FCM Token: ${_fcmToken!.substring(0, 20)}...');
+        print('[FCM] Got token (${_fcmToken!.length} chars): ${_fcmToken!.substring(0, 20)}...');
+      } else {
+        print('[FCM] WARNING: getToken() returned null');
       }
       return _fcmToken;
     } catch (e) {
-      print('Error getting FCM token: $e');
+      print('[FCM] Error getting FCM token: $e');
       return null;
+    }
+  }
+
+  /// Force refresh FCM token — deletes old token and gets a fresh one.
+  /// This fixes "registration-token-not-registered" errors that happen
+  /// on emulators and after APK reinstalls where old tokens become stale.
+  /// Should ONLY be called during registerToken() (after login), not during initialize().
+  Future<String?> _forceRefreshToken() async {
+    try {
+      if (kIsWeb) return null;
+      
+      // Delete old (potentially stale) token
+      try {
+        await _messaging.deleteToken();
+        print('[FCM] Old token deleted, requesting fresh token...');
+      } catch (e) {
+        print('[FCM] deleteToken failed (ok if first time): $e');
+      }
+      
+      // Give Firebase enough time to process deletion and register new token
+      await Future.delayed(const Duration(seconds: 2));
+      
+      _fcmToken = await _messaging.getToken();
+      if (_fcmToken != null) {
+        print('[FCM] Fresh token (${_fcmToken!.length} chars): ${_fcmToken!.substring(0, 30)}...${_fcmToken!.substring(_fcmToken!.length - 15)}');
+      } else {
+        print('[FCM] WARNING: getToken() returned null after refresh');
+      }
+      return _fcmToken;
+    } catch (e) {
+      print('[FCM] Error during force refresh: $e');
+      // Fallback to simple retrieval
+      return _getToken();
     }
   }
 
@@ -421,20 +462,69 @@ class FcmService {
     }
   }
 
-  /// Register FCM token after login
+  /// Register FCM token after login.
+  /// 
+  /// Strategy:
+  /// 1. First try the current cached token (fast path — works if token is still valid)
+  /// 2. If no token or send fails, force-refresh (deleteToken + getToken) and retry
+  /// 
+  /// This avoids unnecessary token churn while still fixing stale tokens.
   Future<bool> registerToken() async {
-    // Always get a fresh token from Firebase to avoid stale tokens
-    await _getToken();
+    // Step 1: Try current token first (fast path)
+    if (_fcmToken == null) {
+      await _getToken();
+    }
     
     if (_fcmToken != null) {
       final success = await _sendTokenToServer(_fcmToken!);
-      if (!success) {
-        print('[FCM] WARNING: FCM token registration failed - push notifications will not work!');
+      if (success) {
+        print('[FCM] Token registered (fast path)');
+        return true;
       }
-      return success;
+      print('[FCM] Fast path failed, force-refreshing token...');
     }
+    
+    // Step 2: Force refresh — delete old token, get fresh one
+    await _forceRefreshToken();
+    
+    if (_fcmToken != null) {
+      final success = await _sendTokenToServer(_fcmToken!);
+      if (success) {
+        print('[FCM] Token registered (after force-refresh)');
+        return true;
+      }
+      print('[FCM] WARNING: FCM token registration failed even after force-refresh!');
+      return false;
+    }
+    
     print('[FCM] No FCM token available from Firebase');
     return false;
+  }
+
+  /// Unregister FCM token on logout (prevents stale push to wrong user)
+  Future<void> unregisterToken() async {
+    try {
+      final authToken = await _authService.getToken();
+      if (authToken == null) {
+        print('[FCM] No auth token, cannot unregister FCM token');
+        return;
+      }
+      
+      final response = await _apiService.post(
+        '/sessions/clear-fcm-token',
+        body: {},
+        headers: {'Authorization': 'Bearer $authToken'},
+      );
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('[FCM] FCM token unregistered from server');
+      } else {
+        print('[FCM] Failed to unregister FCM token: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('[FCM] Error unregistering FCM token: $e');
+    }
+    _fcmToken = null;
   }
 
   /// Handle foreground messages
@@ -461,6 +551,28 @@ class FcmService {
     
     // Route to in-app notification banner (TikTok-style)
     _showInAppNotificationBanner(message);
+  }
+
+  /// Sanitize message body for notification display.
+  /// Converts [IMAGE:...], [STACKED_IMAGE:...], [VIDEO_SHARE:...] tags to friendly text.
+  String _sanitizeMessageBody(String body, String senderName) {
+    if (body.isEmpty) return body;
+    
+    if (body.contains('[STACKED_IMAGE:')) {
+      final textPart = body.replaceAll(RegExp(r'\n?\[STACKED_IMAGE:[^\]]+\]'), '').trim();
+      return textPart.isNotEmpty ? textPart : '$senderName đã gửi nhiều ảnh 📷';
+    }
+    
+    if (body.contains('[IMAGE:')) {
+      final textPart = body.replaceAll(RegExp(r'\n?\[IMAGE:[^\]]+\]'), '').trim();
+      return textPart.isNotEmpty ? textPart : '$senderName đã gửi một ảnh 📷';
+    }
+    
+    if (body.contains('[VIDEO_SHARE:')) {
+      return '$senderName đã chia sẻ một video 🎬';
+    }
+    
+    return body;
   }
 
   /// Route a foreground FCM message to the in-app notification banner system.
@@ -545,7 +657,12 @@ class FcmService {
     }
 
     final title = type == 'message' ? '💬 $resolvedName' : (notification?.title ?? resolvedName);
-    final body = notification?.body ?? data['body'] ?? '';
+    String body = notification?.body ?? data['body'] ?? '';
+    
+    // Sanitize message body for display (convert image/video tags to friendly text)
+    if (type == 'message') {
+      body = _sanitizeMessageBody(body, resolvedName);
+    }
 
     final inAppNotif = InAppNotification(
       type: notifType,

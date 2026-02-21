@@ -41,6 +41,8 @@ class MessageService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _newNotificationController = 
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _themeColorChangedController = 
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Streams
   Stream<Map<String, dynamic>> get newMessageStream => _newMessageController.stream;
@@ -53,6 +55,7 @@ class MessageService {
   Stream<Map<String, dynamic>> get messageDeletedForMeStream => _messageDeletedForMeController.stream;
   Stream<Map<String, dynamic>> get privacySettingsChangedStream => _privacySettingsChangedController.stream;
   Stream<Map<String, dynamic>> get newNotificationStream => _newNotificationController.stream;
+  Stream<Map<String, dynamic>> get themeColorChangedStream => _themeColorChangedController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -163,7 +166,13 @@ class MessageService {
         _newNotificationController.add(Map<String, dynamic>.from(data));
       }
     });
-
+    // Listen for theme color changes (real-time sync)
+    _socket!.on('themeColorChanged', (data) {
+      print('\u{1F3A8} Theme color changed: $data');
+      if (data != null) {
+        _themeColorChangedController.add(Map<String, dynamic>.from(data));
+      }
+    });
     _socket!.connect();
   }
 
@@ -498,6 +507,18 @@ class MessageService {
       print('Error updating conversation settings: $e');
       return false;
     }
+  }
+
+  // Change theme color via WebSocket (syncs to both users)
+  void changeThemeColor(String recipientId, String themeColor, String? senderName) {
+    if (_socket == null || _currentUserId == null) return;
+
+    _socket!.emit('changeThemeColor', {
+      'senderId': _currentUserId,
+      'recipientId': recipientId,
+      'themeColor': themeColor,
+      'senderName': senderName,
+    });
   }
 
   // ========== PINNED MESSAGES ==========

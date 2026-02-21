@@ -639,7 +639,7 @@ class ApiService {
         };
       }
     } catch (e) {
-      print('Error setting password: \$e');
+      print('Error setting password: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -730,10 +730,10 @@ class ApiService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('\$_baseUrl/users/deactivate'),
+        Uri.parse('$_baseUrl/users/deactivate'),
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': 'Bearer \$token',
+          'Authorization': 'Bearer $token',
         },
         body: json.encode({'password': password}),
       );
@@ -741,7 +741,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('Error deactivating account: \$e');
+      print('Error deactivating account: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',
@@ -757,7 +757,7 @@ class ApiService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('\$_baseUrl/users/reactivate'),
+        Uri.parse('$_baseUrl/users/reactivate'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           if (email != null) 'email': email,
@@ -769,7 +769,7 @@ class ApiService {
       final body = json.decode(response.body);
       return body;
     } catch (e) {
-      print('Error reactivating account: \$e');
+      print('Error reactivating account: $e');
       return {
         'success': false,
         'message': 'Không thể kết nối đến server',

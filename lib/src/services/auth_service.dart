@@ -137,6 +137,13 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    // Clear FCM token from server BEFORE clearing auth state
+    try {
+      await FcmService().unregisterToken();
+    } catch (e) {
+      print('Error unregistering FCM token on logout: $e');
+    }
+
     // Clear SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
