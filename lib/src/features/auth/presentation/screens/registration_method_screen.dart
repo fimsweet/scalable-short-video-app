@@ -187,17 +187,10 @@ class _RegistrationMethodScreenState extends State<RegistrationMethodScreen> {
                       
                       // Google option
                       _buildSocialButton(
-                        iconWidget: Image.asset(
-                          'assets/icons/google_icon.png',
-                          width: 24,
-                          height: 24,
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Icon(
-                              Icons.g_mobiledata,
-                              size: 28,
-                              color: Color(0xFF4285F4),
-                            );
-                          },
+                        iconWidget: const Icon(
+                          Icons.g_mobiledata,
+                          size: 28,
+                          color: Color(0xFF4285F4),
                         ),
                         label: _localeService.get('continue_with_google'),
                         onTap: () => _handleGoogleSignIn(context),

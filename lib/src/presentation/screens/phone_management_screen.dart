@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../services/api_service.dart';
@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/locale_service.dart';
 import '../widgets/app_snackbar.dart';
+import 'two_factor_auth_screen.dart';
 
 class PhoneManagementScreen extends StatefulWidget {
   final String? currentPhone;
@@ -110,22 +111,11 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
   Future<bool> _verify2FAIfNeeded() async {
     if (!_twoFactorEnabled || _twoFactorMethods.isEmpty) return true;
 
-    final result = await showModalBottomSheet<bool>(
+    return show2FAVerificationSheet(
       context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _TwoFactorVerifySheet(
-        themeService: _themeService,
-        localeService: _localeService,
-        apiService: _apiService,
-        authService: _authService,
-        methods: _twoFactorMethods,
-      ),
+      actionName: _localeService.get('link_phone_2fa_reason'),
+      methods: _twoFactorMethods,
     );
-
-    return result == true;
   }
 
   void _onLinkPhone() {
@@ -318,7 +308,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
             else
               Text(
                 _localeService.isVietnamese
-                    ? 'Chưa có số điện thoại liên kết'
+                    ? 'ChÆ°a cÃ³ sá»‘ Ä‘iá»‡n thoáº¡i liÃªn káº¿t'
                     : 'No phone number linked',
                 style: TextStyle(
                   color: _themeService.textSecondaryColor,
@@ -389,7 +379,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 10),
             child: Text(
-              _localeService.isVietnamese ? 'Tùy chọn' : 'Options',
+              _localeService.isVietnamese ? 'TÃ¹y chá»n' : 'Options',
               style: TextStyle(
                 color: _themeService.textSecondaryColor,
                 fontSize: 13,
@@ -435,7 +425,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
                   Expanded(
                     child: Text(
                       _localeService.isVietnamese
-                          ? 'Các thao tác trên yêu cầu xác thực 2 yếu tố'
+                          ? 'CÃ¡c thao tÃ¡c trÃªn yÃªu cáº§u xÃ¡c thá»±c 2 yáº¿u tá»‘'
                           : 'These actions require two-factor authentication',
                       style: TextStyle(
                         color: _themeService.textSecondaryColor,
@@ -660,265 +650,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
   }
 }
 
-// 2FA Verification Sheet
-class _TwoFactorVerifySheet extends StatefulWidget {
-  final ThemeService themeService;
-  final LocaleService localeService;
-  final ApiService apiService;
-  final AuthService authService;
-  final List<String> methods;
 
-  const _TwoFactorVerifySheet({
-    required this.themeService,
-    required this.localeService,
-    required this.apiService,
-    required this.authService,
-    required this.methods,
-  });
-
-  @override
-  State<_TwoFactorVerifySheet> createState() => _TwoFactorVerifySheetState();
-}
-
-class _TwoFactorVerifySheetState extends State<_TwoFactorVerifySheet> {
-  final _otpController = TextEditingController();
-  late String _selectedMethod;
-  bool _isLoading = false;
-  bool _isSending = false;
-  bool _otpSent = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.methods.contains('totp')) {
-      _selectedMethod = 'totp';
-      _otpSent = true;
-    } else if (widget.methods.contains('email')) {
-      _selectedMethod = 'email';
-    } else {
-      _selectedMethod = widget.methods.first;
-    }
-  }
-
-  @override
-  void dispose() {
-    _otpController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _sendOtp() async {
-    if (_selectedMethod == 'totp') {
-      setState(() => _otpSent = true);
-      return;
-    }
-    setState(() { _isSending = true; _error = null; });
-    try {
-      final token = await widget.authService.getToken();
-      if (token == null) return;
-      final result = await widget.apiService.send2FASettingsOtp(token, _selectedMethod);
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-          if (result['success'] == true) { _otpSent = true; }
-          else { _error = result['message'] ?? widget.localeService.get('error'); }
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _isSending = false; _error = widget.localeService.get('error'); });
-    }
-  }
-
-  Future<void> _verifyOtp() async {
-    if (_otpController.text.length < 6) {
-      setState(() => _error = widget.localeService.get('invalid_otp'));
-      return;
-    }
-    setState(() { _isLoading = true; _error = null; });
-    try {
-      final token = await widget.authService.getToken();
-      if (token == null) return;
-      final result = await widget.apiService.verify2FASettings(
-        token,
-        _otpController.text,
-        _selectedMethod,
-        true,
-        widget.methods,
-      );
-      if (mounted) {
-        if (result['success'] == true) {
-          Navigator.pop(context, true);
-        } else {
-          setState(() { _isLoading = false; _error = result['message'] ?? widget.localeService.get('2fa_invalid_otp'); });
-        }
-      }
-    } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _error = widget.localeService.get('error'); });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      decoration: BoxDecoration(
-        color: widget.themeService.cardColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(
-                      color: widget.themeService.dividerColor,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.shield_rounded, color: Colors.blue, size: 22),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.localeService.isVietnamese
-                                ? 'Xác thực 2 yếu tố'
-                                : 'Two-Factor Verification',
-                            style: TextStyle(
-                              color: widget.themeService.textPrimaryColor,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            widget.localeService.isVietnamese
-                                ? 'Xác minh danh tính để tiếp tục'
-                                : 'Verify your identity to continue',
-                            style: TextStyle(
-                              color: widget.themeService.textSecondaryColor,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                if (!_otpSent && _selectedMethod != 'totp') ...[
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isSending ? null : _sendOtp,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      child: _isSending
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : Text(
-                              widget.localeService.isVietnamese ? 'Gửi mã xác thực' : 'Send verification code',
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                            ),
-                    ),
-                  ),
-                ] else ...[
-                  Text(
-                    _selectedMethod == 'totp'
-                        ? (widget.localeService.isVietnamese ? 'Nhập mã từ ứng dụng xác thực' : 'Enter code from authenticator app')
-                        : (widget.localeService.isVietnamese ? 'Nhập mã xác thực đã gửi' : 'Enter the verification code sent'),
-                    style: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _otpController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: widget.themeService.textPrimaryColor,
-                      fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: 8,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '• • • • • •',
-                      hintStyle: TextStyle(color: widget.themeService.textSecondaryColor, fontSize: 24, letterSpacing: 8),
-                      counterText: '',
-                      filled: true,
-                      fillColor: widget.themeService.inputBackground,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blue)),
-                      errorText: _error,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: _isLoading ? null : () => Navigator.pop(context, false),
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: Text(widget.localeService.get('cancel'),
-                              style: TextStyle(color: widget.themeService.textSecondaryColor)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _verifyOtp,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              : Text(widget.localeService.get('verify'),
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// Link Phone Bottom Sheet
 class _LinkPhoneSheet extends StatefulWidget {
   final ThemeService themeService;
   final LocaleService localeService;
@@ -1158,7 +890,7 @@ class _LinkPhoneSheetState extends State<_LinkPhoneSheet> {
                             _codeSent
                                 ? widget.localeService.get('enter_otp')
                                 : widget.isChange
-                                    ? (widget.localeService.isVietnamese ? 'Thay đổi số điện thoại' : 'Change Phone Number')
+                                    ? (widget.localeService.isVietnamese ? 'Thay ─æß╗òi sß╗æ ─æiß╗çn thoß║íi' : 'Change Phone Number')
                                     : widget.localeService.get('link_phone'),
                             style: TextStyle(
                               color: widget.themeService.textPrimaryColor,
@@ -1198,7 +930,7 @@ class _LinkPhoneSheetState extends State<_LinkPhoneSheet> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Text('🇻🇳', style: TextStyle(fontSize: 18)),
+                            const Text('≡ƒç╗≡ƒç│', style: TextStyle(fontSize: 18)),
                             const SizedBox(width: 6),
                             Text('+84',
                                 style: TextStyle(
@@ -1234,7 +966,7 @@ class _LinkPhoneSheetState extends State<_LinkPhoneSheet> {
                       letterSpacing: 8,
                     ),
                     decoration: InputDecoration(
-                      hintText: '• • • • • •',
+                      hintText: 'ΓÇó ΓÇó ΓÇó ΓÇó ΓÇó ΓÇó',
                       hintStyle: TextStyle(
                         color: widget.themeService.textSecondaryColor,
                         fontSize: 24,

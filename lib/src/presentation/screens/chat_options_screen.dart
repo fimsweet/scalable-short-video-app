@@ -302,9 +302,13 @@ class _ChatOptionsScreenState extends State<ChatOptionsScreen> with SingleTicker
                 onTap: () {
                   setState(() => _selectedThemeColor = theme.primaryColor);
                   widget.onThemeColorChanged?.call(theme.primaryColor);
-                  _messageService.updateConversationSettings(
+                  // Use WebSocket to sync theme to both users + create system message
+                  final currentUser = _authService.user;
+                  final senderName = currentUser?['username'] ?? currentUser?['fullName'] ?? 'User';
+                  _messageService.changeThemeColor(
                     widget.recipientId,
-                    themeColor: theme.id,
+                    theme.id,
+                    senderName,
                   );
                   Navigator.pop(context);
                   _showSnackBar(

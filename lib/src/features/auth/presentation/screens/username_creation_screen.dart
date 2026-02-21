@@ -164,9 +164,9 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
   bool _canProceed() {
     final username = _usernameController.text.trim();
     return username.length >= minLength && 
-           username.length <= maxLength && 
-           _hasCheckedUsername && 
-           _isUsernameAvailable;
+           username.length <= maxLength &&
+           _validateUsername(username) == null &&
+           !_isLoading;
   }
 
   @override
@@ -343,33 +343,29 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
               
               const SizedBox(height: 16),
               
-              // Check availability button
-              if (!_hasCheckedUsername || !_isUsernameAvailable)
-                OutlinedButton(
-                  onPressed: _isLoading ? null : _checkUsernameAvailability,
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: accentColor),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  child: Text(
-                    _localeService.get('check_availability'),
-                    style: TextStyle(
-                      color: accentColor,
-                      fontWeight: FontWeight.w500,
-                    ),
+              // Show success message if username was checked and available
+              if (_hasCheckedUsername && _isUsernameAvailable)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        _localeService.get('username_available'),
+                        style: const TextStyle(color: Colors.green, fontSize: 12),
+                      ),
+                    ],
                   ),
                 ),
               
               const Spacer(),
               
-              // Next button
+              // Next button (auto-checks availability then navigates)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: ElevatedButton(
-                  onPressed: _canProceed() ? _onNextPressed : null,
+                  onPressed: _canProceed() ? _onNextWithCheck : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _canProceed() ? accentColor : Colors.grey,
                     foregroundColor: Colors.white,
@@ -379,13 +375,22 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
                     ),
                     elevation: 0,
                   ),
-                  child: Text(
-                    _localeService.get('next'),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: _isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        _localeService.get('next'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                 ),
               ),
             ],
@@ -393,6 +398,28 @@ class _UsernameCreationScreenState extends State<UsernameCreationScreen> {
         ),
       ),
     );
+  }
+
+  /// Auto-check availability then navigate if valid
+  Future<void> _onNextWithCheck() async {
+    final username = _usernameController.text.trim();
+    
+    // Validate format first
+    final validationError = _validateUsername(username);
+    if (validationError != null) {
+      setState(() {
+        _errorMessage = validationError;
+      });
+      return;
+    }
+    
+    // Check availability via API
+    await _checkUsernameAvailability();
+    
+    // Only proceed if available
+    if (_hasCheckedUsername && _isUsernameAvailable) {
+      _onNextPressed();
+    }
   }
 
   void _onNextPressed() {

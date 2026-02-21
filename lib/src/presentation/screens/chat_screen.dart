@@ -12,6 +12,7 @@ import 'package:scalable_short_video_app/src/services/api_service.dart';
 import 'package:scalable_short_video_app/src/services/theme_service.dart';
 import 'package:scalable_short_video_app/src/services/locale_service.dart';
 import 'package:scalable_short_video_app/src/services/in_app_notification_service.dart';
+import 'package:scalable_short_video_app/src/config/app_config.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/video_detail_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/chat_options_screen.dart';
 import 'package:scalable_short_video_app/src/presentation/screens/user_profile_screen.dart';
@@ -91,6 +92,7 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _messageUnsentSubscription;
   StreamSubscription? _messageEditedSubscription;
   StreamSubscription? _privacySettingsSubscription;
+  StreamSubscription? _themeColorChangedSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
   String get _conversationId {
@@ -122,6 +124,15 @@ class _ChatScreenState extends State<ChatScreen> {
   
   // Pinned message at top of chat
   Map<String, dynamic>? _pinnedMessage;
+
+  // Pagination for infinite scroll
+  bool _hasMoreMessages = true;
+  bool _isLoadingMore = false;
+  static const int _messageLimit = 50;
+
+  // Scroll-to-message target (for pinned message navigation)
+  String? _scrollToMessageId;
+  final GlobalKey _scrollTargetKey = GlobalKey();
   
   // Online status
   bool _recipientIsOnline = false;
@@ -153,6 +164,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _imagePicker = ImagePicker();
     _initChat();
     _messageController.addListener(_onTextChanged);
+    _scrollController.addListener(_onScroll);
     
     // Suppress in-app notifications from this chat partner
     InAppNotificationService().setActiveChatUser(widget.recipientId);
@@ -175,51 +187,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // Start polling for recipient's online status
   void _startOnlineStatusPolling() {
-    // Fetch immediately via REST as initial value
-    _fetchOnlineStatus();
-    
     // Subscribe to realtime online status updates via WebSocket
+    // The subscription handler sends back the initial status immediately
     _subscribeOnlineStatus();
   }
   
   void _subscribeOnlineStatus() {
     // Subscribe to online status stream for recipient
+    // Gateway sends back current status immediately on subscribe
     _messageService.subscribeOnlineStatus(widget.recipientId);
     
-    // Listen to online status updates
+    // Listen to online status updates (both initial and realtime)
     _onlineStatusSubscription = _messageService.onlineStatusStream.listen((data) {
       final userId = data['userId']?.toString();
       if (userId == widget.recipientId && mounted) {
         final isOnline = data['isOnline'] == true;
-        if (!isOnline) {
-          // Offline events are always trustworthy
-          setState(() {
-            _recipientIsOnline = false;
-            _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
-            // Fetch proper lastSeen text from user-service
-            _fetchOnlineStatus();
-          });
-        } else {
-          // For online events, verify via REST API (has proper privacy check)
-          _fetchOnlineStatus();
-        }
-      }
-    });
-  }
-
-  Future<void> _fetchOnlineStatus() async {
-    try {
-      // Use REST API which has proper privacy check (checks showOnlineStatus setting)
-      final status = await _apiService.getOnlineStatus(widget.recipientId, requesterId: _currentUserId);
-      if (mounted) {
         setState(() {
-          _recipientIsOnline = status['isOnline'] == true;
-          _recipientStatusText = status['statusText'] ?? 'Offline';
+          _recipientIsOnline = isOnline;
+          if (isOnline) {
+            _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Online';
+          } else {
+            _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+          }
         });
       }
-    } catch (e) {
-      // Silently fail
-    }
+    });
   }
 
   // Heartbeat is now handled globally in MainScreen
@@ -296,6 +288,12 @@ class _ChatScreenState extends State<ChatScreen> {
           setState(() {
             _messages[tempIndex] = message;
           });
+        } else if (content.startsWith('[THEME_CHANGE:')) {
+          // System messages (theme change) have no temp message — insert directly
+          setState(() {
+            _messages.insert(0, message);
+          });
+          _scrollToBottom();
         }
         // Don't add if temp not found - it means message was already added or doesn't belong here
       }
@@ -324,6 +322,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 'imageUrls': [],
               };
             }
+            // Clear pinned message bar if the unsent message was pinned
+            if (_pinnedMessage != null && _pinnedMessage!['id']?.toString() == messageId) {
+              _pinnedMessage = null;
+            }
           });
         }
       }
@@ -344,6 +346,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 'editedAt': data['editedAt'],
               };
             }
+            // Update pinned message bar content if the edited message is pinned
+            if (_pinnedMessage != null && _pinnedMessage!['id']?.toString() == messageId) {
+              _pinnedMessage = {
+                ..._pinnedMessage!,
+                'content': data['content'],
+                'isEdited': true,
+                'editedAt': data['editedAt'],
+              };
+            }
           });
         }
       }
@@ -357,7 +368,19 @@ class _ChatScreenState extends State<ChatScreen> {
         _checkMessagePermission();
         // Also re-check online status if showOnlineStatus changed
         if (data['showOnlineStatus'] != null) {
-          _fetchOnlineStatus();
+          _messageService.subscribeOnlineStatus(widget.recipientId);
+        }
+      }
+    });
+
+    // Listen for theme color changes from the other user
+    _themeColorChangedSubscription = _messageService.themeColorChangedStream.listen((data) {
+      if (mounted) {
+        final themeColor = data['themeColor']?.toString();
+        if (themeColor != null) {
+          setState(() {
+            _chatThemeColor = _parseThemeColor(themeColor);
+          });
         }
       }
     });
@@ -374,6 +397,8 @@ class _ChatScreenState extends State<ChatScreen> {
       final messages = await _messageService.getMessages(
         _currentUserId,
         widget.recipientId,
+        limit: _messageLimit,
+        offset: 0,
       );
 
       if (mounted) {
@@ -382,6 +407,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages = messages.map((m) => Map<String, dynamic>.from(m)).toList();
           _isLoading = false;
+          _hasMoreMessages = messages.length >= _messageLimit;
         });
         _messageService.markAsRead(_conversationId);
       }
@@ -390,6 +416,93 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  // Infinite scroll: detect scrolling near top of chat (maxScrollExtent in reversed list)
+  void _onScroll() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 300 &&
+        !_isLoadingMore && _hasMoreMessages) {
+      _loadMoreMessages();
+    }
+  }
+
+  // Load older messages for infinite scroll
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMore || !_hasMoreMessages) return;
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final olderMessages = await _messageService.getMessages(
+        _currentUserId,
+        widget.recipientId,
+        limit: _messageLimit,
+        offset: _messages.length,
+      );
+
+      if (mounted) {
+        setState(() {
+          if (olderMessages.isEmpty || olderMessages.length < _messageLimit) {
+            _hasMoreMessages = false;
+          }
+          if (olderMessages.isNotEmpty) {
+            final existingIds = _messages.map((m) => m['id']?.toString()).toSet();
+            final newMessages = olderMessages
+                .where((m) => !existingIds.contains(m['id']?.toString()))
+                .map((m) => Map<String, dynamic>.from(m))
+                .toList();
+            _messages.addAll(newMessages);
+          }
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more messages: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  // Load messages in batches until a specific message is found (for pinned message navigation)
+  Future<void> _loadMessagesUntilFound(String messageId) async {
+    int attempts = 0;
+    const maxAttempts = 20; // Max 20 * 50 = 1000 messages
+
+    while (attempts < maxAttempts && _hasMoreMessages) {
+      final olderMessages = await _messageService.getMessages(
+        _currentUserId,
+        widget.recipientId,
+        limit: _messageLimit,
+        offset: _messages.length,
+      );
+
+      if (!mounted) return;
+
+      if (olderMessages.isEmpty) {
+        setState(() => _hasMoreMessages = false);
+        break;
+      }
+
+      setState(() {
+        if (olderMessages.length < _messageLimit) {
+          _hasMoreMessages = false;
+        }
+        final existingIds = _messages.map((m) => m['id']?.toString()).toSet();
+        final newMessages = olderMessages
+            .where((m) => !existingIds.contains(m['id']?.toString()))
+            .map((m) => Map<String, dynamic>.from(m))
+            .toList();
+        _messages.addAll(newMessages);
+      });
+
+      // Check if target message is now loaded
+      if (_messages.any((m) => m['id']?.toString() == messageId)) {
+        break;
+      }
+
+      attempts++;
     }
   }
 
@@ -481,10 +594,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _loadPinnedMessage() async {
     try {
       final pinnedMessages = await _messageService.getPinnedMessages(widget.recipientId);
-      if (mounted && pinnedMessages.isNotEmpty) {
+      if (mounted) {
         setState(() {
-          // Get the most recent pinned message
-          _pinnedMessage = Map<String, dynamic>.from(pinnedMessages.first);
+          if (pinnedMessages.isNotEmpty) {
+            // Get the most recent pinned message
+            _pinnedMessage = Map<String, dynamic>.from(pinnedMessages.first);
+          } else {
+            // Clear pinned message bar when no pinned messages remain
+            _pinnedMessage = null;
+          }
         });
       }
     } catch (e) {
@@ -727,6 +845,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _messageController.dispose();
     _scrollController.dispose();
     _focusNode.dispose();
@@ -739,6 +858,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageUnsentSubscription?.cancel();
     _messageEditedSubscription?.cancel();
     _privacySettingsSubscription?.cancel();
+    _themeColorChangedSubscription?.cancel();
     // Unsubscribe from online status updates
     _messageService.unsubscribeOnlineStatus(widget.recipientId);
     // Clear active chat user for in-app notification suppression
@@ -827,6 +947,52 @@ class _ChatScreenState extends State<ChatScreen> {
     return content.startsWith('[VIDEO_SHARE:') && content.endsWith(']');
   }
 
+  // Check if message is a system theme change message
+  bool _isThemeChangeMessage(String content) {
+    return content.startsWith('[THEME_CHANGE:') && content.endsWith(']');
+  }
+
+  // Extract theme color ID from [THEME_CHANGE:colorId]
+  String? _extractThemeColorId(String content) {
+    if (!_isThemeChangeMessage(content)) return null;
+    final start = content.indexOf(':') + 1;
+    final end = content.lastIndexOf(']');
+    if (start > 0 && end > start) {
+      return content.substring(start, end);
+    }
+    return null;
+  }
+
+  // Get localized theme color name
+  String _getThemeColorName(String colorId) {
+    final names = {
+      'default': _localeService.isVietnamese ? 'Mặc định' : 'Default',
+      'pink': _localeService.isVietnamese ? 'Hồng' : 'Pink',
+      'purple': _localeService.isVietnamese ? 'Tím' : 'Purple',
+      'green': _localeService.isVietnamese ? 'Xanh lá' : 'Green',
+      'orange': _localeService.isVietnamese ? 'Cam' : 'Orange',
+      'red': _localeService.isVietnamese ? 'Đỏ' : 'Red',
+      'teal': _localeService.isVietnamese ? 'Xanh dương' : 'Teal',
+      'indigo': _localeService.isVietnamese ? 'Chàm' : 'Indigo',
+    };
+    return names[colorId] ?? colorId;
+  }
+
+  // Get Color from theme color ID for the system message dot
+  Color _getThemeColorValue(String colorId) {
+    const colorMap = {
+      'default': Colors.blue,
+      'pink': Colors.pink,
+      'purple': Colors.purple,
+      'green': Colors.green,
+      'orange': Colors.orange,
+      'red': Colors.red,
+      'teal': Colors.teal,
+      'indigo': Colors.indigo,
+    };
+    return colorMap[colorId] ?? Colors.blue;
+  }
+
   // Helper method to check time gap between messages (for avatar grouping like Messenger)
   bool _hasSignificantTimeGap(String? time1, String? time2) {
     if (time1 == null || time2 == null) return true;
@@ -883,8 +1049,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (imagePath.startsWith('http')) {
       return imagePath;
     }
-    // Use video service base URL for chat images
-    return _videoService.getVideoUrl(imagePath);
+    // Chat images are stored locally on the server (not on CloudFront/S3),
+    // so use the video service gateway URL directly instead of CloudFront.
+    return '${AppConfig.videoServiceUrl}$imagePath';
   }
 
   String? _extractVideoId(String content) {
@@ -915,15 +1082,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_localeService.get('video_unavailable_chat').replaceAll('\n', ' '))),
-        );
+        AppSnackBar.showWarning(context, _localeService.get('video_unavailable_chat').replaceAll('\n', ' '));
       }
     } catch (e) {
       print('Error opening shared video: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_localeService.get('error_occurred'))),
-      );
+      AppSnackBar.showError(context, _localeService.get('error_occurred'));
     }
   }
 
@@ -970,12 +1133,7 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       print('Error picking image: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_localeService.get('cannot_select_photo')}: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, '${_localeService.get('cannot_select_photo')}: ${e.toString()}');
       }
     }
   }
@@ -1258,25 +1416,11 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _isUserBlocked = true;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_localeService.get('user_blocked')} ${widget.recipientUsername}',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showSuccess(context, '${_localeService.get('user_blocked')} ${widget.recipientUsername}');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _localeService.isVietnamese ? 'Không thể chặn người dùng' : 'Failed to block user',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, _localeService.isVietnamese ? 'Không thể chặn người dùng' : 'Failed to block user');
       }
     }
   }
@@ -1284,13 +1428,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // Copy text to clipboard
   void _copyToClipboard(String text) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_localeService.get('copied')),
-        duration: const Duration(seconds: 1),
-        backgroundColor: _chatThemeColor ?? Colors.blue,
-      ),
-    );
+    AppSnackBar.showSuccess(context, _localeService.get('copied'), duration: const Duration(seconds: 1));
   }
 
   // Translate message - now shows inline translation below bubble
@@ -1321,24 +1459,14 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _translatingMessages[messageId] = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['error'] ?? 'Translation failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, result['error'] ?? 'Translation failed');
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _translatingMessages[messageId] = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_localeService.get('translation_error')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppSnackBar.showError(context, _localeService.get('translation_error'));
     }
   }
 
@@ -1366,34 +1494,19 @@ class _ChatScreenState extends State<ChatScreen> {
   // Forward message (placeholder)
   void _forwardMessage(Map<String, dynamic> message) {
     // TODO: Implement forward to other conversations
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_localeService.get('feature_coming_soon')),
-        backgroundColor: _chatThemeColor ?? Colors.blue,
-      ),
-    );
+    AppSnackBar.showInfo(context, _localeService.get('feature_coming_soon'));
   }
 
   // Show reminder dialog (placeholder)
   void _showReminderDialog(Map<String, dynamic> message) {
     // TODO: Implement reminder feature
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_localeService.get('feature_coming_soon')),
-        backgroundColor: _chatThemeColor ?? Colors.blue,
-      ),
-    );
+    AppSnackBar.showInfo(context, _localeService.get('feature_coming_soon'));
   }
 
   // Report message (placeholder)
   void _reportMessage(Map<String, dynamic> message) {
     // TODO: Implement report feature
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(_localeService.get('message_reported')),
-        backgroundColor: _chatThemeColor ?? Colors.blue,
-      ),
-    );
+    AppSnackBar.showSuccess(context, _localeService.get('message_reported'));
   }
 
   Future<void> _deleteMessageForMe(String messageId) async {
@@ -1403,6 +1516,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (result['success'] == true && mounted) {
         setState(() {
           _messages.removeWhere((m) => m['id']?.toString() == messageId);
+          // Clear pinned message bar if the deleted message was pinned
+          if (_pinnedMessage != null && _pinnedMessage!['id']?.toString() == messageId) {
+            _pinnedMessage = null;
+          }
         });
       }
     } catch (e) {
@@ -1425,17 +1542,13 @@ class _ChatScreenState extends State<ChatScreen> {
               'imageUrls': [],
             };
           }
+          // Clear pinned message bar if the deleted message was pinned
+          if (_pinnedMessage != null && _pinnedMessage!['id']?.toString() == messageId) {
+            _pinnedMessage = null;
+          }
         });
       } else if (result['canUnsend'] == false && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _localeService.get('cannot_unsend_timeout'),
-            ),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showWarning(context, _localeService.get('cannot_unsend_timeout'), duration: const Duration(seconds: 3));
       }
     } catch (e) {
       print('Error deleting message for everyone: $e');
@@ -1527,12 +1640,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         });
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message']?.toString() ?? 'Edit failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, result['message']?.toString() ?? 'Edit failed');
       }
     } catch (e) {
       print('Error editing message: $e');
@@ -1563,81 +1671,75 @@ class _ChatScreenState extends State<ChatScreen> {
               // Pin - update message and set as pinned message at top
               _messages[index] = {..._messages[index], 'pinnedBy': _currentUserId, 'pinnedAt': DateTime.now().toIso8601String()};
               _pinnedMessage = _messages[index];
-              
-              // Scroll to the pinned message
-              _scrollToMessageByIndex(index);
             }
           }
         });
         
         // Show feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isPinned
-                  ? _localeService.get('message_unpinned')
-                  : _localeService.get('message_pinned'),
-            ),
-            duration: const Duration(seconds: 2),
-            backgroundColor: _chatThemeColor ?? Colors.blue,
-          ),
+        AppSnackBar.showSuccess(
+          context,
+          isPinned
+              ? _localeService.get('message_unpinned')
+              : _localeService.get('message_pinned'),
         );
       }
     } catch (e) {
       print('Error toggling pin: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_localeService.get('error_occurred')),
-            backgroundColor: Colors.red,
-          ),
-        );
+        AppSnackBar.showError(context, _localeService.get('error_occurred'));
       }
     }
   }
 
-  void _scrollToMessageByIndex(int index) {
-    // Since ListView is reversed, we need to scroll to the correct position
-    // Each message is approximately 60-80 pixels high, estimate position
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        // Calculate approximate position based on index
-        // For reversed list, lower index means more recent (closer to bottom)
-        final estimatedItemHeight = 70.0;
-        final targetPosition = index * estimatedItemHeight;
-        
-        _scrollController.animateTo(
-          targetPosition,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
-    });
-  }
+  // Scroll to a message by ID — loads older messages if not yet loaded
+  Future<void> _scrollToMessage(String messageId) async {
+    // Check if message is already loaded
+    int index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
 
-  void _scrollToMessage(String messageId) {
-    print('DEBUG: _scrollToMessage called with messageId: $messageId');
-    print('DEBUG: Total messages: ${_messages.length}');
-    
-    // Find the message index
-    final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
-    print('DEBUG: Found index: $index');
-    
-    if (index != -1 && _scrollController.hasClients) {
-      // Estimate position - each message is roughly 80-100 pixels
-      // Since messages are reversed, we need to calculate from the end
-      final estimatedPosition = index * 80.0;
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      print('DEBUG: Estimated position: $estimatedPosition, max scroll: $maxScroll');
-      
-      _scrollController.animateTo(
-        estimatedPosition.clamp(0.0, maxScroll),
+    if (index == -1) {
+      // Message not in loaded list — load more until found
+      await _loadMessagesUntilFound(messageId);
+      index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+    }
+
+    if (index == -1 || !mounted) return; // Message not found even after loading
+
+    // Set highlight target
+    setState(() => _scrollToMessageId = messageId);
+
+    if (!_scrollController.hasClients) return;
+
+    // For reversed ListView, index 0 is at scroll position 0 (bottom).
+    // Higher indices are at higher scroll positions (towards top/older).
+    final targetPosition = index * 72.0;
+
+    // Progressively scroll to target — lazy ListView may not know full extent yet
+    for (int i = 0; i < 20; i++) {
+      if (!_scrollController.hasClients || !mounted) return;
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      if (targetPosition <= maxExtent + 200) {
+        _scrollController.jumpTo(targetPosition.clamp(0.0, maxExtent));
+        break;
+      }
+      _scrollController.jumpTo(maxExtent);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+
+    // Wait for layout, then fine-tune with Scrollable.ensureVisible
+    await Future.delayed(const Duration(milliseconds: 200));
+    if (mounted && _scrollTargetKey.currentContext != null) {
+      await Scrollable.ensureVisible(
+        _scrollTargetKey.currentContext!,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
+        alignment: 0.5, // Center message on screen
       );
-    } else {
-      print('DEBUG: Cannot scroll - index: $index, hasClients: ${_scrollController.hasClients}');
     }
+
+    // Clear highlight after a delay
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _scrollToMessageId = null);
+    });
   }
 
   void _showPinnedMessagesModal() {
@@ -1657,10 +1759,7 @@ class _ChatScreenState extends State<ChatScreen> {
         currentUserAvatar: _authService.user?['avatar']?.toString(),
         onMessageTap: (messageId) {
           Navigator.pop(context);
-          final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
-          if (index != -1) {
-            _scrollToMessageByIndex(index);
-          }
+          _scrollToMessage(messageId);
         },
         onPinnedMessagesChanged: () {
           _loadPinnedMessage();
@@ -1900,7 +1999,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           controller: _scrollController,
                           reverse: true,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          itemCount: _messages.length + (_otherUserTyping ? 1 : 0),
+                          itemCount: _messages.length + (_otherUserTyping ? 1 : 0) + (_isLoadingMore ? 1 : 0),
                           itemBuilder: (context, index) {
                             // Show typing bubble at index 0 (bottom of reversed list)
                             if (_otherUserTyping && index == 0) {
@@ -1909,7 +2008,26 @@ class _ChatScreenState extends State<ChatScreen> {
                                 themeService: _themeService,
                               );
                             }
-                            final actualIndex = _otherUserTyping ? index - 1 : index;
+                            final adjustedIndex = _otherUserTyping ? index - 1 : index;
+                            
+                            // Loading indicator at top (last index in reversed list)
+                            if (adjustedIndex >= _messages.length) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: _themeService.textSecondaryColor,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            
+                            final actualIndex = adjustedIndex;
                             final message = _messages[actualIndex];
                             final isMe = message['senderId'] == _currentUserId;
                             final content = message['content']?.toString() ?? '';
@@ -1921,22 +2039,34 @@ class _ChatScreenState extends State<ChatScreen> {
                             // 2. OR there's a significant time gap (>5 min) from the previous message in the group
                             bool showAvatar = false;
                             if (!isMe) {
-                              // Check if next message (older, higher index) is from different sender
-                              final isLastInGroup = actualIndex == _messages.length - 1 ||
-                                  _messages[actualIndex + 1]['senderId'] == _currentUserId;
+                              // Find the next non-system message (skip theme change system messages)
+                              int nextRealIdx = actualIndex + 1;
+                              while (nextRealIdx < _messages.length) {
+                                final nextContent = _messages[nextRealIdx]['content']?.toString() ?? '';
+                                if (!nextContent.startsWith('[THEME_CHANGE:')) break;
+                                nextRealIdx++;
+                              }
+                              // Check if next real message is from different sender or doesn't exist
+                              final isLastInGroup = nextRealIdx >= _messages.length ||
+                                  _messages[nextRealIdx]['senderId'] == _currentUserId;
+                              
+                              // Also treat the boundary before a system message as a group break
+                              final nextImmediateContent = (actualIndex + 1 < _messages.length)
+                                  ? (_messages[actualIndex + 1]['content']?.toString() ?? '')
+                                  : '';
+                              final nextIsSystemMsg = nextImmediateContent.startsWith('[THEME_CHANGE:');
                               
                               // Check if there's a time gap from previous message in same direction
                               bool hasTimeGap = false;
-                              if (actualIndex < _messages.length - 1 && 
-                                  _messages[actualIndex + 1]['senderId'] != _currentUserId) {
-                                // Previous message is also from recipient, check time gap
+                              if (nextRealIdx < _messages.length && 
+                                  _messages[nextRealIdx]['senderId'] != _currentUserId) {
                                 hasTimeGap = _hasSignificantTimeGap(
                                   message['createdAt']?.toString(),
-                                  _messages[actualIndex + 1]['createdAt']?.toString(),
+                                  _messages[nextRealIdx]['createdAt']?.toString(),
                                 );
                               }
                               
-                              showAvatar = isLastInGroup || hasTimeGap;
+                              showAvatar = isLastInGroup || nextIsSystemMsg || hasTimeGap;
                             }
                             
                             // Chỉ hiện status cho tin nhắn cuối cùng của mình (như Messenger)
@@ -1954,10 +2084,12 @@ class _ChatScreenState extends State<ChatScreen> {
                               }
                             }
 
-                            // Check if message is deleted for everyone
+                            // Build message widget based on content type
+                            Widget? messageWidget;
                             final isDeletedForEveryone = message['isDeletedForEveryone'] == true || content == '[MESSAGE_DELETED]';
+
                             if (isDeletedForEveryone) {
-                              return _DeletedMessageBubble(
+                              messageWidget = _DeletedMessageBubble(
                                 isMe: isMe,
                                 time: _formatTime(message['createdAt']),
                                 showAvatar: showAvatar,
@@ -1965,81 +2097,103 @@ class _ChatScreenState extends State<ChatScreen> {
                                 themeService: _themeService,
                                 localeService: _localeService,
                               );
-                            }
-
-                            if (_isVideoShare(content)) {
+                            } else if (_isThemeChangeMessage(content)) {
+                              final colorId = _extractThemeColorId(content) ?? 'default';
+                              final colorName = _getThemeColorName(colorId);
+                              final colorValue = _getThemeColorValue(colorId);
+                              final senderName = isMe
+                                  ? (_localeService.isVietnamese ? 'Bạn' : 'You')
+                                  : (widget.recipientUsername);
+                              messageWidget = _ThemeChangeSystemMessage(
+                                senderName: senderName,
+                                colorName: colorName,
+                                colorValue: colorValue,
+                                themeService: _themeService,
+                                localeService: _localeService,
+                              );
+                            } else if (_isVideoShare(content)) {
                               final videoId = _extractVideoId(content);
                               if (videoId != null) {
-                                return _buildVideoShareRow(videoId, isMe, showAvatar);
+                                messageWidget = _buildVideoShareRow(videoId, isMe, showAvatar);
                               }
                             }
 
-                            // Check if message is stacked images (4+ images like Messenger)
-                            if (_isStackedImages(content)) {
-                              final imageUrls = _extractStackedImageUrls(content);
-                              return _StackedImagesBubble(
-                                imageUrls: imageUrls,
-                                isMe: isMe,
-                                time: _formatTime(message['createdAt']),
-                                showAvatar: showAvatar,
-                                recipientAvatar: widget.recipientAvatar,
-                                isRead: message['isRead'] ?? false,
-                                status: status,
-                                getFullImageUrl: _getFullImageUrl,
-                                showStatus: isLastMyMessage,
-                                chatThemeColor: _chatThemeColor,
-                              );
+                            // Fall through for remaining types (or if video share had null videoId)
+                            if (messageWidget == null) {
+                              if (_isStackedImages(content)) {
+                                final imageUrls = _extractStackedImageUrls(content);
+                                messageWidget = _StackedImagesBubble(
+                                  imageUrls: imageUrls,
+                                  isMe: isMe,
+                                  time: _formatTime(message['createdAt']),
+                                  showAvatar: showAvatar,
+                                  recipientAvatar: widget.recipientAvatar,
+                                  isRead: message['isRead'] ?? false,
+                                  status: status,
+                                  getFullImageUrl: _getFullImageUrl,
+                                  showStatus: isLastMyMessage,
+                                  chatThemeColor: _chatThemeColor,
+                                );
+                              } else if (_hasImageContent(content)) {
+                                final imageUrls = _extractImageUrls(content);
+                                final textContent = _getTextWithoutImages(content);
+                                messageWidget = _ImageMessageBubble(
+                                  imageUrls: imageUrls,
+                                  text: textContent,
+                                  isMe: isMe,
+                                  time: _formatTime(message['createdAt']),
+                                  showAvatar: showAvatar,
+                                  recipientAvatar: widget.recipientAvatar,
+                                  isRead: message['isRead'] ?? false,
+                                  status: status,
+                                  getFullImageUrl: _getFullImageUrl,
+                                  showStatus: isLastMyMessage,
+                                  chatThemeColor: _chatThemeColor,
+                                );
+                              } else {
+                                messageWidget = _MessageBubble(
+                                  message: content,
+                                  isMe: isMe,
+                                  time: _formatTime(message['createdAt']),
+                                  showAvatar: showAvatar,
+                                  recipientAvatar: widget.recipientAvatar,
+                                  isRead: message['isRead'] ?? false,
+                                  status: status,
+                                  showStatus: isLastMyMessage,
+                                  themeService: _themeService,
+                                  chatThemeColor: _chatThemeColor,
+                                  messageId: message['id']?.toString(),
+                                  isPinned: message['pinnedBy'] != null,
+                                  replyToId: message['replyToId']?.toString(),
+                                  replyToContent: message['replyToContent']?.toString(),
+                                  replyToSenderId: message['replyToSenderId']?.toString(),
+                                  currentUserId: _currentUserId,
+                                  recipientName: widget.recipientUsername,
+                                  localeService: _localeService,
+                                  onAvatarTap: _showUserOptionsModal,
+                                  onLongPressWithPosition: (tapPosition, bubbleSize, isMe) {
+                                    _showMessageOptions(message, tapPosition: tapPosition, bubbleSize: bubbleSize, isMe: isMe);
+                                  },
+                                  isTranslating: _translatingMessages[message['id']?.toString()] ?? false,
+                                  translatedText: _translatedMessages[message['id']?.toString()],
+                                  isEdited: message['isEdited'] == true,
+                                );
+                              }
                             }
 
-                            // Check if message contains single image
-                            if (_hasImageContent(content)) {
-                              final imageUrls = _extractImageUrls(content);
-                              final textContent = _getTextWithoutImages(content);
-                              return _ImageMessageBubble(
-                                imageUrls: imageUrls,
-                                text: textContent,
-                                isMe: isMe,
-                                time: _formatTime(message['createdAt']),
-                                showAvatar: showAvatar,
-                                recipientAvatar: widget.recipientAvatar,
-                                isRead: message['isRead'] ?? false,
-                                status: status,
-                                getFullImageUrl: _getFullImageUrl,
-                                showStatus: isLastMyMessage,
-                                chatThemeColor: _chatThemeColor,
+                            // Wrap with highlight + GlobalKey if this is the scroll target
+                            final msgId = message['id']?.toString();
+                            if (_scrollToMessageId != null && msgId == _scrollToMessageId) {
+                              return Container(
+                                key: _scrollTargetKey,
+                                decoration: BoxDecoration(
+                                  color: (_chatThemeColor ?? Colors.blue).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: messageWidget,
                               );
                             }
-
-                            return _MessageBubble(
-                              message: content,
-                              isMe: isMe,
-                              time: _formatTime(message['createdAt']),
-                              showAvatar: showAvatar,
-                              recipientAvatar: widget.recipientAvatar,
-                              isRead: message['isRead'] ?? false,
-                              status: status,
-                              showStatus: isLastMyMessage,
-                              themeService: _themeService,
-                              chatThemeColor: _chatThemeColor,
-                              messageId: message['id']?.toString(),
-                              isPinned: message['pinnedBy'] != null,
-                              // Reply support
-                              replyToId: message['replyToId']?.toString(),
-                              replyToContent: message['replyToContent']?.toString(),
-                              replyToSenderId: message['replyToSenderId']?.toString(),
-                              currentUserId: _currentUserId,
-                              recipientName: widget.recipientUsername,
-                              localeService: _localeService,
-                              onAvatarTap: _showUserOptionsModal,
-                              onLongPressWithPosition: (tapPosition, bubbleSize, isMe) {
-                                _showMessageOptions(message, tapPosition: tapPosition, bubbleSize: bubbleSize, isMe: isMe);
-                              },
-                              // Translation support
-                              isTranslating: _translatingMessages[message['id']?.toString()] ?? false,
-                              translatedText: _translatedMessages[message['id']?.toString()],
-                              // Edited support
-                              isEdited: message['isEdited'] == true,
-                            );
+                            return messageWidget;
                           },
                         ),
             ),
@@ -5149,6 +5303,67 @@ class _MessageOptionsOverlayState extends State<_MessageOptionsOverlay> {
                 icon,
                 size: 20,
                 color: iconColor ?? widget.themeService.textSecondaryColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Widget for displaying system theme change messages (centered, like Messenger)
+class _ThemeChangeSystemMessage extends StatelessWidget {
+  final String senderName;
+  final String colorName;
+  final Color colorValue;
+  final ThemeService themeService;
+  final LocaleService localeService;
+
+  const _ThemeChangeSystemMessage({
+    required this.senderName,
+    required this.colorName,
+    required this.colorValue,
+    required this.themeService,
+    required this.localeService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final text = localeService.isVietnamese
+        ? '$senderName đã đổi chủ đề thành $colorName'
+        : '$senderName changed the theme to $colorName';
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 32),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: themeService.inputBackground,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: colorValue,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: themeService.textSecondaryColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ],
           ),

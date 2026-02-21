@@ -177,8 +177,49 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     print('[MainScreen] === NOTIFICATION TAP RECEIVED ===');
     print('[MainScreen] type: $type, data: $data');
 
-    if (type == 'message') {
-      _navigateToChatFromNotification(data);
+    switch (type) {
+      case 'message':
+        _navigateToChatFromNotification(data);
+        break;
+      case 'like':
+      case 'comment':
+        final videoId = data['videoId'] as String?;
+        if (videoId != null) {
+          _navigateToVideoFromNotificationTap(videoId);
+        }
+        break;
+      case 'follow':
+        final userId = data['userId'] as String?;
+        final followerId = int.tryParse(userId ?? '');
+        if (followerId != null && mounted) {
+          Navigator.popUntil(context, (route) => route.isFirst);
+          _videoPlaybackService.setVideoTabInvisible();
+          setState(() => _selectedIndex = 1);
+          NavigationUtils.slideToScreen(
+            context,
+            UserProfileScreen(userId: followerId),
+          );
+        }
+        break;
+    }
+  }
+
+  /// Navigate to a video from background/terminated notification tap
+  Future<void> _navigateToVideoFromNotificationTap(String videoId) async {
+    if (!mounted) return;
+    Navigator.popUntil(context, (route) => route.isFirst);
+    _videoPlaybackService.setVideoTabInvisible();
+    setState(() => _selectedIndex = 1);
+    try {
+      final video = await VideoService().getVideoById(videoId);
+      if (video != null && video['isHidden'] != true && mounted) {
+        NavigationUtils.slideToScreen(
+          context,
+          VideoDetailScreen(videos: [video], initialIndex: 0),
+        );
+      }
+    } catch (e) {
+      print('[MainScreen] Error navigating to video from notification: $e');
     }
   }
 
