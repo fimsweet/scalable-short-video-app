@@ -138,7 +138,12 @@ class FcmService {
       _tokenRefreshSubscription = _messaging.onTokenRefresh.listen((newToken) {
         print('[FCM] Token refreshed (${newToken.length} chars): ${newToken.substring(0, 30)}...');
         _fcmToken = newToken;
-        _sendTokenToServer(newToken);
+        // Only send to server if user is logged in (otherwise it will fail)
+        if (_authService.isLoggedIn) {
+          _sendTokenToServer(newToken);
+        } else {
+          print('[FCM] User not logged in, skipping token server registration');
+        }
       });
       
       // Handle foreground messages
@@ -400,6 +405,7 @@ class FcmService {
   /// This fixes "registration-token-not-registered" errors that happen
   /// on emulators and after APK reinstalls where old tokens become stale.
   /// Should ONLY be called during registerToken() (after login), not during initialize().
+  /// Uses retry loop with exponential backoff instead of a fixed delay.
   Future<String?> _forceRefreshToken() async {
     try {
       if (kIsWeb) return null;
@@ -412,16 +418,22 @@ class FcmService {
         print('[FCM] deleteToken failed (ok if first time): $e');
       }
       
-      // Give Firebase enough time to process deletion and register new token
-      await Future.delayed(const Duration(seconds: 2));
-      
-      _fcmToken = await _messaging.getToken();
-      if (_fcmToken != null) {
-        print('[FCM] Fresh token (${_fcmToken!.length} chars): ${_fcmToken!.substring(0, 30)}...${_fcmToken!.substring(_fcmToken!.length - 15)}');
-      } else {
-        print('[FCM] WARNING: getToken() returned null after refresh');
+      // Retry getToken() with exponential backoff (1s, 2s, 4s)
+      // Firebase needs time to process the deletion and register a new instance
+      for (int attempt = 0; attempt < 3; attempt++) {
+        final delay = Duration(seconds: 1 << attempt); // 1s, 2s, 4s
+        await Future.delayed(delay);
+        
+        _fcmToken = await _messaging.getToken();
+        if (_fcmToken != null) {
+          print('[FCM] Fresh token on attempt ${attempt + 1} (${_fcmToken!.length} chars): ${_fcmToken!.substring(0, 30)}...${_fcmToken!.substring(_fcmToken!.length - 15)}');
+          return _fcmToken;
+        }
+        print('[FCM] getToken() returned null on attempt ${attempt + 1}, retrying...');
       }
-      return _fcmToken;
+      
+      print('[FCM] WARNING: getToken() returned null after all 3 attempts');
+      return null;
     } catch (e) {
       print('[FCM] Error during force refresh: $e');
       // Fallback to simple retrieval
@@ -466,7 +478,8 @@ class FcmService {
   /// 
   /// Strategy:
   /// 1. First try the current cached token (fast path — works if token is still valid)
-  /// 2. If no token or send fails, force-refresh (deleteToken + getToken) and retry
+  /// 2. If no token or send fails, force-refresh (deleteToken + getToken with retry) and re-send
+  /// 3. If still fails, schedule a delayed retry (covers slow network / Firebase propagation delays)
   /// 
   /// This avoids unnecessary token churn while still fixing stale tokens.
   Future<bool> registerToken() async {
@@ -484,7 +497,7 @@ class FcmService {
       print('[FCM] Fast path failed, force-refreshing token...');
     }
     
-    // Step 2: Force refresh — delete old token, get fresh one
+    // Step 2: Force refresh — delete old token, get fresh one (with retries)
     await _forceRefreshToken();
     
     if (_fcmToken != null) {
@@ -494,14 +507,29 @@ class FcmService {
         return true;
       }
       print('[FCM] WARNING: FCM token registration failed even after force-refresh!');
-      return false;
+    } else {
+      print('[FCM] No FCM token available from Firebase, scheduling delayed retry...');
     }
     
-    print('[FCM] No FCM token available from Firebase');
+    // Step 3: Schedule a delayed retry in 10 seconds
+    // This covers cases where Firebase is slow to generate a new token
+    Future.delayed(const Duration(seconds: 10), () async {
+      if (_fcmToken == null) {
+        _fcmToken = await _messaging.getToken();
+      }
+      if (_fcmToken != null) {
+        final retrySuccess = await _sendTokenToServer(_fcmToken!);
+        print('[FCM] Delayed retry: ${retrySuccess ? 'SUCCESS' : 'FAILED'}');
+      } else {
+        print('[FCM] Delayed retry: still no token available');
+      }
+    });
+    
     return false;
   }
 
   /// Unregister FCM token on logout (prevents stale push to wrong user)
+  /// Also deletes the token from Firebase so next login gets a guaranteed fresh token
   Future<void> unregisterToken() async {
     try {
       final authToken = await _authService.getToken();
@@ -523,6 +551,17 @@ class FcmService {
       }
     } catch (e) {
       print('[FCM] Error unregistering FCM token: $e');
+    }
+    
+    // Delete token from Firebase so it's fully invalidated
+    // Next login will call registerToken() → _forceRefreshToken() to get a fresh one
+    try {
+      if (!kIsWeb) {
+        await _messaging.deleteToken();
+        print('[FCM] Firebase token deleted on logout');
+      }
+    } catch (e) {
+      print('[FCM] Error deleting Firebase token on logout: $e');
     }
     _fcmToken = null;
   }
