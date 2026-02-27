@@ -45,6 +45,10 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
   Future<void>? _backgroundUploadFuture;
   bool _uploadCompleted = false;
 
+  // Chunked upload state — kept for resume capability
+  ChunkedUploadState? _chunkedUploadState;
+  bool _isResuming = false;
+
   // Categories
   List<Map<String, dynamic>> _categories = [];
   Set<int> _selectedCategoryIds = {};
@@ -381,10 +385,11 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
       _uploadError = null;
       _uploadSuccess = false;
       _uploadCompleted = false;
+      _isResuming = false;
     });
     _goToNextStage();
 
-    // ACTUAL UPLOAD - wait for it to complete before showing success
+    // ACTUAL UPLOAD - uses chunked upload for resumability and real progress
     final description = _descriptionController.text.trim();
     final categoryIds = _selectedCategoryIds.toList();
     final userId = user['id'].toString();
@@ -396,8 +401,14 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     
     Future<void> performUpload() async {
       try {
-        print('Upload started for ${_selectedVideo!.name}');
+        print('[UPLOAD] Starting chunked upload for ${_selectedVideo!.name}');
+        
+        // If custom thumbnail is provided, upload it separately first via the
+        // original non-chunked endpoint (thumbnail is small, no need for chunks).
+        // Otherwise use chunked upload for the video.
         if (_selectedThumbnail != null) {
+          // Custom thumbnail flow: use original upload-with-thumbnail endpoint
+          // wrapped with a simple progress simulation since it's a single request
           await _videoService.uploadVideoWithThumbnail(
             videoFile: _selectedVideo!,
             thumbnailFile: _selectedThumbnail,
@@ -410,10 +421,12 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             allowComments: _allowComments,
           );
         } else {
-          await _videoService.uploadVideo(
+          // Chunked upload with real progress tracking
+          // Step 1: Init upload session and save state (so Resume works on failure)
+          final state = _chunkedUploadState ?? await _videoService.initChunkedUpload(
             videoFile: _selectedVideo!,
             userId: userId,
-            title: description,
+            title: description ?? '',
             description: description,
             token: token,
             categoryIds: categoryIds.isNotEmpty ? categoryIds : null,
@@ -421,19 +434,43 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             visibility: _selectedVisibility,
             allowComments: _allowComments,
           );
+
+          // Save state BEFORE uploading chunks — critical for Resume
+          if (mounted) setState(() => _chunkedUploadState = state);
+
+          // Step 2: Upload all chunks
+          await _videoService.uploadChunks(
+            state: state,
+            token: token,
+            onProgress: (progress) {
+              if (mounted) setState(() => _uploadProgress = progress);
+            },
+          );
+
+          // Step 3: Complete (merge chunks on server)
+          final result = await _videoService.completeChunkedUpload(
+            uploadId: state.uploadId,
+            token: token,
+          );
+
+          if (result['success'] != true) {
+            throw Exception(result['message'] ?? 'Upload failed');
+          }
         }
-        print('Upload success');
+
+        print('[UPLOAD] Upload success');
         if (mounted) {
           setState(() {
             _isUploading = false;
             _uploadSuccess = true;
             _uploadCompleted = true;
+            _chunkedUploadState = null; // Clear state on success
           });
           _successAnimController.forward();
           HapticFeedback.heavyImpact();
         }
       } catch (e) {
-        print('Upload failed: $e');
+        print('[UPLOAD] Upload failed: $e');
         if (mounted) {
           setState(() {
             _isUploading = false;
@@ -444,6 +481,86 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
     }
     
     _backgroundUploadFuture = performUpload();
+  }
+
+  /// Resume a failed chunked upload from where it left off
+  Future<void> _resumeUpload() async {
+    if (_chunkedUploadState == null || _selectedVideo == null) {
+      // No resumable state — fall back to full retry
+      _retryUpload();
+      return;
+    }
+
+    final token = await _authService.getToken();
+    if (token == null) {
+      _showSnackBar(_localeService.get('please_login_again'), Colors.red);
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _isUploading = true;
+      _uploadError = null;
+      _isResuming = true;
+    });
+
+    Future<void> performResume() async {
+      try {
+        print('[UPLOAD] Resuming chunked upload: ${_chunkedUploadState!.uploadId}');
+        print('[UPLOAD] Already uploaded: ${_chunkedUploadState!.uploadedChunks.length}/${_chunkedUploadState!.totalChunks} chunks');
+
+        // Resume uploading remaining chunks
+        await _videoService.uploadChunks(
+          state: _chunkedUploadState!,
+          token: token,
+          onProgress: (progress) {
+            if (mounted) setState(() => _uploadProgress = progress);
+          },
+        );
+
+        // Complete
+        final result = await _videoService.completeChunkedUpload(
+          uploadId: _chunkedUploadState!.uploadId,
+          token: token,
+        );
+
+        if (result['success'] != true) {
+          throw Exception(result['message'] ?? 'Complete failed');
+        }
+
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+            _uploadSuccess = true;
+            _uploadCompleted = true;
+            _chunkedUploadState = null;
+          });
+          _successAnimController.forward();
+          HapticFeedback.heavyImpact();
+        }
+      } catch (e) {
+        print('[UPLOAD] Resume failed: $e');
+        if (mounted) {
+          setState(() {
+            _isUploading = false;
+            _uploadError = e.toString();
+          });
+        }
+      }
+    }
+
+    _backgroundUploadFuture = performResume();
+  }
+
+  /// Full retry — discards existing state and starts fresh
+  void _retryUpload() {
+    setState(() {
+      _uploadError = null;
+      _chunkedUploadState = null;
+      _currentStage = 1;
+    });
+    _pageController.jumpToPage(1);
+    _uploadVideo();
   }
 
   @override
@@ -1540,6 +1657,7 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
 
   Widget _buildUploadStatusView(bool isDark) {
     final isComplete = _uploadSuccess && _uploadCompleted;
+    final progressPercent = (_uploadProgress * 100).toInt();
 
     return Center(
       child: Padding(
@@ -1547,7 +1665,7 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Tick area: loading spinner OR success tick
+            // Tick area: progress ring OR success tick
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 400),
               switchInCurve: Curves.easeOut,
@@ -1570,13 +1688,34 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                       child: const Icon(Icons.check_rounded, size: 64, color: Colors.white),
                     )
                   : SizedBox(
-                      key: const ValueKey('loading'),
-                      width: 112,
-                      height: 112,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 5,
-                        color: ThemeService.accentColor,
-                        backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                      key: const ValueKey('progress'),
+                      width: 120,
+                      height: 120,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Determinate progress ring
+                          SizedBox(
+                            width: 112,
+                            height: 112,
+                            child: CircularProgressIndicator(
+                              value: _uploadProgress > 0 ? _uploadProgress : null,
+                              strokeWidth: 5,
+                              color: ThemeService.accentColor,
+                              backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                            ),
+                          ),
+                          // Percentage text in center
+                          if (_uploadProgress > 0)
+                            Text(
+                              '$progressPercent%',
+                              style: TextStyle(
+                                color: _themeService.textPrimaryColor,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                        ],
                       ),
                     ),
             ),
@@ -1584,7 +1723,9 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             Text(
               isComplete
                   ? _localeService.get('video_uploaded')
-                  : (_localeService.isVietnamese ? 'Đang xử lý...' : 'Processing...'),
+                  : (_isResuming
+                      ? _localeService.get('resuming_upload')
+                      : _localeService.get('uploading')),
               style: TextStyle(
                 color: _themeService.textPrimaryColor,
                 fontSize: 24,
@@ -1595,9 +1736,11 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
             Text(
               isComplete
                   ? _localeService.get('video_processing')
-                  : (_localeService.isVietnamese
-                      ? 'Quá trình này có thể mất vài giây'
-                      : 'This may take a moment'),
+                  : (_uploadProgress > 0
+                      ? (_localeService.isVietnamese
+                          ? 'Đã tải $progressPercent% \u2022 Nếu mất mạng, bạn có thể tiếp tục sau'
+                          : '$progressPercent% uploaded \u2022 Can resume if interrupted')
+                      : _localeService.get('upload_preparing')),
               style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 15),
               textAlign: TextAlign.center,
             ),
@@ -1629,6 +1772,12 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
   }
 
   Widget _buildErrorView(bool isDark) {
+    final canResume = _chunkedUploadState != null &&
+        _chunkedUploadState!.uploadedChunks.isNotEmpty;
+    final chunksInfo = canResume
+        ? '${_chunkedUploadState!.uploadedChunks.length}/${_chunkedUploadState!.totalChunks}'
+        : null;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1658,7 +1807,43 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
               style: TextStyle(color: _themeService.textSecondaryColor, fontSize: 14),
               textAlign: TextAlign.center,
             ),
+            // Show chunk progress info if resumable
+            if (canResume) ...[
+              const SizedBox(height: 8),
+              Text(
+                _localeService.isVietnamese
+                    ? 'Đã tải $chunksInfo phần \u2022 Có thể tiếp tục'
+                    : '$chunksInfo parts uploaded \u2022 Can resume',
+                style: TextStyle(
+                  color: ThemeService.accentColor,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
             const SizedBox(height: 40),
+            // Resume button (only when chunks have been partially uploaded)
+            if (canResume) ...[
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton.icon(
+                  onPressed: _resumeUpload,
+                  icon: const Icon(Icons.play_arrow_rounded, size: 22),
+                  label: Text(
+                    _localeService.get('resume_upload'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: ThemeService.accentColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               children: [
                 Expanded(
@@ -1670,7 +1855,7 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                       side: BorderSide(color: _themeService.textSecondaryColor),
                     ),
                     child: Text(
-                      _localeService.isVietnamese ? 'Quay lại' : 'Go back',
+                      _localeService.get('back'),
                       style: TextStyle(color: _themeService.textPrimaryColor),
                     ),
                   ),
@@ -1678,20 +1863,20 @@ class _UploadVideoScreenV2State extends State<UploadVideoScreenV2>
                 const SizedBox(width: 16),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _uploadError = null;
-                        _currentStage = 1;
-                      });
-                      _pageController.jumpToPage(1);
-                      _uploadVideo();
-                    },
+                    onPressed: _retryUpload,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: ThemeService.accentColor,
+                      backgroundColor: canResume
+                          ? (isDark ? Colors.grey[700] : Colors.grey[400])
+                          : ThemeService.accentColor,
+                      foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
-                    child: Text(_localeService.isVietnamese ? 'Thử lại' : 'Retry'),
+                    child: Text(
+                      canResume
+                          ? _localeService.get('restart_upload')
+                          : _localeService.get('retry'),
+                    ),
                   ),
                 ),
               ],

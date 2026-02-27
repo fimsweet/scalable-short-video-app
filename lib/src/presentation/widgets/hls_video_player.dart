@@ -62,23 +62,20 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
   /// Check if video is currently playing
   bool get isPlaying => _controller?.value.isPlaying ?? false;
 
-  // Check if video needs fullscreen button (has black bars)
+  // Check if video needs fullscreen button — only for landscape videos
   bool get _needsFullscreenButton {
     if (!_isInitialized) return false;
-    
     final videoAspect = _controller!.value.aspectRatio;
-    const targetAspect = 9 / 16; // Portrait mode (0.5625)
-    
-    // Show fullscreen button if video aspect ratio differs significantly from 9:16
-    // Allow small tolerance (±0.05) for rounding errors
-    return (videoAspect - targetAspect).abs() > 0.05;
+    // Only show fullscreen button for landscape videos (width > height)
+    return videoAspect > 1.0;
   }
 
   bool get _isPortraitVideo {
     if (!_isInitialized) return true;
     final videoAspect = _controller!.value.aspectRatio;
-    // Video is portrait if aspect ratio is close to or less than 9:16
-    return videoAspect <= (9 / 16 + 0.1);
+    // Portrait = width <= height (aspect ratio <= 1.0)
+    // Covers 9:16, 3:4, 2:3, 4:5, 1:1 (square), etc.
+    return videoAspect <= 1.0;
   }
 
   @override
@@ -427,12 +424,15 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
           behavior: HitTestBehavior.opaque,
           child: _isPortraitVideo
               ? SizedBox.expand(
-                  child: FittedBox(
-                    fit: BoxFit.cover, // Portrait: Cover entire screen like TikTok
-                    child: SizedBox(
-                      width: _controller!.value.size.width,
-                      height: _controller!.value.size.height,
-                      child: VideoPlayer(_controller!),
+                  child: Container(
+                    color: Colors.black,
+                    child: FittedBox(
+                      fit: BoxFit.contain, // Portrait: Fit width, no zoom/crop
+                      child: SizedBox(
+                        width: _controller!.value.size.width,
+                        height: _controller!.value.size.height,
+                        child: VideoPlayer(_controller!),
+                      ),
                     ),
                   ),
                 )

@@ -1252,8 +1252,10 @@ class LocaleService extends ChangeNotifier {
     'who_can_view': 'Ai có thể xem video này',
     'allow_comments': 'Cho phép bình luận',
     'post_video': 'Đăng video',
-
-    // Report User
+    'resuming_upload': 'Đang tiếp tục tải lên...',
+    'upload_preparing': 'Đang chuẩn bị...',
+    'resume_upload': 'Tiếp tục tải lên',
+    'restart_upload': 'Tải lại từ đầu',
     'report_reason_spam': 'Tin rác / Spam',
     'report_reason_harassment': 'Quấy rối',
     'report_reason_inappropriate': 'Nội dung không phù hợp',
@@ -2608,8 +2610,10 @@ class LocaleService extends ChangeNotifier {
     'who_can_view': 'Who can view this video',
     'allow_comments': 'Allow comments',
     'post_video': 'Post video',
-
-    // Report User
+    'resuming_upload': 'Resuming upload...',
+    'upload_preparing': 'Preparing...',
+    'resume_upload': 'Resume upload',
+    'restart_upload': 'Restart upload',
     'report_reason_spam': 'Spam',
     'report_reason_harassment': 'Harassment',
     'report_reason_inappropriate': 'Inappropriate Content',

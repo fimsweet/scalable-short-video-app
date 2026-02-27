@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
@@ -207,7 +208,21 @@ class _ChatScreenState extends State<ChatScreen> {
           if (isOnline) {
             _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Online';
           } else {
-            _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+            // Format lastSeen with timeago for accurate offline duration
+            final lastSeen = data['lastSeen'];
+            if (lastSeen != null && lastSeen.toString().isNotEmpty) {
+              try {
+                final lastSeenDate = DateTime.parse(lastSeen.toString()).toLocal();
+                final ago = timeago.format(lastSeenDate, locale: _localeService.isVietnamese ? 'vi' : 'en');
+                _recipientStatusText = _localeService.isVietnamese
+                    ? 'Hoạt động $ago'
+                    : 'Active $ago';
+              } catch (_) {
+                _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+              }
+            } else {
+              _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+            }
           }
         });
       }

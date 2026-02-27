@@ -78,8 +78,14 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Future<void> _loadSuggestions() async {
-    // Load some trending/suggested videos
-    final videos = await _videoService.getAllVideos();
+    // Load personalized recommendations (falls back to getAllVideos internally)
+    final userId = _authService.userId;
+    List<dynamic> videos;
+    if (userId != null) {
+      videos = await _videoService.getRecommendedVideos(userId, limit: 6);
+    } else {
+      videos = await _videoService.getTrendingVideos(limit: 6);
+    }
     if (mounted) {
       setState(() {
         _suggestedVideos = videos.take(6).toList();
