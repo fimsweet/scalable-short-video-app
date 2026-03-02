@@ -1,10 +1,37 @@
 ﻿import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 import 'package:http_parser/http_parser.dart';
 import '../config/app_config.dart';
 import 'auth_service.dart';
+
+/// Tracks state of a resumable chunked upload so the UI can retry/resume.
+class ChunkedUploadState {
+  final String uploadId;
+  final String filePath;
+  final int totalChunks;
+  final int chunkSize;
+  final Set<int> uploadedChunks;
+  final Map<String, dynamic> metadata; // userId, title, etc.
+  bool isCancelled = false;
+
+  ChunkedUploadState({
+    required this.uploadId,
+    required this.filePath,
+    required this.totalChunks,
+    required this.chunkSize,
+    required this.metadata,
+    Set<int>? uploadedChunks,
+  }) : uploadedChunks = uploadedChunks ?? {};
+
+  double get progress =>
+      totalChunks > 0 ? uploadedChunks.length / totalChunks : 0.0;
+
+  void cancel() => isCancelled = true;
+}
 
 class VideoService {
   static final VideoService _instance = VideoService._internal();
@@ -16,6 +43,215 @@ class VideoService {
   String get _userServiceUrl => AppConfig.userServiceUrl;
 
   String get _videoApiUrl => '$_baseUrl/videos';
+
+  /// Default chunk size: 5 MB (matches thesis Section 3.5.1, Figure 3.2)
+  static const int defaultChunkSize = 5 * 1024 * 1024;
+
+  /// Max retries per chunk before giving up
+  static const int _maxChunkRetries = 3;
+
+  // ==================== CHUNKED UPLOAD ====================
+
+  /// Initialize a chunked upload session on the server.
+  /// Returns a [ChunkedUploadState] that can be used to upload chunks and resume.
+  Future<ChunkedUploadState> initChunkedUpload({
+    required XFile videoFile,
+    required String userId,
+    required String title,
+    String? description,
+    required String token,
+    List<int>? categoryIds,
+    double? thumbnailTimestamp,
+    String? visibility,
+    bool? allowComments,
+    int chunkSize = defaultChunkSize,
+  }) async {
+    final fileSize = await videoFile.length();
+    final totalChunks = (fileSize / chunkSize).ceil();
+
+    final body = <String, dynamic>{
+      'fileName': videoFile.name,
+      'fileSize': fileSize,
+      'totalChunks': totalChunks,
+      'userId': userId,
+      'title': title,
+    };
+    if (description != null && description.isNotEmpty) body['description'] = description;
+    if (categoryIds != null && categoryIds.isNotEmpty) body['categoryIds'] = categoryIds;
+    if (thumbnailTimestamp != null) body['thumbnailTimestamp'] = thumbnailTimestamp;
+    if (visibility != null) body['visibility'] = visibility;
+    if (allowComments != null) body['allowComments'] = allowComments;
+
+    final response = await http.post(
+      Uri.parse('$_videoApiUrl/chunked-upload/init'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to init chunked upload: ${response.statusCode} ${response.body}');
+    }
+
+    final data = json.decode(response.body);
+    if (data['success'] != true) {
+      throw Exception('Init failed: ${data['message'] ?? response.body}');
+    }
+
+    print('[CHUNK] Initialized upload: ${data['uploadId']} ($totalChunks chunks of ${(chunkSize / 1024 / 1024).toStringAsFixed(1)} MB)');
+
+    return ChunkedUploadState(
+      uploadId: data['uploadId'],
+      filePath: videoFile.path,
+      totalChunks: totalChunks,
+      chunkSize: chunkSize,
+      metadata: body,
+    );
+  }
+
+  /// Upload all remaining chunks for a [ChunkedUploadState].
+  /// [onProgress] is called after each chunk with progress 0.0–1.0.
+  /// Supports resume: already-uploaded chunks (in [state.uploadedChunks]) are skipped.
+  /// Each chunk is retried up to [_maxChunkRetries] times on failure.
+  Future<void> uploadChunks({
+    required ChunkedUploadState state,
+    required String token,
+    void Function(double progress)? onProgress,
+  }) async {
+    final file = File(state.filePath);
+    final fileSize = await file.length();
+    final raf = await file.open(mode: FileMode.read);
+
+    try {
+      for (int i = 0; i < state.totalChunks; i++) {
+        if (state.isCancelled) throw Exception('Upload cancelled');
+
+        // Skip already-uploaded chunks (resume support)
+        if (state.uploadedChunks.contains(i)) {
+          onProgress?.call(state.progress);
+          continue;
+        }
+
+        final offset = i * state.chunkSize;
+        final end = min(offset + state.chunkSize, fileSize);
+        final length = end - offset;
+
+        await raf.setPosition(offset);
+        final chunkBytes = await raf.read(length);
+
+        // Retry loop per chunk
+        bool chunkUploaded = false;
+        for (int attempt = 1; attempt <= _maxChunkRetries; attempt++) {
+          try {
+            final request = http.MultipartRequest(
+              'POST',
+              Uri.parse('$_videoApiUrl/chunked-upload/chunk'),
+            );
+            request.headers['Authorization'] = 'Bearer $token';
+            request.fields['uploadId'] = state.uploadId;
+            request.fields['chunkIndex'] = i.toString();
+            request.files.add(http.MultipartFile.fromBytes(
+              'chunk',
+              chunkBytes,
+              filename: 'chunk_$i',
+            ));
+
+            final response = await request.send();
+            final responseBody = await response.stream.bytesToString();
+
+            if (response.statusCode == 200) {
+              state.uploadedChunks.add(i);
+              chunkUploaded = true;
+              onProgress?.call(state.progress);
+              break;
+            } else {
+              print('[CHUNK] Chunk $i failed (attempt $attempt): ${response.statusCode} $responseBody');
+            }
+          } catch (e) {
+            print('[CHUNK] Chunk $i error (attempt $attempt): $e');
+          }
+
+          // Exponential backoff: 1s, 2s, 4s
+          if (attempt < _maxChunkRetries) {
+            await Future.delayed(Duration(seconds: 1 << (attempt - 1)));
+          }
+        }
+
+        if (!chunkUploaded) {
+          throw Exception('Failed to upload chunk $i after $_maxChunkRetries attempts');
+        }
+      }
+    } finally {
+      await raf.close();
+    }
+  }
+
+  /// Complete a chunked upload — tells server to merge chunks and start processing.
+  Future<Map<String, dynamic>> completeChunkedUpload({
+    required String uploadId,
+    required String token,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$_videoApiUrl/chunked-upload/complete'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: json.encode({'uploadId': uploadId}),
+    );
+
+    if (response.statusCode == 202) {
+      return {'success': true, 'data': json.decode(response.body)};
+    } else {
+      return {'success': false, 'message': 'Complete failed: ${response.statusCode} ${response.body}'};
+    }
+  }
+
+  /// Full chunked upload flow: init → upload chunks → complete.
+  /// Returns upload state so the caller can resume if interrupted.
+  /// [onProgress] reports overall progress 0.0–1.0.
+  Future<Map<String, dynamic>> chunkedUploadVideo({
+    required XFile videoFile,
+    required String userId,
+    required String title,
+    String? description,
+    required String token,
+    List<int>? categoryIds,
+    double? thumbnailTimestamp,
+    String? visibility,
+    bool? allowComments,
+    void Function(double progress)? onProgress,
+    ChunkedUploadState? existingState, // Pass to resume a previous upload
+  }) async {
+    try {
+      // Step 1: Init (or reuse existing state for resume)
+      final state = existingState ?? await initChunkedUpload(
+        videoFile: videoFile,
+        userId: userId,
+        title: title,
+        description: description,
+        token: token,
+        categoryIds: categoryIds,
+        thumbnailTimestamp: thumbnailTimestamp,
+        visibility: visibility,
+        allowComments: allowComments,
+      );
+
+      // Step 2: Upload all chunks (resumes from where it left off)
+      await uploadChunks(state: state, token: token, onProgress: onProgress);
+
+      // Step 3: Complete
+      final result = await completeChunkedUpload(uploadId: state.uploadId, token: token);
+      return result;
+    } catch (e) {
+      print('[CHUNK] Chunked upload error: $e');
+      rethrow; // Re-throw so caller can show error + offer resume
+    }
+  }
+
+  // ==================== ORIGINAL UPLOAD (kept as fallback) ====================
 
   /// Upload video to video-service with optional category tags
   Future<Map<String, dynamic>> uploadVideo({

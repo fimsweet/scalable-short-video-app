@@ -238,6 +238,8 @@ class LocaleService extends ChangeNotifier {
     'date_of_birth': 'Ngày sinh',
     'select_date_of_birth': 'Chọn ngày sinh',
     'confirm_password': 'Xác nhận mật khẩu',
+    'please_enter_email': 'Vui lòng nhập email',
+    'please_enter_password': 'Vui lòng nhập mật khẩu',
     'please_enter_full_name': 'Vui lòng nhập họ và tên',
     'please_enter_phone': 'Vui lòng nhập số điện thoại',
     'invalid_phone': 'Số điện thoại không hợp lệ',
@@ -1252,8 +1254,10 @@ class LocaleService extends ChangeNotifier {
     'who_can_view': 'Ai có thể xem video này',
     'allow_comments': 'Cho phép bình luận',
     'post_video': 'Đăng video',
-
-    // Report User
+    'resuming_upload': 'Đang tiếp tục tải lên...',
+    'upload_preparing': 'Đang chuẩn bị...',
+    'resume_upload': 'Tiếp tục tải lên',
+    'restart_upload': 'Tải lại từ đầu',
     'report_reason_spam': 'Tin rác / Spam',
     'report_reason_harassment': 'Quấy rối',
     'report_reason_inappropriate': 'Nội dung không phù hợp',
@@ -1594,6 +1598,8 @@ class LocaleService extends ChangeNotifier {
     'date_of_birth': 'Date of Birth',
     'select_date_of_birth': 'Select date of birth',
     'confirm_password': 'Confirm Password',
+    'please_enter_email': 'Please enter your email',
+    'please_enter_password': 'Please enter your password',
     'please_enter_full_name': 'Please enter your full name',
     'please_enter_phone': 'Please enter your phone number',
     'invalid_phone': 'Invalid phone number',
@@ -2608,8 +2614,10 @@ class LocaleService extends ChangeNotifier {
     'who_can_view': 'Who can view this video',
     'allow_comments': 'Allow comments',
     'post_video': 'Post video',
-
-    // Report User
+    'resuming_upload': 'Resuming upload...',
+    'upload_preparing': 'Preparing...',
+    'resume_upload': 'Resume upload',
+    'restart_upload': 'Restart upload',
     'report_reason_spam': 'Spam',
     'report_reason_harassment': 'Harassment',
     'report_reason_inappropriate': 'Inappropriate Content',

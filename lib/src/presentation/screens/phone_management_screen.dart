@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import '../../services/api_service.dart';
@@ -308,7 +308,7 @@ class _PhoneManagementScreenState extends State<PhoneManagementScreen>
             else
               Text(
                 _localeService.isVietnamese
-                    ? 'ChÆ°a cÃ³ sá»‘ Ä‘iá»‡n thoáº¡i liÃªn káº¿t'
+                    ? 'Chưa có số điện thoại liên kết'
                     : 'No phone number linked',
                 style: TextStyle(
                   color: _themeService.textSecondaryColor,

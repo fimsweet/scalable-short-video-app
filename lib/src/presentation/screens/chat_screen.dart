@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import 'package:scalable_short_video_app/src/services/message_service.dart';
 import 'package:scalable_short_video_app/src/services/auth_service.dart';
 import 'package:scalable_short_video_app/src/services/video_service.dart';
@@ -93,6 +94,8 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _messageEditedSubscription;
   StreamSubscription? _privacySettingsSubscription;
   StreamSubscription? _themeColorChangedSubscription;
+  StreamSubscription? _messagePinnedSubscription;
+  StreamSubscription? _messageUnpinnedSubscription;
 
   String get _currentUserId => _authService.user?['id']?.toString() ?? '';
   String get _conversationId {
@@ -207,7 +210,21 @@ class _ChatScreenState extends State<ChatScreen> {
           if (isOnline) {
             _recipientStatusText = _localeService.isVietnamese ? 'Đang hoạt động' : 'Online';
           } else {
-            _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+            // Format lastSeen with timeago for accurate offline duration
+            final lastSeen = data['lastSeen'];
+            if (lastSeen != null && lastSeen.toString().isNotEmpty) {
+              try {
+                final lastSeenDate = DateTime.parse(lastSeen.toString()).toLocal();
+                final ago = timeago.format(lastSeenDate, locale: _localeService.isVietnamese ? 'vi' : 'en');
+                _recipientStatusText = _localeService.isVietnamese
+                    ? 'Hoạt động $ago'
+                    : 'Active $ago';
+              } catch (_) {
+                _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+              }
+            } else {
+              _recipientStatusText = _localeService.isVietnamese ? 'Vừa mới truy cập' : 'Just now';
+            }
           }
         });
       }
@@ -380,6 +397,59 @@ class _ChatScreenState extends State<ChatScreen> {
         if (themeColor != null) {
           setState(() {
             _chatThemeColor = _parseThemeColor(themeColor);
+          });
+        }
+      }
+    });
+
+    // Listen for message pinned (real-time from other user)
+    _messagePinnedSubscription = _messageService.messagePinnedStream.listen((data) {
+      if (mounted) {
+        final messageId = data['messageId']?.toString();
+        final pinnedBy = data['pinnedBy']?.toString();
+        final pinnedAt = data['pinnedAt']?.toString();
+        if (messageId != null) {
+          setState(() {
+            // Update the message in the list
+            final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+            if (index != -1) {
+              _messages[index] = {
+                ..._messages[index],
+                'pinnedBy': pinnedBy,
+                'pinnedAt': pinnedAt,
+              };
+              // Set as the pinned message bar
+              _pinnedMessage = _messages[index];
+            } else if (data['message'] != null) {
+              // Message not in loaded list — use the message data from event
+              _pinnedMessage = Map<String, dynamic>.from(data['message']);
+            }
+          });
+        }
+      }
+    });
+
+    // Listen for message unpinned (real-time from other user)
+    _messageUnpinnedSubscription = _messageService.messageUnpinnedStream.listen((data) {
+      if (mounted) {
+        final messageId = data['messageId']?.toString();
+        if (messageId != null) {
+          setState(() {
+            // Update the message in the list
+            final index = _messages.indexWhere((m) => m['id']?.toString() == messageId);
+            if (index != -1) {
+              _messages[index] = {
+                ..._messages[index],
+                'pinnedBy': null,
+                'pinnedAt': null,
+              };
+            }
+            // Clear pinned message bar if this was the pinned one
+            if (_pinnedMessage?['id']?.toString() == messageId) {
+              _pinnedMessage = null;
+              // Reload to find the next pinned message (if any)
+              _loadPinnedMessage();
+            }
           });
         }
       }
@@ -859,6 +929,8 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageEditedSubscription?.cancel();
     _privacySettingsSubscription?.cancel();
     _themeColorChangedSubscription?.cancel();
+    _messagePinnedSubscription?.cancel();
+    _messageUnpinnedSubscription?.cancel();
     // Unsubscribe from online status updates
     _messageService.unsubscribeOnlineStatus(widget.recipientId);
     // Clear active chat user for in-app notification suppression

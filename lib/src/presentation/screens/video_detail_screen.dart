@@ -882,9 +882,9 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
               : '';
           final userId = video['userId']?.toString();
 
-          // Only load video players within range of 2 from current page
-          // to avoid exhausting hardware decoder slots (MediaCodec limit)
-          final shouldLoadVideo = (index - _currentPage).abs() <= 2;
+          // Only load VideoPlayerController for the CURRENT video
+          // to avoid MediaCodec decoder exhaustion on Android.
+          final shouldLoadVideo = index == _currentPage;
 
           return Stack(
             children: [
@@ -917,12 +917,18 @@ class _VideoDetailScreenState extends State<VideoDetailScreen> {
                   },
                 )
               else if (!shouldLoadVideo)
-                // Placeholder for videos far from viewport to save hardware codecs
+                // Adjacent videos: show thumbnail for instant visual feedback
                 Container(
                   color: Colors.black,
-                  child: const Center(
-                    child: CircularProgressIndicator(color: Colors.white),
-                  ),
+                  child: video['thumbnailUrl'] != null
+                      ? Image.network(
+                          _videoService.getVideoUrl(video['thumbnailUrl']),
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          height: double.infinity,
+                          errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                        )
+                      : const SizedBox(),
                 )
               else
                 Container(

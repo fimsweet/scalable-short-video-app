@@ -78,8 +78,14 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   Future<void> _loadSuggestions() async {
-    // Load some trending/suggested videos
-    final videos = await _videoService.getAllVideos();
+    // Load personalized recommendations (falls back to getAllVideos internally)
+    final userId = _authService.userId;
+    List<dynamic> videos;
+    if (userId != null) {
+      videos = await _videoService.getRecommendedVideos(userId, limit: 6);
+    } else {
+      videos = await _videoService.getTrendingVideos(limit: 6);
+    }
     if (mounted) {
       setState(() {
         _suggestedVideos = videos.take(6).toList();
@@ -128,12 +134,18 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       final videos = results[0];
       final users = results[1] as List<Map<String, dynamic>>;
       
-      // Check follow status for users
-      if (_authService.isLoggedIn && _authService.user != null) {
-        final currentUserId = _authService.user!['id'] as int;
-        for (var user in users) {
+      // Filter out current user from search results & check follow status
+      final currentUserId = _authService.isLoggedIn && _authService.user != null
+          ? _authService.user!['id']
+          : null;
+      final filteredUsers = currentUserId != null
+          ? users.where((u) => u['id']?.toString() != currentUserId.toString()).toList()
+          : users;
+
+      if (_authService.isLoggedIn && currentUserId != null) {
+        for (var user in filteredUsers) {
           final userId = user['id'];
-          if (userId != null && userId != currentUserId) {
+          if (userId != null) {
             final isFollowing = await _followService.isFollowing(currentUserId, userId);
             _followStatus[userId.toString()] = isFollowing;
           }
@@ -143,7 +155,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       if (mounted) {
         setState(() {
           _videoResults = videos;
-          _userResults = users;
+          _userResults = filteredUsers;
           _isSearching = false;
         });
       }
