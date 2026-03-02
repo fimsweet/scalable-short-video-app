@@ -143,8 +143,12 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
     // Flush current watch time so backend knows we watched this video
     _sendWatchTime();
 
-    // Collect IDs of all currently displayed For You videos to exclude them
+    // Only exclude videos the user has actually scrolled to (watched),
+    // not ALL videos in the feed. This prevents the "all caught up" empty state
+    // when the user has only watched a few videos out of many loaded.
+    final watchedCount = _forYouCurrentPage + 1; // pages are 0-indexed
     final currentVideoIds = _forYouVideos
+        .take(watchedCount)
         .where((v) => v != null)
         .map<String>((v) => v['id']?.toString() ?? '')
         .where((id) => id.isNotEmpty)
@@ -1477,8 +1481,10 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         : null;
     final userId = video['userId']?.toString();
     
-    // Load videos within range of 2 to allow smooth pause transition
-    final shouldLoadVideo = (index - currentPageForTab).abs() <= 2;
+    // Only create VideoPlayerController for the CURRENT video (index == currentPage)
+    // This prevents MediaCodec decoder exhaustion on Android.
+    // Adjacent videos show thumbnail only for instant visual feedback.
+    final shouldLoadVideo = index == currentPageForTab;
     
     // Check if this is the current playing video
     final isCurrentVideo = index == currentPageForTab && isActiveTab;
@@ -1511,10 +1517,19 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
             onVideoEnd: () => _handleVideoEnd(tabIndex),
           )
         else if (!shouldLoadVideo)
-          // Show black screen with spinner for videos not in range
+          // Adjacent videos: show thumbnail for instant visual feedback
+          // Only the current video has an active VideoPlayerController
           Container(
             color: Colors.black,
-            child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+            child: thumbnailUrl != null && thumbnailUrl.isNotEmpty
+                ? Image.network(
+                    thumbnailUrl,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    errorBuilder: (context, error, stackTrace) => const SizedBox(),
+                  )
+                : const SizedBox(),
           )
         else
           Container(

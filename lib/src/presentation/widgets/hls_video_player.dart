@@ -120,14 +120,12 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
       _controller = VideoPlayerController.networkUrl(
         Uri.parse(widget.videoUrl),
         videoPlayerOptions: VideoPlayerOptions(
-          mixWithOthers: true, // Allow audio mixing to prevent audio conflicts
+          mixWithOthers: true,
           allowBackgroundPlayback: false,
         ),
       );
 
-      // Add error listener
       _controller?.addListener(_videoListener);
-
       await _controller?.initialize();
       
       if (!_isDisposed && mounted) {
@@ -389,21 +387,8 @@ class HLSVideoPlayerState extends State<HLSVideoPlayer> with WidgetsBindingObser
     if (!_isInitialized) {
       return Container(
         color: Colors.black,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (widget.thumbnailUrl != null && widget.thumbnailUrl!.isNotEmpty)
-              Image.network(
-                widget.thumbnailUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return const SizedBox();
-                },
-              ),
-            const Center(
-              child: CircularProgressIndicator(color: Colors.white),
-            ),
-          ],
+        child: const Center(
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
     }

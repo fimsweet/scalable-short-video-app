@@ -4,25 +4,31 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 
 /// Video Prefetch Service
-/// Preloads video data and thumbnails for smooth playback like TikTok
+/// Pre-downloads HLS manifests and first segments for smooth playback.
+/// 
+/// Since we use only 1 VideoPlayerController at a time (to avoid MediaCodec
+/// decoder exhaustion), this service warms the HTTP/CDN cache by downloading
+/// the HLS manifest (.m3u8) and the first video segment of upcoming videos.
+/// When the player switches to the next video, the data is already cached
+/// at the HTTP level, so initialization is much faster.
 /// 
 /// Strategy:
-/// - Prefetch next 3 videos when user is watching current video
-/// - Cache video metadata and thumbnails
-/// - Preconnect to CDN for faster HLS segment loading
+/// - Prefetch next 2 videos' HLS manifests (GET, not HEAD)
+/// - Prefetch thumbnails for adjacent videos (shown as placeholders)
+/// - Download first ~1MB of each upcoming video's first HLS segment
 class VideoPrefetchService extends ChangeNotifier {
   static final VideoPrefetchService _instance = VideoPrefetchService._internal();
   factory VideoPrefetchService() => _instance;
   VideoPrefetchService._internal();
 
-  // Cache for prefetched video URLs (to verify they're reachable)
+  // Cache for prefetched video URLs
   final LinkedHashMap<String, bool> _prefetchedUrls = LinkedHashMap();
   
   // Maximum cache size
-  static const int _maxCacheSize = 20;
+  static const int _maxCacheSize = 30;
   
   // Number of videos to prefetch ahead
-  static const int _prefetchCount = 3;
+  static const int _prefetchCount = 2;
   
   // Track current prefetch operations
   final Set<String> _prefetchingUrls = {};
@@ -42,12 +48,13 @@ class VideoPrefetchService extends ChangeNotifier {
       final hlsUrl = video['hlsUrl']?.toString();
       final thumbnailUrl = video['thumbnailUrl']?.toString();
       
-      // Prefetch HLS playlist (triggers CDN caching)
+      // Prefetch HLS manifest (GET request — actually downloads the .m3u8)
+      // This warms the HTTP cache so VideoPlayerController.initialize() is faster
       if (hlsUrl != null && hlsUrl.isNotEmpty) {
-        _prefetchUrl(_buildFullUrl(hlsUrl));
+        _prefetchHlsManifest(_buildFullUrl(hlsUrl));
       }
       
-      // Prefetch thumbnail
+      // Prefetch thumbnail (shown as placeholder on adjacent videos)
       if (thumbnailUrl != null && thumbnailUrl.isNotEmpty) {
         _prefetchUrl(_buildFullUrl(thumbnailUrl));
       }
@@ -57,7 +64,73 @@ class VideoPrefetchService extends ChangeNotifier {
     _cleanCache();
   }
 
-  /// Prefetch a specific video URL
+  /// Prefetch HLS manifest with GET request to actually cache the data.
+  /// Also parses the manifest to prefetch the first video segment.
+  Future<void> _prefetchHlsManifest(String url) async {
+    if (_prefetchedUrls.containsKey(url) || _prefetchingUrls.contains(url)) {
+      return;
+    }
+    
+    _prefetchingUrls.add(url);
+    
+    try {
+      // GET request to actually download and cache the manifest
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': '*/*',
+          'Connection': 'keep-alive',
+        },
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => http.Response('', 408),
+      );
+      
+      _prefetchedUrls[url] = response.statusCode == 200;
+      
+      if (response.statusCode == 200) {
+        if (kDebugMode) {
+          print('✅ Prefetched HLS manifest: ${url.split('/').last}');
+        }
+        
+        // Parse manifest to find first segment and prefetch it
+        final body = response.body;
+        final lines = body.split('\n');
+        
+        // Find the first .ts segment or sub-playlist URL
+        for (final line in lines) {
+          final trimmed = line.trim();
+          if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+          
+          // Build absolute URL for the segment
+          String segmentUrl;
+          if (trimmed.startsWith('http')) {
+            segmentUrl = trimmed;
+          } else {
+            // Relative URL — resolve against manifest base
+            final baseUri = Uri.parse(url);
+            final resolved = baseUri.resolve(trimmed);
+            segmentUrl = resolved.toString();
+          }
+          
+          // If this is a sub-playlist (.m3u8), prefetch it too
+          if (trimmed.endsWith('.m3u8')) {
+            _prefetchHlsManifest(segmentUrl);
+          } else if (trimmed.endsWith('.ts') || trimmed.endsWith('.m4s')) {
+            // Prefetch first segment only (warm the CDN cache)
+            _prefetchUrl(segmentUrl);
+          }
+          break; // Only prefetch the first segment/sub-playlist
+        }
+      }
+    } catch (e) {
+      _prefetchedUrls[url] = false;
+    } finally {
+      _prefetchingUrls.remove(url);
+    }
+  }
+
+  /// Prefetch a URL with GET request to cache the response data
   Future<void> _prefetchUrl(String url) async {
     // Skip if already prefetched or prefetching
     if (_prefetchedUrls.containsKey(url) || _prefetchingUrls.contains(url)) {
@@ -67,15 +140,15 @@ class VideoPrefetchService extends ChangeNotifier {
     _prefetchingUrls.add(url);
     
     try {
-      // HEAD request to trigger CDN caching without downloading full content
-      final response = await http.head(
+      // GET request to actually download data into HTTP cache
+      final response = await http.get(
         Uri.parse(url),
         headers: {
           'Accept': '*/*',
           'Connection': 'keep-alive',
         },
       ).timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 8),
         onTimeout: () => http.Response('', 408),
       );
       

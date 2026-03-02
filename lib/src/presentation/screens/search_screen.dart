@@ -134,12 +134,18 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       final videos = results[0];
       final users = results[1] as List<Map<String, dynamic>>;
       
-      // Check follow status for users
-      if (_authService.isLoggedIn && _authService.user != null) {
-        final currentUserId = _authService.user!['id'] as int;
-        for (var user in users) {
+      // Filter out current user from search results & check follow status
+      final currentUserId = _authService.isLoggedIn && _authService.user != null
+          ? _authService.user!['id']
+          : null;
+      final filteredUsers = currentUserId != null
+          ? users.where((u) => u['id']?.toString() != currentUserId.toString()).toList()
+          : users;
+
+      if (_authService.isLoggedIn && currentUserId != null) {
+        for (var user in filteredUsers) {
           final userId = user['id'];
-          if (userId != null && userId != currentUserId) {
+          if (userId != null) {
             final isFollowing = await _followService.isFollowing(currentUserId, userId);
             _followStatus[userId.toString()] = isFollowing;
           }
@@ -149,7 +155,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       if (mounted) {
         setState(() {
           _videoResults = videos;
-          _userResults = users;
+          _userResults = filteredUsers;
           _isSearching = false;
         });
       }

@@ -43,6 +43,10 @@ class MessageService {
       StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _themeColorChangedController = 
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messagePinnedController = 
+      StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _messageUnpinnedController = 
+      StreamController<Map<String, dynamic>>.broadcast();
 
   // Streams
   Stream<Map<String, dynamic>> get newMessageStream => _newMessageController.stream;
@@ -56,6 +60,8 @@ class MessageService {
   Stream<Map<String, dynamic>> get privacySettingsChangedStream => _privacySettingsChangedController.stream;
   Stream<Map<String, dynamic>> get newNotificationStream => _newNotificationController.stream;
   Stream<Map<String, dynamic>> get themeColorChangedStream => _themeColorChangedController.stream;
+  Stream<Map<String, dynamic>> get messagePinnedStream => _messagePinnedController.stream;
+  Stream<Map<String, dynamic>> get messageUnpinnedStream => _messageUnpinnedController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
@@ -171,6 +177,22 @@ class MessageService {
       print('\u{1F3A8} Theme color changed: $data');
       if (data != null) {
         _themeColorChangedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for message pinned (real-time sync)
+    _socket!.on('messagePinned', (data) {
+      print('Message pinned: $data');
+      if (data != null) {
+        _messagePinnedController.add(Map<String, dynamic>.from(data));
+      }
+    });
+
+    // Listen for message unpinned (real-time sync)
+    _socket!.on('messageUnpinned', (data) {
+      print('Message unpinned: $data');
+      if (data != null) {
+        _messageUnpinnedController.add(Map<String, dynamic>.from(data));
       }
     });
     _socket!.connect();
