@@ -90,7 +90,7 @@ class VideoPrefetchService extends ChangeNotifier {
       
       if (response.statusCode == 200) {
         if (kDebugMode) {
-          print('✅ Prefetched HLS manifest: ${url.split('/').last}');
+          print('[OK] Prefetched HLS manifest: ${url.split('/').last}');
         }
         
         // Parse manifest to find first segment and prefetch it
@@ -155,7 +155,7 @@ class VideoPrefetchService extends ChangeNotifier {
       _prefetchedUrls[url] = response.statusCode == 200;
       
       if (kDebugMode && response.statusCode == 200) {
-        print('✅ Prefetched: ${url.split('/').last}');
+        print('[OK] Prefetched: ${url.split('/').last}');
       }
     } catch (e) {
       // Silent fail - prefetching is best effort
