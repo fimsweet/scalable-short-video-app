@@ -167,7 +167,7 @@ class MessageService {
 
     // Listen for new notification events (real-time badge update via WebSocket)
     _socket!.on('newNotification', (data) {
-      print('🔔 New notification via WebSocket: $data');
+      print('[WS] New notification via WebSocket: $data');
       if (data != null) {
         _newNotificationController.add(Map<String, dynamic>.from(data));
       }

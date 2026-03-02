@@ -949,7 +949,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         _likeCounts[videoId] = result['likeCount'] ?? 0;
       });
       
-      print('${result['liked'] ? '❤️' : '🤍'} Like toggled - Status: ${result['liked']}, Count: ${result['likeCount']}');
+      print('${result['liked'] ? '[LIKED]' : '[UNLIKED]'} Like toggled - Status: ${result['liked']}, Count: ${result['likeCount']}');
     }
   }
 
@@ -977,7 +977,7 @@ class VideoScreenState extends State<VideoScreen> with AutomaticKeepAliveClientM
         _requestedStatus[videoOwnerId.toString()] = isRequested;
       });
       
-      print('${isNowFollowing ? '✅' : isRequested ? '⏳' : '❌'} Follow toggled - Following: $isNowFollowing, Requested: $isRequested');
+      print('${isNowFollowing ? '[FOLLOWED]' : isRequested ? '[REQUESTED]' : '[UNFOLLOWED]'} Follow toggled - Following: $isNowFollowing, Requested: $isRequested');
       // Videos stay visible — they are only removed on next feed refresh/reload
     }
   }

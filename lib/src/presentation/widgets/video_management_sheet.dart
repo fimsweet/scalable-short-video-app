@@ -342,10 +342,10 @@ class _VideoManagementSheetState extends State<VideoManagementSheet> {
                             // Call onDeleted callback - this will handle navigation
                             widget.onDeleted();
                             
-                            print('   ✅ Delete process completed!');
+                            print('   [OK] Delete process completed!');
                             
                           } catch (e) {
-                            print('   ❌ Error during delete: $e');
+                            print('   [ERROR] Error during delete: $e');
                             
                             // Try to close any remaining dialogs
                             try {

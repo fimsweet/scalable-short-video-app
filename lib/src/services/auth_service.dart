@@ -127,7 +127,7 @@ class AuthService {
       try {
         print('   Calling listener #$listenerIndex...');
         listener();
-        print('   ✅ Listener #$listenerIndex completed');
+        print('   [OK] Listener #$listenerIndex completed');
       } catch (e, stackTrace) {
         print('Error calling login listener #$listenerIndex: $e');
         print('   Stack trace: $stackTrace');
