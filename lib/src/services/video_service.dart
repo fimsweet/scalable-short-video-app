@@ -44,7 +44,7 @@ class VideoService {
 
   String get _videoApiUrl => '$_baseUrl/videos';
 
-  /// Default chunk size: 5 MB (matches thesis Section 3.5.1, Figure 3.2)
+  /// Default chunk size: 5 MB 
   static const int defaultChunkSize = 5 * 1024 * 1024;
 
   /// Max retries per chunk before giving up
